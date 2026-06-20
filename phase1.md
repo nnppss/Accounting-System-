@@ -1,7 +1,12 @@
-# Phase 1 — Foundation (in progress)
+# Phase 1 — Foundation (COMPLETE)
 
-Handoff doc. Read this (and `phase0.md` for the scaffold baseline), then continue
-**Phase 1** where it left off before moving to Phase 2.
+> **⚠ Historical record — superseded.** Phase 1 is finished and Phase 2 is built on top. The live
+> handover doc is now **[phase2.md](phase2.md)** — start there for Phase 3. This file is kept as the
+> record of the ledger-core design; §3 (schema), §4 (gotchas), and §5 (the chunk specs) are still
+> accurate for how the core works. The "remaining work" framing below is done (see the §1 table).
+
+Handoff doc. Read this (and `phase0.md` for the scaffold baseline) for the ledger-core design
+that everything else builds on.
 
 See [software.md](software.md) for *what* the app does, [architecture.md](architecture.md)
 for *how* it's built, and [README.md](README.md) for dev commands.

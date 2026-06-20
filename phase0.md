@@ -1,5 +1,11 @@
 # Phase 0 — Scaffold (DONE)
 
+> **⚠ Historical record — superseded.** The live handover doc is now **[phase2.md](phase2.md)**
+> (start there for Phase 3). Phases 1 & 2 are complete, so the placeholders this file describes
+> (`schema.ts` = `app_meta`, the `ping`/`app_meta` round-trip button, the demo `App.tsx`/locales)
+> have all been **replaced** by the real schema, IPC, and screens. Kept only as a record of the
+> original scaffold and the still-valid stack conventions/gotchas.
+
 Handoff doc. Read this, then start **Phase 1 (Foundation)**. It records exactly what
 exists, the conventions already baked in, the gotchas that will bite you, and where to
 make the first Phase 1 change.
