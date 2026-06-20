@@ -13,14 +13,15 @@ for *how* it's built, and [README.md](README.md) for dev commands.
 | Chunk | Status | Commit |
 |---|---|---|
 | DB foundation — schema, migrations, Electron-free data layer, seed | ✅ done | `d3e2d44` |
-| PostingService (Σdr = Σcr enforcer, the single money writer) | ❌ not started |
-| Trial Balance read model | ❌ not started |
-| Auth + year-context (login: year · username · password · accountant) | ❌ not started |
-| Account Manager (create/list/view-ledger) | ❌ not started |
-| Money Book (cash + per-bank, month-wise) | ❌ not started |
+| PostingService (Σdr = Σcr enforcer, the single money writer) | ✅ done |
+| Trial Balance read model | ✅ done |
+| Auth + year-context (login: year · username · password · accountant) | ✅ done |
+| Account Manager (create/list/view-ledger) | ✅ done |
+| Money Book (cash + per-bank, month-wise) | ✅ done |
 
-**Do not start Phase 2 until all five remaining chunks are done and a net-zero Trial Balance
-is provable on sample data.**
+**Phase 1 is complete and verified** — typecheck + build clean, all engine tests green, and
+`phase1.integration.test.ts` proves the §6 done/verify (accounts → receipt → net-zero trial
+balance → matching money book). **Phase 2 is built on top — see [phase2.md](phase2.md).**
 
 ---
 

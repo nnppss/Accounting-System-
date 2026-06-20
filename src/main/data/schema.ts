@@ -1,5 +1,16 @@
 import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import {
+  ACCOUNT_TYPES,
+  CHEQUE_DIRECTIONS,
+  CHEQUE_STATUSES,
+  DELIVERY_TARGETS,
+  DR_CR,
+  ENTRY_TAGS,
+  SUBGROUP_NATURES,
+  VOUCHER_TYPES,
+  YEAR_STATUSES
+} from '../../shared/enums'
 
 /**
  * Phase 1 schema — masters + the double-entry ledger core + system tables.
@@ -11,36 +22,32 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
  *    are unix-epoch-seconds integers.
  *  - Nearly every operational table is scoped by financial year.
  *  - No hard deletes: rows are voided/reversed, never DELETEd (audit rule).
+ *
+ * Enum tuples/types live in `shared/enums.ts` (single source of truth, importable by the
+ * renderer); re-exported here so existing `from './schema'` imports keep working.
  */
-
-// ---- Enumerations (kept as const tuples so they drive both the DB CHECK and TS types) ----
-
-/** Who/what an account is. "Defaulter" is a flag on the account, not a type. */
-export const ACCOUNT_TYPES = ['kisan', 'vyapari', 'staff', 'loading_contractor', 'other'] as const
-export type AccountType = (typeof ACCOUNT_TYPES)[number]
-
-/** Accounting nature of a subgroup — drives reporting/classification. */
-export const SUBGROUP_NATURES = ['asset', 'liability', 'income', 'expense', 'capital'] as const
-export type SubgroupNature = (typeof SUBGROUP_NATURES)[number]
-
-export const DR_CR = ['dr', 'cr'] as const
-export type DrCr = (typeof DR_CR)[number]
-
-export const VOUCHER_TYPES = ['receipt', 'payment', 'journal', 'contra'] as const
-export type VoucherType = (typeof VOUCHER_TYPES)[number]
-
-/** Lets a single running party balance still report rent vs loan vs trade separately. */
-export const ENTRY_TAGS = ['rent', 'loan', 'interest', 'trade', 'opening', 'general'] as const
-export type EntryTag = (typeof ENTRY_TAGS)[number]
-
-export const CHEQUE_DIRECTIONS = ['received', 'given'] as const
-export type ChequeDirection = (typeof CHEQUE_DIRECTIONS)[number]
-
-export const CHEQUE_STATUSES = ['pending', 'cleared', 'bounced'] as const
-export type ChequeStatus = (typeof CHEQUE_STATUSES)[number]
-
-export const YEAR_STATUSES = ['open', 'closed'] as const
-export type YearStatus = (typeof YEAR_STATUSES)[number]
+export {
+  ACCOUNT_TYPES,
+  CHEQUE_DIRECTIONS,
+  CHEQUE_STATUSES,
+  DELIVERY_TARGETS,
+  DR_CR,
+  ENTRY_TAGS,
+  SUBGROUP_NATURES,
+  VOUCHER_TYPES,
+  YEAR_STATUSES
+} from '../../shared/enums'
+export type {
+  AccountType,
+  ChequeDirection,
+  ChequeStatus,
+  DeliveryTarget,
+  DrCr,
+  EntryTag,
+  SubgroupNature,
+  VoucherType,
+  YearStatus
+} from '../../shared/enums'
 
 const createdAt = integer('created_at', { mode: 'timestamp' })
   .notNull()
@@ -244,4 +251,125 @@ export const auditLog = sqliteTable(
     afterJson: text('after_json')
   },
   (t) => ({ byEntity: index('audit_entity_idx').on(t.entity, t.entityId) })
+)
+
+// ===================== STORE & STOCK (Phase 2) =====================
+
+/**
+ * Single-row store layout config: Room → Floor → Rack (cap 8×10×200; current 5×6×160).
+ * Locations on aamad/nikasi are denormalised (room/floor/rack ints) rather than FK rows —
+ * the layout is just the grid dimensions the Maps render and validate against.
+ */
+export const storeConfig = sqliteTable('store_config', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  rooms: integer('rooms').notNull().default(5),
+  floors: integer('floors').notNull().default(6),
+  racksPerFloor: integer('racks_per_floor').notNull().default(160)
+})
+
+/** Inward stock (filling season). `no` is staff-typed (not auto-serialised). Physical only — posts nothing. */
+export const aamad = sqliteTable(
+  'aamad',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    yearId: integer('year_id')
+      .notNull()
+      .references(() => financialYear.id),
+    no: text('no').notNull(),
+    date: text('date').notNull(),
+    kisanAccountId: integer('kisan_account_id')
+      .notNull()
+      .references(() => account.id),
+    totalPackets: integer('total_packets').notNull(),
+    createdAt
+  },
+  (t) => ({
+    byYearDate: index('aamad_year_date_idx').on(t.yearId, t.date),
+    byKisan: index('aamad_kisan_idx').on(t.kisanAccountId)
+  })
+)
+
+/** Where an aamad's packets physically sit: Room/Floor/Rack → packets. */
+export const aamadLocation = sqliteTable(
+  'aamad_location',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    aamadId: integer('aamad_id')
+      .notNull()
+      .references(() => aamad.id),
+    room: integer('room').notNull(),
+    floor: integer('floor').notNull(),
+    rack: integer('rack').notNull(),
+    packets: integer('packets').notNull()
+  },
+  (t) => ({ byAamad: index('aamad_location_aamad_idx').on(t.aamadId) })
+)
+
+/** Deal record: a vyapari agrees a per-packet rate with a kisan. Drives the Nikasi rate. Physical only. */
+export const sauda = sqliteTable(
+  'sauda',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    yearId: integer('year_id')
+      .notNull()
+      .references(() => financialYear.id),
+    date: text('date').notNull(),
+    vyapariAccountId: integer('vyapari_account_id')
+      .notNull()
+      .references(() => account.id),
+    kisanAccountId: integer('kisan_account_id')
+      .notNull()
+      .references(() => account.id),
+    packets: integer('packets').notNull(),
+    ratePaise: integer('rate_paise').notNull(),
+    createdAt
+  },
+  (t) => ({ byYear: index('sauda_year_idx').on(t.yearId, t.date) })
+)
+
+/** Outward gate pass. Vyapari delivery auto-posts a sale; kisan self-withdrawal is physical only. */
+export const nikasi = sqliteTable(
+  'nikasi',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    yearId: integer('year_id')
+      .notNull()
+      .references(() => financialYear.id),
+    billNo: integer('bill_no').notNull(), // gate-pass no., auto from number_series
+    date: text('date').notNull(),
+    vehicleNo: text('vehicle_no'),
+    deliveredToType: text('delivered_to_type', { enum: DELIVERY_TARGETS }).notNull(),
+    deliveredToAccountId: integer('delivered_to_account_id')
+      .notNull()
+      .references(() => account.id),
+    receivedBy: text('received_by'),
+    bhadaRecoveredPaise: integer('bhada_recovered_paise').notNull().default(0),
+    voucherId: integer('voucher_id').references(() => voucher.id), // the sale voucher (null for self-withdrawal)
+    createdAt
+  },
+  (t) => ({
+    byYearDate: index('nikasi_year_date_idx').on(t.yearId, t.date),
+    uniqBill: uniqueIndex('nikasi_year_bill_idx').on(t.yearId, t.billNo)
+  })
+)
+
+/** A nikasi line: packets taken from one kisan's stock at a location, at a per-packet sale rate. */
+export const nikasiLine = sqliteTable(
+  'nikasi_line',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    nikasiId: integer('nikasi_id')
+      .notNull()
+      .references(() => nikasi.id),
+    fromKisanAccountId: integer('from_kisan_account_id')
+      .notNull()
+      .references(() => account.id),
+    room: integer('room').notNull(),
+    floor: integer('floor').notNull(),
+    rack: integer('rack').notNull(),
+    packets: integer('packets').notNull(),
+    weightKg: integer('weight_kg'), // recorded only; not used in money
+    ratePaise: integer('rate_paise').notNull()
+  },
+  (t) => ({ byNikasi: index('nikasi_line_nikasi_idx').on(t.nikasiId) })
 )

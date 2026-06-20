@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
+import { ensureBootstrap } from './auth/auth'
 import { migrate, openDb } from './data/db'
 import { seedReferenceData } from './data/seed'
 import { registerIpc } from './ipc'
@@ -20,6 +21,7 @@ function initDb(): void {
   openDb(dbPath())
   migrate(migrationsFolder())
   seedReferenceData()
+  ensureBootstrap() // default admin + current calendar year on first run (no lockout)
 }
 
 function createWindow(): void {
