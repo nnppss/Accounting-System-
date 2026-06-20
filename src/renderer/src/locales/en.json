@@ -1,0 +1,8 @@
+{
+  "app.title": "Paritosh Cold",
+  "app.tagline": "Cold storage accounting",
+  "phase0.heading": "Setup check",
+  "phase0.ping": "Test database round-trip",
+  "phase0.stored": "Stored in SQLite",
+  "lang.toggle": "हिंदी"
+}

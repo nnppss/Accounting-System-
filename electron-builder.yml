@@ -1,0 +1,16 @@
+appId: com.paritosh.cold
+productName: Paritosh Cold
+directories:
+  output: release
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+npmRebuild: true
+win:
+  target: nsis
+  artifactName: ${productName}-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

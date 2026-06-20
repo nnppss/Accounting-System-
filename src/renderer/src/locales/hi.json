@@ -1,0 +1,8 @@
+{
+  "app.title": "परितोष कोल्ड",
+  "app.tagline": "कोल्ड स्टोरेज लेखांकन",
+  "phase0.heading": "सेटअप जाँच",
+  "phase0.ping": "डेटाबेस राउंड-ट्रिप जाँचें",
+  "phase0.stored": "SQLite में सहेजा गया",
+  "lang.toggle": "English"
+}
