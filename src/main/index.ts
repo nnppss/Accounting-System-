@@ -1,7 +1,26 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
-import { initDb } from './data/db'
+import { migrate, openDb } from './data/db'
+import { seedReferenceData } from './data/seed'
 import { registerIpc } from './ipc'
+
+/** The single SQLite file lives in Electron's per-user data dir. */
+function dbPath(): string {
+  return join(app.getPath('userData'), 'paritosh.db')
+}
+
+/** Generated migrations ship beside the app in prod (extraResources), at the repo root in dev. */
+function migrationsFolder(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'drizzle')
+    : join(app.getAppPath(), 'drizzle')
+}
+
+function initDb(): void {
+  openDb(dbPath())
+  migrate(migrationsFolder())
+  seedReferenceData()
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({

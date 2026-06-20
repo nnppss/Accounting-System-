@@ -6,6 +6,9 @@ directories:
 files:
   - out/**
   - package.json
+extraResources:
+  - from: drizzle
+    to: drizzle
 npmRebuild: true
 win:
   target: nsis
