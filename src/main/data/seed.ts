@@ -34,7 +34,11 @@ export const SYSTEM_ACCOUNTS = {
   BARDANA_PURCHASE: 'Bardana Purchase',
   SALARY_EXPENSE: 'Salary Expense',
   LOADING_EXPENSE: 'Loading Expense',
-  OPENING_EQUITY: 'Opening Balance Equity'
+  OPENING_EQUITY: 'Opening Balance Equity',
+  // A clearing/suspense account that holds a cheque between entry and clearance. It is
+  // deliberately NOT in the 'Cash and Bank' subgroup, so the Money Book (which filters by that
+  // subgroup) shows cleared money only. It nets to zero once every cheque has cleared/bounced.
+  CHEQUES_IN_CLEARING: 'Cheques in Clearing'
 } as const
 
 export type SystemAccountName = (typeof SYSTEM_ACCOUNTS)[keyof typeof SYSTEM_ACCOUNTS]
@@ -48,7 +52,8 @@ const SYSTEM_ACCOUNT_SEED: ReadonlyArray<{ name: SystemAccountName; subgroup: st
   { name: SYSTEM_ACCOUNTS.BARDANA_PURCHASE, subgroup: 'Direct Expense' },
   { name: SYSTEM_ACCOUNTS.SALARY_EXPENSE, subgroup: 'Direct Expense' },
   { name: SYSTEM_ACCOUNTS.LOADING_EXPENSE, subgroup: 'Direct Expense' },
-  { name: SYSTEM_ACCOUNTS.OPENING_EQUITY, subgroup: 'Capital Account' }
+  { name: SYSTEM_ACCOUNTS.OPENING_EQUITY, subgroup: 'Capital Account' },
+  { name: SYSTEM_ACCOUNTS.CHEQUES_IN_CLEARING, subgroup: 'Sundry Debtors' }
 ]
 
 /** Idempotently insert the fixed reference data (subgroups + the cold's own books + store layout). */

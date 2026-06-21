@@ -3,6 +3,8 @@ import {
   AppstoreOutlined,
   BankOutlined,
   BookOutlined,
+  CreditCardOutlined,
+  DollarOutlined,
   ExportOutlined,
   FileDoneOutlined,
   InboxOutlined,
@@ -24,6 +26,8 @@ import AamadPage from '../pages/AamadPage'
 import MapsPage from '../pages/MapsPage'
 import SaudaPage from '../pages/SaudaPage'
 import NikasiPage from '../pages/NikasiPage'
+import LoansPage from '../pages/LoansPage'
+import ChequesPage from '../pages/ChequesPage'
 import StorePage from '../pages/StorePage'
 
 const { Header, Sider, Content } = Layout
@@ -43,6 +47,8 @@ export default function AppLayout(): JSX.Element {
     { key: '/maps', icon: <AppstoreOutlined />, label: t('nav.maps') },
     { key: '/sauda', icon: <FileDoneOutlined />, label: t('nav.sauda') },
     { key: '/nikasi', icon: <ExportOutlined />, label: t('nav.nikasi') },
+    { key: '/loans', icon: <DollarOutlined />, label: t('nav.loans') },
+    { key: '/cheques', icon: <CreditCardOutlined />, label: t('nav.cheques') },
     { key: '/vouchers', icon: <BankOutlined />, label: t('nav.vouchers') },
     { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') },
     { key: '/money-book', icon: <WalletOutlined />, label: t('nav.moneyBook') },
@@ -107,6 +113,8 @@ export default function AppLayout(): JSX.Element {
             <Route path="/maps" element={<MapsPage />} />
             <Route path="/sauda" element={<SaudaPage />} />
             <Route path="/nikasi" element={<NikasiPage />} />
+            <Route path="/loans" element={<LoansPage />} />
+            <Route path="/cheques" element={<ChequesPage />} />
             <Route path="/vouchers" element={<VouchersPage />} />
             <Route path="/trial-balance" element={<TrialBalancePage />} />
             <Route path="/money-book" element={<MoneyBookPage />} />

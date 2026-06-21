@@ -35,3 +35,25 @@ export type YearStatus = (typeof YEAR_STATUSES)[number]
 /** Who a Nikasi (gate pass) delivers to: a vyapari purchase (posts a sale) or the kisan himself (physical only). */
 export const DELIVERY_TARGETS = ['kisan', 'vyapari'] as const
 export type DeliveryTarget = (typeof DELIVERY_TARGETS)[number]
+
+// ============================ LOANS (Phase 3) ============================
+
+/** The three kinds of party the cold lends to (software.md §3.8). */
+export const LOAN_CATEGORIES = ['kisan', 'vyapari', 'other'] as const
+export type LoanCategory = (typeof LOAN_CATEGORIES)[number]
+
+/**
+ * How a loan arose, which decides when interest starts:
+ *  - 'direct'   — the party asked directly; interest accrues from the sanction date.
+ *  - 'indirect' — arose from unpaid dues; interest-free in the year incurred, then from 1 Jan next.
+ */
+export const LOAN_NATURES = ['direct', 'indirect'] as const
+export type LoanNature = (typeof LOAN_NATURES)[number]
+
+/** A loan is disbursed/repaid by cash or by a bank account (cash & cheque only — no other rails). */
+export const LOAN_MODES = ['cash', 'bank'] as const
+export type LoanMode = (typeof LOAN_MODES)[number]
+
+/** The lifecycle events recorded against a loan; replayed by the interest engine. */
+export const LOAN_EVENT_TYPES = ['disbursement', 'payment', 'capitalisation'] as const
+export type LoanEventType = (typeof LOAN_EVENT_TYPES)[number]

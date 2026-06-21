@@ -1,8 +1,14 @@
 import type {
   AccountType,
+  ChequeDirection,
+  ChequeStatus,
   DeliveryTarget,
   DrCr,
   EntryTag,
+  LoanCategory,
+  LoanEventType,
+  LoanMode,
+  LoanNature,
   SubgroupNature,
   VoucherType,
   YearStatus
@@ -389,4 +395,131 @@ export interface AccrueResult {
 export interface AccrueAllResult {
   kisans: number
   totalPaise: number
+}
+
+// ============================ LOANS (Phase 3) ============================
+
+/** Args the renderer sends to create a loan — yearId + accountant come from the session. */
+export interface LoanInput {
+  category: LoanCategory
+  accountId: number
+  date: string
+  amountPaise: number
+  mobile?: string
+  mode: LoanMode
+  bankAccountId?: number // required when mode = 'bank'
+  nature: LoanNature
+  /** Monthly rate in basis points (default 150 = 1.5%/mo); editable per loan. */
+  monthlyRateBps?: number
+  /** Override the interest-start date; otherwise derived from nature (direct = date, indirect = 1 Jan next). */
+  interestStartDate?: string
+  remark?: string
+}
+
+export interface LoanRow {
+  id: number
+  category: LoanCategory
+  accountId: number
+  accountName: string
+  date: string
+  principalPaise: number
+  mobile: string | null
+  mode: LoanMode
+  bankAccountId: number | null
+  nature: LoanNature
+  monthlyRateBps: number
+  interestStartDate: string
+  remark: string | null
+  /** Live outstanding (principal + accrued interest − repayments) as of the as-of date. */
+  outstandingPaise: number
+}
+
+export interface LoanEventRow {
+  id: number
+  loanId: number
+  date: string
+  type: LoanEventType
+  amountPaise: number
+  voucherId: number | null
+}
+
+/** Live breakdown from the interest engine — pure computation, posts nothing. */
+export interface LoanOutstanding {
+  loanId: number
+  /** Capitalised base after the last fold (capitalisation/payment) at or before `asOf`. */
+  principalPaise: number
+  /** Interest accrued on the base since that last fold, up to `asOf`. */
+  accruedInterestPaise: number
+  /** principalPaise + accruedInterestPaise. */
+  outstandingPaise: number
+  asOf: string
+}
+
+export interface LoanDetail extends LoanRow {
+  events: LoanEventRow[]
+  breakdown: LoanOutstanding
+}
+
+/** Party-level standing loan from the ledger (loan + interest tagged net) — mirrors StandingBhada. */
+export interface StandingLoan {
+  accountId: number
+  accountName: string
+  standingPaise: number
+}
+
+export interface CreateLoanResult {
+  loanId: number
+  voucherId: number | null
+}
+
+export interface LoanPaymentResult {
+  voucherId: number
+  interestPaise: number
+  principalPaise: number
+}
+
+export interface CapitaliseResult {
+  loanId: number
+  voucherId: number
+  interestPaise: number
+}
+
+export interface CapitaliseAllResult {
+  loans: number
+  totalInterestPaise: number
+}
+
+// ============================ CHEQUES (Phase 3) ============================
+
+export interface ChequeInput {
+  direction: ChequeDirection
+  partyAccountId: number
+  bankAccountId: number
+  amountPaise: number
+  no: string
+  bank?: string
+  date?: string
+  issueDate?: string
+  clearanceDate?: string
+}
+
+export interface ChequeRow {
+  id: number
+  direction: ChequeDirection
+  status: ChequeStatus
+  partyAccountId: number
+  partyName: string
+  bankAccountId: number
+  bankName: string
+  amountPaise: number
+  no: string
+  bank: string | null
+  date: string | null
+  issueDate: string | null
+  clearanceDate: string | null
+}
+
+export interface RecordChequeResult {
+  chequeId: number
+  voucherId: number
 }

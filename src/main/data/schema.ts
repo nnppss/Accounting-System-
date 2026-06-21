@@ -7,6 +7,10 @@ import {
   DELIVERY_TARGETS,
   DR_CR,
   ENTRY_TAGS,
+  LOAN_CATEGORIES,
+  LOAN_EVENT_TYPES,
+  LOAN_MODES,
+  LOAN_NATURES,
   SUBGROUP_NATURES,
   VOUCHER_TYPES,
   YEAR_STATUSES
@@ -33,6 +37,10 @@ export {
   DELIVERY_TARGETS,
   DR_CR,
   ENTRY_TAGS,
+  LOAN_CATEGORIES,
+  LOAN_EVENT_TYPES,
+  LOAN_MODES,
+  LOAN_NATURES,
   SUBGROUP_NATURES,
   VOUCHER_TYPES,
   YEAR_STATUSES
@@ -44,6 +52,10 @@ export type {
   DeliveryTarget,
   DrCr,
   EntryTag,
+  LoanCategory,
+  LoanEventType,
+  LoanMode,
+  LoanNature,
   SubgroupNature,
   VoucherType,
   YearStatus
@@ -372,4 +384,58 @@ export const nikasiLine = sqliteTable(
     ratePaise: integer('rate_paise').notNull()
   },
   (t) => ({ byNikasi: index('nikasi_line_nikasi_idx').on(t.nikasiId) })
+)
+
+// ========================= LOANS (Phase 3) =========================
+
+/**
+ * A loan the cold gives (Udhaar — software.md §3.8). `principalPaise` is the capitalised base
+ * the interest engine accrues 1.5%/mo on (simple in the first year, compound thereafter,
+ * capitalised every 1 Jan). `interestStartDate` encodes the nature rule:
+ *  - direct   → the sanction date (`date`);
+ *  - indirect → 1 Jan of the next year (interest-free in the year the dues arose).
+ * A direct loan's disbursement posts Dr Party / Cr Cash-or-Bank; interest and repayments post
+ * later. A party may hold several loans (engine reads each one's events).
+ */
+export const loan = sqliteTable(
+  'loan',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    yearId: integer('year_id')
+      .notNull()
+      .references(() => financialYear.id),
+    category: text('category', { enum: LOAN_CATEGORIES }).notNull(),
+    accountId: integer('account_id')
+      .notNull()
+      .references(() => account.id),
+    date: text('date').notNull(), // sanction date 'YYYY-MM-DD'
+    principalPaise: integer('principal_paise').notNull(),
+    mobile: text('mobile'),
+    mode: text('mode', { enum: LOAN_MODES }).notNull(),
+    bankAccountId: integer('bank_account_id').references(() => account.id), // when mode = 'bank'
+    nature: text('nature', { enum: LOAN_NATURES }).notNull(),
+    monthlyRateBps: integer('monthly_rate_bps').notNull().default(150), // 1.5%/mo = 150 bps
+    interestStartDate: text('interest_start_date').notNull(),
+    remark: text('remark'),
+    createdAt
+  },
+  (t) => ({
+    byYearAccount: index('loan_year_account_idx').on(t.yearId, t.accountId)
+  })
+)
+
+/** A loan lifecycle event. The interest engine replays these to compute the outstanding figure. */
+export const loanEvent = sqliteTable(
+  'loan_event',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    loanId: integer('loan_id')
+      .notNull()
+      .references(() => loan.id),
+    date: text('date').notNull(),
+    type: text('type', { enum: LOAN_EVENT_TYPES }).notNull(),
+    amountPaise: integer('amount_paise').notNull(),
+    voucherId: integer('voucher_id').references(() => voucher.id) // null for indirect disbursement (no cash)
+  },
+  (t) => ({ byLoan: index('loan_event_loan_idx').on(t.loanId) })
 )

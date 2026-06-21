@@ -1,5 +1,10 @@
 # Phase 2 done — and the handover for Phase 3
 
+> **⚠️ SUPERSEDED — Phase 3 is complete. Start at [phase3.md](phase3.md).** This file is kept for
+> history: §2–§4 (architecture conventions, reusable building blocks, the shared-contract
+> boundary) are still accurate and worth reading, but the Phase 3 brief in §5–§9 below has been
+> built and is now reference, not a to-do.
+
 **This is the live handover doc. Start here in a new session.** It records what Phase 2
 delivered, every convention and reusable building block you must follow, and the full Phase 3
 brief (Loans + interest engine + cheque-clearing) with worked examples and a build recipe.
