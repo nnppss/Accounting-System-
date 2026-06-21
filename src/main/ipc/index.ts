@@ -1,5 +1,6 @@
 import { registerAccountsIpc } from './accounts'
 import { registerAuthIpc } from './auth'
+import { registerExpensesIpc } from './expenses'
 import { registerLedgerIpc } from './ledger'
 import { registerLoansIpc } from './loans'
 import { registerMoneyBookIpc } from './moneybook'
@@ -15,4 +16,5 @@ export function registerIpc(): void {
   registerMoneyBookIpc()
   registerStockIpc()
   registerLoansIpc()
+  registerExpensesIpc()
 }

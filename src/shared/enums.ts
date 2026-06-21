@@ -57,3 +57,17 @@ export type LoanMode = (typeof LOAN_MODES)[number]
 /** The lifecycle events recorded against a loan; replayed by the interest engine. */
 export const LOAN_EVENT_TYPES = ['disbursement', 'payment', 'capitalisation'] as const
 export type LoanEventType = (typeof LOAN_EVENT_TYPES)[number]
+
+// ============================ BARDANA & EXPENSES (Phase 4) ============================
+
+/**
+ * A bardana transaction's direction (software.md §3.7):
+ *  - 'purchase' — the cold buys bags (Dr Bardana Purchase / Cr Cash-Bank);
+ *  - 'issue'    — the cold sells bags (Dr Cash-Bank / Cr Bardana Sales).
+ */
+export const BARDANA_DIRECTIONS = ['purchase', 'issue'] as const
+export type BardanaDirection = (typeof BARDANA_DIRECTIONS)[number]
+
+/** How money settles on a side-ledger transaction (cash & cheque/bank only — no other rails). */
+export const PAYMENT_MODES = ['cash', 'bank'] as const
+export type PaymentMode = (typeof PAYMENT_MODES)[number]

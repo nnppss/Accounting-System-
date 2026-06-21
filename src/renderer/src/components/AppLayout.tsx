@@ -10,7 +10,9 @@ import {
   InboxOutlined,
   LogoutOutlined,
   SettingOutlined,
+  ShoppingOutlined,
   TeamOutlined,
+  ToolOutlined,
   WalletOutlined
 } from '@ant-design/icons'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
@@ -28,6 +30,8 @@ import SaudaPage from '../pages/SaudaPage'
 import NikasiPage from '../pages/NikasiPage'
 import LoansPage from '../pages/LoansPage'
 import ChequesPage from '../pages/ChequesPage'
+import BardanaPage from '../pages/BardanaPage'
+import ExpensesPage from '../pages/ExpensesPage'
 import StorePage from '../pages/StorePage'
 
 const { Header, Sider, Content } = Layout
@@ -49,6 +53,8 @@ export default function AppLayout(): JSX.Element {
     { key: '/nikasi', icon: <ExportOutlined />, label: t('nav.nikasi') },
     { key: '/loans', icon: <DollarOutlined />, label: t('nav.loans') },
     { key: '/cheques', icon: <CreditCardOutlined />, label: t('nav.cheques') },
+    { key: '/bardana', icon: <ShoppingOutlined />, label: t('nav.bardana') },
+    { key: '/expenses', icon: <ToolOutlined />, label: t('nav.expenses') },
     { key: '/vouchers', icon: <BankOutlined />, label: t('nav.vouchers') },
     { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') },
     { key: '/money-book', icon: <WalletOutlined />, label: t('nav.moneyBook') },
@@ -115,6 +121,8 @@ export default function AppLayout(): JSX.Element {
             <Route path="/nikasi" element={<NikasiPage />} />
             <Route path="/loans" element={<LoansPage />} />
             <Route path="/cheques" element={<ChequesPage />} />
+            <Route path="/bardana" element={<BardanaPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
             <Route path="/vouchers" element={<VouchersPage />} />
             <Route path="/trial-balance" element={<TrialBalancePage />} />
             <Route path="/money-book" element={<MoneyBookPage />} />

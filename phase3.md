@@ -1,5 +1,9 @@
 # Phase 3 done — and the handover for Phase 4
 
+> **⚠️ SUPERSEDED — Phase 4 is complete. Start at [phase4.md](phase4.md).** This file is kept for
+> history: §2–§4 (the Phase 3 conventions and building blocks) are still accurate, but the Phase 4
+> brief in §6–§7 below has been built and is now reference, not a to-do.
+
 **This is the live handover doc. Start here in a new session.** It records what Phase 3 delivered
 (Loans + interest engine + cheque-clearing), the few new conventions, and the Phase 4 brief
 (Bardana + staff/loading expenses). The load-bearing architecture rules live in **[phase2.md](phase2.md)

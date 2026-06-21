@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ChequeStatus, DrCr, VoucherType } from '../shared/enums'
+import type { BardanaDirection, ChequeStatus, DrCr, VoucherType } from '../shared/enums'
 import type {
   AamadDetail,
   AamadInput,
@@ -11,16 +11,24 @@ import type {
   AccountListRow,
   AccrueAllResult,
   AccrueResult,
+  BardanaAccount,
+  BardanaInput,
+  BardanaRow,
   CapitaliseAllResult,
   CapitaliseResult,
   CashBankAccount,
   ChequeInput,
   ChequeRow,
   ContraArg,
+  CreateBardanaResult,
   CreateLoanResult,
   CreateNikasiResult,
+  ExpensePaymentInput,
+  ExpenseRow,
   JournalArg,
   LedgerLine,
+  LoadingContractorYearInput,
+  LoadingContractorYearRow,
   LoanDetail,
   LoanInput,
   LoanPaymentResult,
@@ -30,6 +38,7 @@ import type {
   NikasiDetail,
   NikasiInput,
   NikasiListRow,
+  PayExpenseResult,
   PersonInput,
   PersonRow,
   PostResult,
@@ -165,6 +174,27 @@ const api = {
       ipcRenderer.invoke('cheques:clear', chequeId, clearanceDate),
     bounce: (chequeId: number, date: string): Promise<number> =>
       ipcRenderer.invoke('cheques:bounce', chequeId, date)
+  },
+  bardana: {
+    create: (input: BardanaInput): Promise<CreateBardanaResult> =>
+      ipcRenderer.invoke('bardana:create', input),
+    list: (direction?: BardanaDirection): Promise<BardanaRow[]> =>
+      ipcRenderer.invoke('bardana:list', direction),
+    account: (): Promise<BardanaAccount> => ipcRenderer.invoke('bardana:account')
+  },
+  expenses: {
+    paySalary: (input: ExpensePaymentInput): Promise<PayExpenseResult> =>
+      ipcRenderer.invoke('expenses:paySalary', input),
+    salaryRegister: (): Promise<ExpenseRow[]> => ipcRenderer.invoke('expenses:salaryRegister'),
+    payLoading: (input: ExpensePaymentInput): Promise<PayExpenseResult> =>
+      ipcRenderer.invoke('expenses:payLoading', input),
+    loadingRegister: (): Promise<ExpenseRow[]> => ipcRenderer.invoke('expenses:loadingRegister'),
+    loadingYears: (): Promise<LoadingContractorYearRow[]> =>
+      ipcRenderer.invoke('expenses:loadingYears'),
+    loadingYear: (accountId: number): Promise<LoadingContractorYearRow> =>
+      ipcRenderer.invoke('expenses:loadingYear', accountId),
+    setLoadingYear: (input: LoadingContractorYearInput): Promise<void> =>
+      ipcRenderer.invoke('expenses:setLoadingYear', input)
   }
 }
 

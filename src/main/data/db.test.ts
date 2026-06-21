@@ -17,7 +17,7 @@ function freshDb(): void {
 afterEach(() => closeDb())
 
 describe('db foundation', () => {
-  it('migrates the full schema (20 tables across Phase 1 + 2 + 3)', () => {
+  it('migrates the full schema (21 tables across Phase 1 + 2 + 3 + 4)', () => {
     freshDb()
     const rows = rawSqlite()
       .prepare(
@@ -33,7 +33,8 @@ describe('db foundation', () => {
     expect(names).toContain('sauda')
     expect(names).toContain('loan')
     expect(names).toContain('loan_event')
-    expect(names).toHaveLength(20)
+    expect(names).toContain('bardana')
+    expect(names).toHaveLength(21)
   })
 
   it('seeds the 9 subgroups, idempotently', () => {

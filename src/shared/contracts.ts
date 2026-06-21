@@ -1,5 +1,6 @@
 import type {
   AccountType,
+  BardanaDirection,
   ChequeDirection,
   ChequeStatus,
   DeliveryTarget,
@@ -9,6 +10,7 @@ import type {
   LoanEventType,
   LoanMode,
   LoanNature,
+  PaymentMode,
   SubgroupNature,
   VoucherType,
   YearStatus
@@ -522,4 +524,90 @@ export interface ChequeRow {
 export interface RecordChequeResult {
   chequeId: number
   voucherId: number
+}
+
+// ============================ BARDANA (Phase 4) ============================
+
+/** Args the renderer sends to record a bardana buy/sell — yearId + accountant come from the session. */
+export interface BardanaInput {
+  direction: BardanaDirection
+  date: string
+  /** The buyer/supplier ledger account (the "Name"); optional — recorded for the A/C lists. */
+  partyAccountId?: number
+  ratePaise: number
+  qty: number // pieces
+  mode: PaymentMode
+  bankAccountId?: number // required when mode = 'bank'
+}
+
+export interface BardanaRow {
+  id: number
+  direction: BardanaDirection
+  date: string
+  partyAccountId: number | null
+  partyName: string | null
+  ratePaise: number
+  qty: number
+  amountPaise: number
+  mode: PaymentMode
+  bankAccountId: number | null
+  bankName: string | null
+}
+
+/** The Bardana A/C: two lists (purchases / issues) + totals + stock count + profit. */
+export interface BardanaAccount {
+  purchases: BardanaRow[]
+  issues: BardanaRow[]
+  totalPurchasesPaise: number
+  totalSalesPaise: number
+  /** Pieces still on hand = Σ purchased − Σ issued. */
+  stockCount: number
+  /** profit = total sales − total purchases (paise). */
+  profitPaise: number
+}
+
+export interface CreateBardanaResult {
+  bardanaId: number
+  voucherId: number
+}
+
+// ============================ EXPENSES (Phase 4) ============================
+
+/** Args the renderer sends to pay a staff salary or a loading contractor — yearId + accountant from session. */
+export interface ExpensePaymentInput {
+  /** The staff / loading-contractor account being paid (recorded for the register). */
+  partyAccountId: number
+  amountPaise: number
+  date: string
+  mode: PaymentMode
+  bankAccountId?: number // required when mode = 'bank'
+  narration?: string
+}
+
+/** One row of the salary / loading register: a payment voucher attributed to a party. */
+export interface ExpenseRow {
+  voucherId: number
+  voucherNo: number
+  date: string
+  partyAccountId: number | null
+  partyName: string | null
+  amountPaise: number
+  narration: string | null
+}
+
+export interface PayExpenseResult {
+  voucherId: number
+}
+
+/** Per-year charges/labourer counts for a loading-contractor account (the `loading_contractor_year` row). */
+export interface LoadingContractorYearInput {
+  accountId: number
+  loadingChargePaise: number
+  unloadingChargePaise: number
+  labourersLoading: number
+  labourersUnloading: number
+}
+
+export interface LoadingContractorYearRow extends LoadingContractorYearInput {
+  accountName: string
 }

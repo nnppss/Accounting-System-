@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import {
   ACCOUNT_TYPES,
+  BARDANA_DIRECTIONS,
   CHEQUE_DIRECTIONS,
   CHEQUE_STATUSES,
   DELIVERY_TARGETS,
@@ -11,6 +12,7 @@ import {
   LOAN_EVENT_TYPES,
   LOAN_MODES,
   LOAN_NATURES,
+  PAYMENT_MODES,
   SUBGROUP_NATURES,
   VOUCHER_TYPES,
   YEAR_STATUSES
@@ -32,6 +34,7 @@ import {
  */
 export {
   ACCOUNT_TYPES,
+  BARDANA_DIRECTIONS,
   CHEQUE_DIRECTIONS,
   CHEQUE_STATUSES,
   DELIVERY_TARGETS,
@@ -41,12 +44,14 @@ export {
   LOAN_EVENT_TYPES,
   LOAN_MODES,
   LOAN_NATURES,
+  PAYMENT_MODES,
   SUBGROUP_NATURES,
   VOUCHER_TYPES,
   YEAR_STATUSES
 } from '../../shared/enums'
 export type {
   AccountType,
+  BardanaDirection,
   ChequeDirection,
   ChequeStatus,
   DeliveryTarget,
@@ -56,6 +61,7 @@ export type {
   LoanEventType,
   LoanMode,
   LoanNature,
+  PaymentMode,
   SubgroupNature,
   VoucherType,
   YearStatus
@@ -438,4 +444,38 @@ export const loanEvent = sqliteTable(
     voucherId: integer('voucher_id').references(() => voucher.id) // null for indirect disbursement (no cash)
   },
   (t) => ({ byLoan: index('loan_event_loan_idx').on(t.loanId) })
+)
+
+// ========================= BARDANA (Phase 4) =========================
+
+/**
+ * A bardana (bag/sack) buy/sell transaction — software.md §3.7. Independent of stored packets:
+ * the cold simply trades bags. `amountPaise = ratePaise × qty` (pieces). Each transaction posts
+ * to cash or a bank (the `mode`); `partyAccountId` is the buyer/supplier name, recorded for the
+ * A/C lists. The Bardana A/C is a pure aggregate: stock count = Σpurchased − Σissued (pieces),
+ * profit = Σsales − Σpurchases (paise).
+ *
+ * Posting map (architecture.md §6):
+ *   purchase  Dr Bardana Purchase / Cr Cash-Bank   (payment voucher)
+ *   issue     Dr Cash-Bank / Cr Bardana Sales       (receipt voucher)
+ */
+export const bardana = sqliteTable(
+  'bardana',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    yearId: integer('year_id')
+      .notNull()
+      .references(() => financialYear.id),
+    direction: text('direction', { enum: BARDANA_DIRECTIONS }).notNull(),
+    date: text('date').notNull(),
+    partyAccountId: integer('party_account_id').references(() => account.id), // buyer/supplier name (recorded)
+    ratePaise: integer('rate_paise').notNull(),
+    qty: integer('qty').notNull(), // pieces
+    amountPaise: integer('amount_paise').notNull(), // = ratePaise × qty
+    mode: text('mode', { enum: PAYMENT_MODES }).notNull(),
+    bankAccountId: integer('bank_account_id').references(() => account.id), // when mode = 'bank'
+    voucherId: integer('voucher_id').references(() => voucher.id),
+    createdAt
+  },
+  (t) => ({ byYearDir: index('bardana_year_dir_idx').on(t.yearId, t.direction) })
 )
