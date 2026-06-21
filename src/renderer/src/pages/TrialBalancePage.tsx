@@ -1,11 +1,14 @@
-import { Space, Table, Tag, Typography } from 'antd'
+import { Button, Space, Table, Tag, Typography } from 'antd'
+import { PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { TrialBalanceRow } from '@shared/contracts'
 import { formatINR } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 
 export default function TrialBalancePage(): JSX.Element {
   const { t } = useTranslation()
+  const print = usePrinter()
   const tb = useQuery({ queryKey: ['trialBalance'], queryFn: () => window.api.ledger.trialBalance() })
 
   const columns = [
@@ -39,6 +42,13 @@ export default function TrialBalancePage(): JSX.Element {
           ) : (
             <Tag color="red">{t('trialBalance.unbalanced')}</Tag>
           ))}
+        <Button
+          size="small"
+          icon={<PrinterOutlined />}
+          onClick={() => print(() => window.api.print.trialBalance())}
+        >
+          {t('common.print')}
+        </Button>
       </Space>
       <Table
         rowKey="accountId"

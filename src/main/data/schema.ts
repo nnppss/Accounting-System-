@@ -5,6 +5,7 @@ import {
   BARDANA_DIRECTIONS,
   CHEQUE_DIRECTIONS,
   CHEQUE_STATUSES,
+  CLOSE_STATUSES,
   DELIVERY_TARGETS,
   DR_CR,
   ENTRY_TAGS,
@@ -37,6 +38,7 @@ export {
   BARDANA_DIRECTIONS,
   CHEQUE_DIRECTIONS,
   CHEQUE_STATUSES,
+  CLOSE_STATUSES,
   DELIVERY_TARGETS,
   DR_CR,
   ENTRY_TAGS,
@@ -54,6 +56,7 @@ export type {
   BardanaDirection,
   ChequeDirection,
   ChequeStatus,
+  CloseStatus,
   DeliveryTarget,
   DrCr,
   EntryTag,
@@ -498,4 +501,36 @@ export const savedFilter = sqliteTable(
     createdAt
   },
   (t) => ({ byModule: index('saved_filter_module_idx').on(t.module) })
+)
+
+// ===================== YEAR-END CLOSE (Phase 6) =====================
+
+/**
+ * A record of one year-end close (software.md §3.13, architecture.md §7). The close runs a chain
+ * of reusable services (capitalise → carry-forward → indirect loans → flag defaulters); each of
+ * those manages its own transaction, so the close achieves all-or-nothing semantics via a recorded
+ * **rollback plan** (`rollbackJson`) rather than a single SQLite transaction — the same plan also
+ * powers the user-facing "undo close" (reversible per the spec). On undo the row flips to
+ * 'rolled_back'. `summaryJson` is the serialised `CloseSummary` shown on the closing report.
+ */
+export const yearClose = sqliteTable(
+  'year_close',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    yearId: integer('year_id')
+      .notNull()
+      .references(() => financialYear.id),
+    nextYearId: integer('next_year_id')
+      .notNull()
+      .references(() => financialYear.id),
+    status: text('status', { enum: CLOSE_STATUSES }).notNull().default('closed'),
+    closedByUserId: integer('closed_by_user_id').references(() => user.id),
+    summaryJson: text('summary_json').notNull(),
+    rollbackJson: text('rollback_json').notNull(), // ids the undo voids/deletes/clears
+    closedAt: integer('closed_at', { mode: 'timestamp' })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    rolledBackAt: integer('rolled_back_at', { mode: 'timestamp' })
+  },
+  (t) => ({ byYear: index('year_close_year_idx').on(t.yearId) })
 )

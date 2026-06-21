@@ -21,6 +21,8 @@ import type {
   CashBankAccount,
   ChequeInput,
   ChequeRow,
+  ClosePreview,
+  CloseResult,
   ContraArg,
   CreateBardanaResult,
   CreateLoanResult,
@@ -46,6 +48,7 @@ import type {
   PersonInput,
   PersonRow,
   PostResult,
+  PrintResult,
   RackKisanStock,
   RecordChequeResult,
   ReceiptArg,
@@ -61,6 +64,7 @@ import type {
   TrialBalance,
   VoucherDetail,
   VoucherListRow,
+  YearCloseInfo,
   YearInfo
 } from '../shared/contracts'
 
@@ -213,6 +217,20 @@ const api = {
     saveFilter: (name: string, criteria: PartyCriteria): Promise<number> =>
       ipcRenderer.invoke('party:saveFilter', name, criteria),
     deleteFilter: (id: number): Promise<void> => ipcRenderer.invoke('party:deleteFilter', id)
+  },
+  close: {
+    preview: (): Promise<ClosePreview> => ipcRenderer.invoke('close:preview'),
+    status: (): Promise<YearCloseInfo | null> => ipcRenderer.invoke('close:status'),
+    run: (password: string): Promise<CloseResult> => ipcRenderer.invoke('close:run', password),
+    rollback: (password: string): Promise<YearCloseInfo> => ipcRenderer.invoke('close:rollback', password)
+  },
+  print: {
+    gatePass: (nikasiId: number): Promise<PrintResult> => ipcRenderer.invoke('print:gatePass', nikasiId),
+    bill: (accountId: number, asOf?: string): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:bill', accountId, asOf),
+    voucher: (voucherId: number): Promise<PrintResult> => ipcRenderer.invoke('print:voucher', voucherId),
+    ledger: (accountId: number): Promise<PrintResult> => ipcRenderer.invoke('print:ledger', accountId),
+    trialBalance: (): Promise<PrintResult> => ipcRenderer.invoke('print:trialBalance')
   }
 }
 

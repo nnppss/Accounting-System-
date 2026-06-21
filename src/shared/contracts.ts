@@ -3,6 +3,7 @@ import type {
   BardanaDirection,
   ChequeDirection,
   ChequeStatus,
+  CloseStatus,
   DeliveryTarget,
   DrCr,
   EntryTag,
@@ -771,4 +772,80 @@ export interface SavedFilterRow {
   module: string
   name: string
   criteria: PartyCriteria
+}
+
+// ============================ YEAR-END CLOSE (Phase 6) ============================
+
+/**
+ * The closing report's headline numbers (software.md §3.13). `totalDuesPaise` is the sum of every
+ * party's owing (Dr) closing balance carried forward; `indirectLoanTotalPaise` is the same dues
+ * reclassified into interest-bearing indirect loans for the new year; `interestCapitalisedPaise`
+ * is what the 1-Jan fold posted into the closing year. `leftoverPackets` is the current stock that
+ * the new (empty) year's maps drop — recorded for the record (the spec's "leftover packets disposed").
+ */
+export interface CloseSummary {
+  yearId: number
+  year: number
+  nextYear: number
+  /** Non-system accounts whose non-zero closing balance was carried to next year's opening. */
+  accountsCarried: number
+  /** Σ owing (Dr) closing balances carried forward. */
+  totalDuesPaise: number
+  /** Σ credit (Cr — the cold owes) closing balances carried forward. */
+  totalCreditsPaise: number
+  /** Parties newly flagged defaulter by this close (already-flagged ones aren't recounted). */
+  newDefaulters: number
+  /** Indirect loans created from owing parties for the new year. */
+  indirectLoans: number
+  indirectLoanTotalPaise: number
+  /** Loans whose interest was capitalised at the 1-Jan boundary. */
+  loansCapitalised: number
+  interestCapitalisedPaise: number
+  /** Current-stock packets the new year starts without (leftover, "disposed"). */
+  leftoverPackets: number
+}
+
+export type CloseExceptionKind = 'pending_cheque' | 'credit_balance' | 'leftover_stock' | 'unbalanced'
+
+/** One thing the accountant should eyeball before/after a close (software.md §3.13 exceptions list). */
+export interface CloseException {
+  kind: CloseExceptionKind
+  accountId?: number
+  accountName?: string
+  amountPaise?: number
+  detail: string
+}
+
+/** A dry-run of the close — what it WOULD do, computed without posting anything. */
+export interface ClosePreview {
+  summary: CloseSummary
+  exceptions: CloseException[]
+  /** True if this year already has an active (not rolled-back) close — must roll back to re-close. */
+  alreadyClosed: boolean
+}
+
+export interface CloseResult {
+  closeId: number
+  summary: CloseSummary
+  exceptions: CloseException[]
+}
+
+/** The active close record for a year (null when the year is still open). */
+export interface YearCloseInfo {
+  id: number
+  yearId: number
+  year: number
+  nextYearId: number
+  nextYear: number
+  status: CloseStatus
+  closedAt: number
+  closedByUserId: number | null
+  summary: CloseSummary
+}
+
+// ============================ PRINTING / PDF (Phase 6) ============================
+
+/** What a document a print request produced. `path` is null when the user cancelled the save dialog. */
+export interface PrintResult {
+  path: string | null
 }

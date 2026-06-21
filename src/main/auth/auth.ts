@@ -49,6 +49,16 @@ export function login(year: number, username: string, password: string): Session
   }
 }
 
+/**
+ * Verify a user's password — the gate for sensitive actions (the Year-end Close, Phase 6). Returns
+ * false on any mismatch rather than throwing, so the caller can decide the message.
+ */
+export function verifyPassword(userId: number, password: string): boolean {
+  const u = db().select().from(user).where(eq(user.id, userId)).get()
+  if (!u) return false
+  return bcrypt.compareSync(password, u.passwordHash)
+}
+
 export function createYear(year: number, rentRatePaise = 0): number {
   const existing = db().select().from(financialYear).where(eq(financialYear.year, year)).get()
   if (existing) throw new Error(`Financial year ${year} already exists`)

@@ -16,17 +16,19 @@ import {
   Tag,
   Typography
 } from 'antd'
-import { DeleteOutlined } from '@ant-design/icons'
+import { DeleteOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DeliveryTarget } from '@shared/enums'
 import type { NikasiListRow } from '@shared/contracts'
 import { formatINR, paiseToRupees, toPaise } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 
 export default function NikasiPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
+  const print = usePrinter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
   const [detailId, setDetailId] = useState<number | null>(null)
@@ -271,6 +273,16 @@ export default function NikasiPage(): JSX.Element {
         open={detailId !== null}
         onClose={() => setDetailId(null)}
         width={720}
+        extra={
+          detail.data && (
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={() => print(() => window.api.print.gatePass(detail.data!.id))}
+            >
+              {t('common.print')}
+            </Button>
+          )
+        }
       >
         {detail.data && (
           <>

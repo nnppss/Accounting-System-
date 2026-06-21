@@ -10,6 +10,7 @@ import {
   FileTextOutlined,
   FilterOutlined,
   InboxOutlined,
+  LockOutlined,
   LogoutOutlined,
   SettingOutlined,
   ShoppingOutlined,
@@ -37,6 +38,7 @@ import ExpensesPage from '../pages/ExpensesPage'
 import BillsPage from '../pages/BillsPage'
 import BillPage from '../pages/BillPage'
 import PartyPage from '../pages/PartyPage'
+import ClosePage from '../pages/ClosePage'
 import StorePage from '../pages/StorePage'
 
 const { Header, Sider, Content } = Layout
@@ -65,6 +67,7 @@ export default function AppLayout(): JSX.Element {
     { key: '/vouchers', icon: <BankOutlined />, label: t('nav.vouchers') },
     { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') },
     { key: '/money-book', icon: <WalletOutlined />, label: t('nav.moneyBook') },
+    { key: '/close', icon: <LockOutlined />, label: t('nav.close') },
     { key: '/store', icon: <SettingOutlined />, label: t('nav.store') }
   ]
 
@@ -136,6 +139,7 @@ export default function AppLayout(): JSX.Element {
             <Route path="/vouchers" element={<VouchersPage />} />
             <Route path="/trial-balance" element={<TrialBalancePage />} />
             <Route path="/money-book" element={<MoneyBookPage />} />
+            <Route path="/close" element={<ClosePage />} />
             <Route path="/store" element={<StorePage />} />
           </Routes>
         </Content>

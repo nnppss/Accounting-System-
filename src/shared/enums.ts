@@ -32,6 +32,13 @@ export type ChequeStatus = (typeof CHEQUE_STATUSES)[number]
 export const YEAR_STATUSES = ['open', 'closed'] as const
 export type YearStatus = (typeof YEAR_STATUSES)[number]
 
+/**
+ * State of a year-end close record (Phase 6). A close is 'closed' until it is undone, when it
+ * becomes 'rolled_back'. (Distinct from YEAR_STATUSES, which is the financial_year's own flag.)
+ */
+export const CLOSE_STATUSES = ['closed', 'rolled_back'] as const
+export type CloseStatus = (typeof CLOSE_STATUSES)[number]
+
 /** Who a Nikasi (gate pass) delivers to: a vyapari purchase (posts a sale) or the kisan himself (physical only). */
 export const DELIVERY_TARGETS = ['kisan', 'vyapari'] as const
 export type DeliveryTarget = (typeof DELIVERY_TARGETS)[number]

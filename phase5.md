@@ -1,5 +1,9 @@
 # Phase 5 done — and the handover for Phase 6
 
+> **⚠️ SUPERSEDED — Phase 6 is complete. Start at [phase6.md](phase6.md).** This file is kept for
+> history: §2–§4 (what Phase 5 delivered, its conventions, and its reusable building blocks) are
+> still accurate, but the Phase 6 brief in §6 below has been built and is now reference, not a to-do.
+
 **This is the live handover doc. Start here in a new session.** It records what Phase 5 delivered
 (Bills + Party search — the read layers), the new conventions, and the Phase 6 brief (Year-end
 Close + printing/PDF). The load-bearing architecture rules live in **[phase2.md](phase2.md) §2–§4**

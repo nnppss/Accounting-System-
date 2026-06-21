@@ -15,19 +15,21 @@ import {
   Tag,
   Typography
 } from 'antd'
-import { DeleteOutlined } from '@ant-design/icons'
+import { DeleteOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { VoucherListRow } from '@shared/contracts'
 import type { VoucherType } from '@shared/enums'
 import { formatINR, toPaise } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 
 type Mode = 'receipt' | 'payment' | 'contra' | 'journal'
 
 export default function VouchersPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
+  const print = usePrinter()
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<Mode>('receipt')
   const [form] = Form.useForm()
@@ -121,6 +123,18 @@ export default function VouchersPage(): JSX.Element {
       align: 'right' as const,
       width: 140,
       render: (v: number) => formatINR(v)
+    },
+    {
+      title: '',
+      key: 'print',
+      width: 70,
+      render: (_: unknown, r: VoucherListRow) => (
+        <Button
+          size="small"
+          icon={<PrinterOutlined />}
+          onClick={() => print(() => window.api.print.voucher(r.id))}
+        />
+      )
     }
   ]
 

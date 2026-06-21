@@ -1,14 +1,16 @@
 import { Button, Space, Table, Tag, Typography } from 'antd'
-import { ArrowLeftOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { LedgerLine } from '@shared/contracts'
 import { balanceLabel, formatINR } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 
 export default function AccountLedgerPage(): JSX.Element {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const print = usePrinter()
   const { id } = useParams()
   const accountId = Number(id)
 
@@ -68,6 +70,13 @@ export default function AccountLedgerPage(): JSX.Element {
           {account?.name ?? `#${accountId}`}
         </Typography.Title>
         {account && <Tag>{t(`accounts.type.${account.type}`)}</Tag>}
+        <Button
+          size="small"
+          icon={<PrinterOutlined />}
+          onClick={() => print(() => window.api.print.ledger(accountId))}
+        >
+          {t('common.print')}
+        </Button>
       </Space>
       <Table
         rowKey="voucherId"

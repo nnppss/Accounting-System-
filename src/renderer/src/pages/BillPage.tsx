@@ -1,15 +1,17 @@
 import { Button, Card, Descriptions, Divider, Empty, Space, Statistic, Table, Tag, Typography } from 'antd'
-import { ArrowLeftOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { BillLoanLine, BillSection, LedgerLine } from '@shared/contracts'
 import { balanceLabel, formatINR } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 
 /** A single person's bill (software.md §3.11): a section per role + a combined net. Print-ready. */
 export default function BillPage(): JSX.Element {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const print = usePrinter()
   const { accountId } = useParams()
   const id = Number(accountId)
 
@@ -23,6 +25,14 @@ export default function BillPage(): JSX.Element {
         <Typography.Title level={3} style={{ margin: 0 }}>
           {data?.name ?? `#${id}`}
         </Typography.Title>
+        {data && (
+          <Button
+            icon={<PrinterOutlined />}
+            onClick={() => print(() => window.api.print.bill(id, data.asOf))}
+          >
+            {t('common.print')}
+          </Button>
+        )}
       </Space>
 
       {!data ? (
