@@ -7,6 +7,8 @@ import {
   DollarOutlined,
   ExportOutlined,
   FileDoneOutlined,
+  FileTextOutlined,
+  FilterOutlined,
   InboxOutlined,
   LogoutOutlined,
   SettingOutlined,
@@ -32,6 +34,9 @@ import LoansPage from '../pages/LoansPage'
 import ChequesPage from '../pages/ChequesPage'
 import BardanaPage from '../pages/BardanaPage'
 import ExpensesPage from '../pages/ExpensesPage'
+import BillsPage from '../pages/BillsPage'
+import BillPage from '../pages/BillPage'
+import PartyPage from '../pages/PartyPage'
 import StorePage from '../pages/StorePage'
 
 const { Header, Sider, Content } = Layout
@@ -55,6 +60,8 @@ export default function AppLayout(): JSX.Element {
     { key: '/cheques', icon: <CreditCardOutlined />, label: t('nav.cheques') },
     { key: '/bardana', icon: <ShoppingOutlined />, label: t('nav.bardana') },
     { key: '/expenses', icon: <ToolOutlined />, label: t('nav.expenses') },
+    { key: '/bills', icon: <FileTextOutlined />, label: t('nav.bills') },
+    { key: '/party', icon: <FilterOutlined />, label: t('nav.party') },
     { key: '/vouchers', icon: <BankOutlined />, label: t('nav.vouchers') },
     { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') },
     { key: '/money-book', icon: <WalletOutlined />, label: t('nav.moneyBook') },
@@ -123,6 +130,9 @@ export default function AppLayout(): JSX.Element {
             <Route path="/cheques" element={<ChequesPage />} />
             <Route path="/bardana" element={<BardanaPage />} />
             <Route path="/expenses" element={<ExpensesPage />} />
+            <Route path="/bills" element={<BillsPage />} />
+            <Route path="/bills/:accountId" element={<BillPage />} />
+            <Route path="/party" element={<PartyPage />} />
             <Route path="/vouchers" element={<VouchersPage />} />
             <Route path="/trial-balance" element={<TrialBalancePage />} />
             <Route path="/money-book" element={<MoneyBookPage />} />

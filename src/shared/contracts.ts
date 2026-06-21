@@ -611,3 +611,164 @@ export interface LoadingContractorYearInput {
 export interface LoadingContractorYearRow extends LoadingContractorYearInput {
   accountName: string
 }
+
+// ============================ BILLS (Phase 5) ============================
+
+/**
+ * One loan, summarised for a bill: the live engine figures (software.md §3.11 — "computes live
+ * figures like loan interest, but posts nothing"). `liveOutstandingPaise` is the standalone
+ * principal+interest as of the bill date; `unpostedInterestPaise` is the interest accrued on the
+ * posted base that has NOT yet been capitalised (what the section net adds on top of the ledger).
+ */
+export interface BillLoanLine {
+  loanId: number
+  date: string
+  category: LoanCategory
+  nature: LoanNature
+  /** Capitalised base the engine has posted to date. */
+  basePaise: number
+  /** outstandingAsOf(loanId, asOf) — full live principal + interest. */
+  liveOutstandingPaise: number
+  /** Interest accrued on the posted base, not yet in the ledger. */
+  unpostedInterestPaise: number
+}
+
+/**
+ * A bill section for one role-account a person holds (kisan / vyapari / staff / contractor / other).
+ * `netPaise` = posted ledger balance + un-posted live loan interest (Dr positive = party owes us).
+ * Bardana / salary / loading rows are informational (cash-settled, not in the ledger balance).
+ */
+export interface BillSection {
+  accountId: number
+  accountName: string
+  role: AccountType
+  subgroupName: string
+  ledgerLines: LedgerLine[]
+  /** Posted running balance (Dr positive). */
+  postedBalancePaise: number
+  /** Rent still carried on the kisan's books (subset of the balance; informational). */
+  standingBhadaPaise: number
+  loans: BillLoanLine[]
+  /** Σ loans unpostedInterestPaise — the live interest the bill adds beyond the ledger. */
+  unpostedInterestPaise: number
+  /** Bardana dealings attributed to this account (cash-settled; does not affect net). */
+  bardanaRows: BardanaRow[]
+  /** Salary/loading payments attributed to this account (posted to the expense head, not here). */
+  expenseRows: ExpenseRow[]
+  /** postedBalancePaise + unpostedInterestPaise. */
+  netPaise: number
+}
+
+/** A full person-wise bill: a section per role + a single combined net (software.md §3.11). */
+export interface Bill {
+  /** 'person:<id>' when role-accounts are grouped under a person, else 'account:<id>'. */
+  subjectKey: string
+  personId: number | null
+  name: string
+  sonOf: string | null
+  villageCity: string | null
+  phone: string | null
+  sections: BillSection[]
+  /** Σ sections netPaise (Dr positive = the party owes the cold). */
+  combinedNetPaise: number
+  asOf: string
+}
+
+/** One row of the Bills index: a person (grouping their role-accounts) or a standalone account. */
+export interface BillSubject {
+  subjectKey: string
+  personId: number | null
+  /** An account id to open the bill / ledger from this row. */
+  primaryAccountId: number
+  name: string
+  sonOf: string | null
+  villageCity: string | null
+  phone: string | null
+  /** Distinct roles this subject holds (multi-role when length > 1). */
+  roles: AccountType[]
+  /** Combined net across the subject's accounts (Dr positive = owes the cold). */
+  netPaise: number
+}
+
+// ============================ PARTY SEARCH (Phase 5) ============================
+
+/** A numeric comparison for a Party filter (software.md §3.12: = / ≤ / ≥ / between). */
+export type NumericOp = 'eq' | 'lte' | 'gte' | 'between'
+
+export interface NumericFilter {
+  op: NumericOp
+  /** Money filters are in paise; count filters are integers. */
+  value: number
+  /** Upper bound for 'between' (inclusive). */
+  value2?: number
+}
+
+/**
+ * The stackable Party filters (software.md §3.12) — every present field is ANDed. Money filters
+ * are paise; counts are integers. `owes` is a sign filter over the signed balance (Dr positive).
+ */
+export interface PartyCriteria {
+  // identity
+  type?: AccountType
+  subgroupId?: number
+  village?: string // substring (case-insensitive)
+  phone?: string // substring
+  defaulter?: boolean
+  multiRole?: boolean // the person holds more than one role-account
+  // stock
+  packetsBrought?: NumericFilter
+  aamadCount?: NumericFilter
+  currentStock?: NumericFilter
+  // sales
+  packetsSold?: NumericFilter
+  // balance (signed Dr positive = owes us; negative = we owe them)
+  balance?: NumericFilter
+  owes?: 'us' | 'them'
+  // rent
+  standingBhada?: NumericFilter
+  // loans
+  loanOutstanding?: NumericFilter
+  loanCategory?: LoanCategory
+  hasLoan?: boolean
+  // bardana
+  bardanaQty?: NumericFilter // net pieces dealt (purchased − issued) attributed to the party
+  // activity
+  hasActivity?: boolean // any (non-void) ledger entry this year
+}
+
+/** One party in the Party results — identity + every computed metric the filters can target. */
+export interface PartyRow {
+  accountId: number
+  personId: number | null
+  name: string
+  sonOf: string | null
+  villageCity: string | null
+  phone: string | null
+  type: AccountType
+  subgroupName: string
+  isDefaulter: boolean
+  /** Signed Dr positive (owes us) / negative (we owe). */
+  balancePaise: number
+  packetsBrought: number
+  aamadCount: number
+  currentStock: number
+  packetsSold: number
+  standingBhadaPaise: number
+  loanOutstandingPaise: number
+  bardanaQty: number
+}
+
+export interface PartyResult {
+  rows: PartyRow[]
+  count: number
+  totalBalancePaise: number
+  totalLoanOutstandingPaise: number
+}
+
+// ---- saved presets (the `saved_filter` table) ----
+export interface SavedFilterRow {
+  id: number
+  module: string
+  name: string
+  criteria: PartyCriteria
+}

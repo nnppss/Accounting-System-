@@ -1,5 +1,10 @@
 # Phase 4 done — and the handover for Phase 5
 
+> **⚠️ SUPERSEDED — Phase 5 is complete. Start at [phase5.md](phase5.md).** This file is kept for
+> history: §2–§4 (what Phase 4 delivered, its conventions, and its reusable building blocks) are
+> still accurate, but the Phase 5 brief in §6–§7 below has been built and is now reference, not a
+> to-do.
+
 **This is the live handover doc. Start here in a new session.** It records what Phase 4 delivered
 (Bardana sub-ledger + staff/loading expenses), the new conventions, and the Phase 5 brief
 (Bills + Party search). The load-bearing architecture rules live in **[phase2.md](phase2.md)

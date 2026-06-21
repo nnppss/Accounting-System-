@@ -14,6 +14,8 @@ import type {
   BardanaAccount,
   BardanaInput,
   BardanaRow,
+  Bill,
+  BillSubject,
   CapitaliseAllResult,
   CapitaliseResult,
   CashBankAccount,
@@ -38,6 +40,8 @@ import type {
   NikasiDetail,
   NikasiInput,
   NikasiListRow,
+  PartyCriteria,
+  PartyResult,
   PayExpenseResult,
   PersonInput,
   PersonRow,
@@ -47,6 +51,7 @@ import type {
   ReceiptArg,
   SaudaInput,
   SaudaListRow,
+  SavedFilterRow,
   Session,
   StandingBhada,
   StandingLoan,
@@ -195,6 +200,19 @@ const api = {
       ipcRenderer.invoke('expenses:loadingYear', accountId),
     setLoadingYear: (input: LoadingContractorYearInput): Promise<void> =>
       ipcRenderer.invoke('expenses:setLoadingYear', input)
+  },
+  bills: {
+    subjects: (asOf?: string): Promise<BillSubject[]> => ipcRenderer.invoke('bills:subjects', asOf),
+    get: (accountId: number, asOf?: string): Promise<Bill | null> =>
+      ipcRenderer.invoke('bills:get', accountId, asOf)
+  },
+  party: {
+    search: (criteria?: PartyCriteria, asOf?: string): Promise<PartyResult> =>
+      ipcRenderer.invoke('party:search', criteria, asOf),
+    savedFilters: (): Promise<SavedFilterRow[]> => ipcRenderer.invoke('party:savedFilters'),
+    saveFilter: (name: string, criteria: PartyCriteria): Promise<number> =>
+      ipcRenderer.invoke('party:saveFilter', name, criteria),
+    deleteFilter: (id: number): Promise<void> => ipcRenderer.invoke('party:deleteFilter', id)
   }
 }
 

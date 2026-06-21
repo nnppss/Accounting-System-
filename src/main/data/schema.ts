@@ -479,3 +479,23 @@ export const bardana = sqliteTable(
   },
   (t) => ({ byYearDir: index('bardana_year_dir_idx').on(t.yearId, t.direction) })
 )
+
+// ===================== VIEWS / PRESETS (Phase 5) =====================
+
+/**
+ * A saved Party-search preset (architecture.md §5: `saved_filter (user, module, criteria_json)`).
+ * `criteriaJson` is a serialised `PartyCriteria`. UI convenience only — not a financial record,
+ * so these may be deleted (the no-hard-delete rule covers the ledger, not user presets).
+ */
+export const savedFilter = sqliteTable(
+  'saved_filter',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').references(() => user.id),
+    module: text('module').notNull(), // 'party'
+    name: text('name').notNull(),
+    criteriaJson: text('criteria_json').notNull(),
+    createdAt
+  },
+  (t) => ({ byModule: index('saved_filter_module_idx').on(t.module) })
+)
