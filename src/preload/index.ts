@@ -6,6 +6,8 @@ import type {
   AamadListResult,
   AamadSearchFilter,
   MapType,
+  AccountDetail,
+  AccountIdentityInput,
   AccountInput,
   AccountListFilter,
   AccountListRow,
@@ -97,12 +99,18 @@ const api = {
     list: (filter?: AccountListFilter): Promise<AccountListRow[]> =>
       ipcRenderer.invoke('accounts:list', filter),
     create: (input: AccountInput): Promise<number> => ipcRenderer.invoke('accounts:create', input),
+    detail: (accountId: number): Promise<AccountDetail | null> =>
+      ipcRenderer.invoke('accounts:detail', accountId),
+    updateIdentity: (accountId: number, input: AccountIdentityInput): Promise<void> =>
+      ipcRenderer.invoke('accounts:updateIdentity', accountId, input),
     ledger: (accountId: number): Promise<LedgerLine[]> =>
       ipcRenderer.invoke('accounts:ledger', accountId),
     setOpening: (accountId: number, amountPaise: number, drCr: DrCr, date: string): Promise<void> =>
       ipcRenderer.invoke('accounts:setOpening', accountId, amountPaise, drCr, date),
     setDefaulter: (accountId: number, isDefaulter: boolean): Promise<void> =>
-      ipcRenderer.invoke('accounts:setDefaulter', accountId, isDefaulter)
+      ipcRenderer.invoke('accounts:setDefaulter', accountId, isDefaulter),
+    delete: (accountId: number, password: string): Promise<void> =>
+      ipcRenderer.invoke('accounts:delete', accountId, password)
   },
   persons: {
     create: (input: PersonInput): Promise<number> => ipcRenderer.invoke('persons:create', input),

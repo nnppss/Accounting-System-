@@ -99,6 +99,9 @@ export const account = sqliteTable(
   'account',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
+    // Human-facing account number, e.g. K-26-0001 (type prefix · 2-digit creation year · per-type
+    // serial). Distinct from the internal `id`. Null for the cold's own system heads.
+    code: text('code'),
     name: text('name').notNull(),
     type: text('type', { enum: ACCOUNT_TYPES }).notNull(),
     subgroupId: integer('subgroup_id')
@@ -113,9 +116,20 @@ export const account = sqliteTable(
   (t) => ({
     bySubgroup: index('account_subgroup_idx').on(t.subgroupId),
     byType: index('account_type_idx').on(t.type),
-    byPerson: index('account_person_idx').on(t.personId)
+    byPerson: index('account_person_idx').on(t.personId),
+    byCode: uniqueIndex('account_code_idx').on(t.code)
   })
 )
+
+/**
+ * Per-type lifetime serial for account numbers (account.code). Not year-scoped: the serial
+ * continues across years (the year is stamped into the code, not the counter). Mirrors
+ * `number_series`, but keyed by account type.
+ */
+export const accountSeries = sqliteTable('account_series', {
+  type: text('type', { enum: ACCOUNT_TYPES }).primaryKey(),
+  currentNo: integer('current_no').notNull().default(0)
+})
 
 /** Accounting year (1 Jan – 31 Dec). Holds the flat per-packet rent rate for the year. */
 export const financialYear = sqliteTable('financial_year', {
@@ -270,7 +284,7 @@ export const auditLog = sqliteTable(
       .default(sql`(unixepoch())`),
     userId: integer('user_id').references(() => user.id),
     accountantName: text('accountant_name'), // session accountant credited for this change
-    action: text('action').notNull(), // 'create' | 'update' | 'void'
+    action: text('action').notNull(), // 'create' | 'update' | 'void' | 'delete'
     entity: text('entity').notNull(),
     entityId: integer('entity_id'),
     beforeJson: text('before_json'),

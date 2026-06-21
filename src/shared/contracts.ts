@@ -72,16 +72,55 @@ export interface AccountInput {
   subgroupId: number
   personId?: number
   job?: string
+  /** Optional opening balance recorded at creation (setup time). */
+  opening?: { amountPaise: number; drCr: DrCr; date: string }
+}
+
+/** Editable identity fields (live on the linked person, the single source of truth). */
+export interface AccountIdentityInput {
+  sonOf?: string
+  villageCity?: string
+  state?: string
+  phone?: string
+}
+
+/** Full account view (header + identity) for the opened-account page. */
+export interface AccountDetail {
+  id: number
+  code: string | null
+  name: string
+  type: AccountType
+  subgroupName: string
+  personId: number | null
+  personName: string | null
+  sonOf: string | null
+  villageCity: string | null
+  state: string | null
+  phone: string | null
+  isDefaulter: boolean
+  isSystem: boolean
+  balancePaise: number
+  /** Whether an opening balance is already set for the working year. */
+  hasOpening: boolean
 }
 
 export interface AccountListFilter {
   type?: AccountType
-  search?: string
+  /** Matches the account's own name or the linked person's name. */
+  name?: string
+  villageCity?: string
+  state?: string
+  phone?: string
+  /** Additive: include the cold's own system heads alongside party accounts. */
   includeSystem?: boolean
+  /** Return ONLY the cold's own system heads — used by the Accounts page "Show system accounts"
+   *  toggle when no party filter is active, so it lists the ~10 heads, not every account. */
+  systemOnly?: boolean
 }
 
 export interface AccountListRow {
   id: number
+  code: string | null
   name: string
   type: AccountType
   subgroupName: string
@@ -852,7 +891,7 @@ export interface PrintResult {
 
 // ============================ AUDIT TRAIL ============================
 
-export type AuditAction = 'create' | 'update' | 'void'
+export type AuditAction = 'create' | 'update' | 'void' | 'delete'
 
 /**
  * One row of the audit trail — who changed what, when (architecture.md §8). `accountantName` is

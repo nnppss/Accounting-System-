@@ -8,7 +8,8 @@ import type { AuditAction, AuditFilter, AuditLogRow } from '@shared/contracts'
 const ACTION_COLORS: Record<AuditAction, string> = {
   create: 'green',
   update: 'blue',
-  void: 'red'
+  void: 'red',
+  delete: 'volcano'
 }
 
 /** 'loading_contractor_year' → 'loading contractor year' for display. */
@@ -51,7 +52,8 @@ export default function AuditPage(): JSX.Element {
   const actionOptions: Array<{ value: AuditAction; label: string }> = [
     { value: 'create', label: t('audit.action.create') },
     { value: 'update', label: t('audit.action.update') },
-    { value: 'void', label: t('audit.action.void') }
+    { value: 'void', label: t('audit.action.void') },
+    { value: 'delete', label: t('audit.action.delete') }
   ]
 
   const columns = [

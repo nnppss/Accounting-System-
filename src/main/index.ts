@@ -3,6 +3,7 @@ import { join } from 'path'
 import { ensureBootstrap } from './auth/auth'
 import { migrate, openDb } from './data/db'
 import { seedReferenceData } from './data/seed'
+import { backfillAccountCodes } from './services/accounts'
 import { registerIpc } from './ipc'
 
 /** The single SQLite file lives in Electron's per-user data dir. */
@@ -22,6 +23,7 @@ function initDb(): void {
   migrate(migrationsFolder())
   seedReferenceData()
   ensureBootstrap() // default admin + current calendar year on first run (no lockout)
+  backfillAccountCodes() // assign numbers to any accounts created before this feature
 }
 
 function createWindow(): void {
