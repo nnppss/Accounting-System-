@@ -256,7 +256,11 @@ export const numberSeries = sqliteTable(
   (t) => ({ uniq: uniqueIndex('number_series_idx').on(t.yearId, t.docType) })
 )
 
-/** Every create/edit/void, with who + when + before/after JSON. No hard deletes. */
+/**
+ * Every create/edit/void, with who + when + before/after JSON. No hard deletes.
+ * `userId` is the login user; `accountantName` is the human entered at sign-in and credited
+ * for the change (the session accountant), stamped on every row by the audit writer.
+ */
 export const auditLog = sqliteTable(
   'audit_log',
   {
@@ -265,6 +269,7 @@ export const auditLog = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
     userId: integer('user_id').references(() => user.id),
+    accountantName: text('accountant_name'), // session accountant credited for this change
     action: text('action').notNull(), // 'create' | 'update' | 'void'
     entity: text('entity').notNull(),
     entityId: integer('entity_id'),

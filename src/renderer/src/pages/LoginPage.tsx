@@ -7,11 +7,10 @@ import {
   Form,
   Input,
   InputNumber,
-  Select,
   Space,
   Typography
 } from 'antd'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
 import { useSession } from '../store/session'
@@ -21,14 +20,12 @@ export default function LoginPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const setSession = useSession((s) => s.setSession)
-  const queryClient = useQueryClient()
+  const [loginForm] = Form.useForm()
   const [showNewYear, setShowNewYear] = useState(false)
 
-  const years = useQuery({ queryKey: ['years'], queryFn: () => window.api.auth.listYears() })
-
   const loginMut = useMutation({
-    mutationFn: (v: { year: number; username: string; password: string }) =>
-      window.api.auth.login(v.year, v.username, v.password),
+    mutationFn: (v: { year: number; username: string; password: string; accountant: string }) =>
+      window.api.auth.login(v.year, v.username, v.password, v.accountant),
     onSuccess: (session) => setSession(session),
     onError: (e: Error) => message.error(`${t('login.failed')}: ${e.message}`)
   })
@@ -36,15 +33,14 @@ export default function LoginPage(): JSX.Element {
   const createYearMut = useMutation({
     mutationFn: (v: { year: number; rentRate: number }) =>
       window.api.auth.createYear(v.year, toPaise(v.rentRate)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['years'] })
+    // Drop the user straight into the year they just created: prefill the sign-in Year field.
+    onSuccess: (_id, vars) => {
       setShowNewYear(false)
+      loginForm.setFieldsValue({ year: vars.year })
       message.success(t('login.createYear'))
     },
     onError: (e: Error) => message.error(e.message)
   })
-
-  const yearOptions = (years.data ?? []).map((y) => ({ value: y.year, label: String(y.year) }))
 
   return (
     <div
@@ -70,15 +66,23 @@ export default function LoginPage(): JSX.Element {
         </Space>
         <Typography.Paragraph type="secondary">{t('app.tagline')}</Typography.Paragraph>
 
-        <Form layout="vertical" onFinish={(v) => loginMut.mutate(v)} initialValues={{ username: 'admin' }}>
+        <Form
+          form={loginForm}
+          layout="vertical"
+          onFinish={(v) => loginMut.mutate(v)}
+          initialValues={{ username: 'admin', year: new Date().getFullYear() }}
+        >
           <Form.Item name="year" label={t('login.year')} rules={[{ required: true }]}>
-            <Select options={yearOptions} loading={years.isLoading} placeholder={t('login.year')} />
+            <InputNumber style={{ width: '100%' }} min={2000} max={2100} controls={false} />
           </Form.Item>
           <Form.Item name="username" label={t('login.username')} rules={[{ required: true }]}>
             <Input autoComplete="username" />
           </Form.Item>
           <Form.Item name="password" label={t('login.password')} rules={[{ required: true }]}>
             <Input.Password autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item name="accountant" label={t('login.accountant')} rules={[{ required: true }]}>
+            <Input autoComplete="name" placeholder={t('login.accountantHint')} />
           </Form.Item>
           <Button type="primary" htmlType="submit" block loading={loginMut.isPending}>
             {t('login.submit')}

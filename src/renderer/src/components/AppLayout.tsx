@@ -1,6 +1,7 @@
 import { Button, Layout, Menu, Space, Typography } from 'antd'
 import {
   AppstoreOutlined,
+  AuditOutlined,
   BankOutlined,
   BookOutlined,
   CreditCardOutlined,
@@ -39,6 +40,7 @@ import BillsPage from '../pages/BillsPage'
 import BillPage from '../pages/BillPage'
 import PartyPage from '../pages/PartyPage'
 import ClosePage from '../pages/ClosePage'
+import AuditPage from '../pages/AuditPage'
 import StorePage from '../pages/StorePage'
 
 const { Header, Sider, Content } = Layout
@@ -68,6 +70,7 @@ export default function AppLayout(): JSX.Element {
     { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') },
     { key: '/money-book', icon: <WalletOutlined />, label: t('nav.moneyBook') },
     { key: '/close', icon: <LockOutlined />, label: t('nav.close') },
+    { key: '/audit', icon: <AuditOutlined />, label: t('nav.audit') },
     { key: '/store', icon: <SettingOutlined />, label: t('nav.store') }
   ]
 
@@ -140,6 +143,7 @@ export default function AppLayout(): JSX.Element {
             <Route path="/trial-balance" element={<TrialBalancePage />} />
             <Route path="/money-book" element={<MoneyBookPage />} />
             <Route path="/close" element={<ClosePage />} />
+            <Route path="/audit" element={<AuditPage />} />
             <Route path="/store" element={<StorePage />} />
           </Routes>
         </Content>

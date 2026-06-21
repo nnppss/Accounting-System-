@@ -31,8 +31,18 @@ export function createUser(
   return row.id
 }
 
-/** Verify credentials against a known year; throws on any mismatch (no detail leaked to caller). */
-export function login(year: number, username: string, password: string): Session {
+/**
+ * Verify credentials against a known year; throws on any mismatch (no detail leaked to caller).
+ * `accountantName` is the human actually working this session, entered at sign-in (architecture.md §8):
+ * when given it is stamped on the session (and shown in the top bar); when blank we fall back to the
+ * user's stored name so callers/tests that don't pass one keep working.
+ */
+export function login(
+  year: number,
+  username: string,
+  password: string,
+  accountantName?: string
+): Session {
   const yr = db().select().from(financialYear).where(eq(financialYear.year, year)).get()
   if (!yr) throw new Error(`Financial year ${year} does not exist`)
   const u = db().select().from(user).where(eq(user.username, username)).get()
@@ -42,7 +52,7 @@ export function login(year: number, username: string, password: string): Session
   return {
     userId: u.id,
     username: u.username,
-    accountantName: u.accountantName,
+    accountantName: accountantName?.trim() || u.accountantName,
     role: u.role,
     yearId: yr.id,
     year: yr.year

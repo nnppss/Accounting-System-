@@ -11,6 +11,9 @@ import type {
   AccountListRow,
   AccrueAllResult,
   AccrueResult,
+  AuditFacets,
+  AuditFilter,
+  AuditLogRow,
   BardanaAccount,
   BardanaInput,
   BardanaRow,
@@ -79,8 +82,13 @@ const api = {
     listYears: (): Promise<YearInfo[]> => ipcRenderer.invoke('auth:listYears'),
     createYear: (year: number, rentRatePaise: number): Promise<number> =>
       ipcRenderer.invoke('auth:createYear', year, rentRatePaise),
-    login: (year: number, username: string, password: string): Promise<Session> =>
-      ipcRenderer.invoke('auth:login', year, username, password),
+    login: (
+      year: number,
+      username: string,
+      password: string,
+      accountantName?: string
+    ): Promise<Session> =>
+      ipcRenderer.invoke('auth:login', year, username, password, accountantName),
     logout: (): Promise<void> => ipcRenderer.invoke('auth:logout'),
     session: (): Promise<Session | null> => ipcRenderer.invoke('auth:session')
   },
@@ -217,6 +225,10 @@ const api = {
     saveFilter: (name: string, criteria: PartyCriteria): Promise<number> =>
       ipcRenderer.invoke('party:saveFilter', name, criteria),
     deleteFilter: (id: number): Promise<void> => ipcRenderer.invoke('party:deleteFilter', id)
+  },
+  audit: {
+    list: (filter?: AuditFilter): Promise<AuditLogRow[]> => ipcRenderer.invoke('audit:list', filter),
+    facets: (): Promise<AuditFacets> => ipcRenderer.invoke('audit:facets')
   },
   close: {
     preview: (): Promise<ClosePreview> => ipcRenderer.invoke('close:preview'),

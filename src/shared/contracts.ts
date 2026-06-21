@@ -849,3 +849,43 @@ export interface YearCloseInfo {
 export interface PrintResult {
   path: string | null
 }
+
+// ============================ AUDIT TRAIL ============================
+
+export type AuditAction = 'create' | 'update' | 'void'
+
+/**
+ * One row of the audit trail — who changed what, when (architecture.md §8). `accountantName` is
+ * the human credited (entered at sign-in); `username` is the shared login account it ran under.
+ */
+export interface AuditLogRow {
+  id: number
+  /** Epoch milliseconds — a real timestamp, includes the time of day. */
+  ts: number
+  /** The accountant credited for the change; null for actions taken before anyone signed in. */
+  accountantName: string | null
+  /** The shared login user the session ran under. */
+  username: string | null
+  action: AuditAction
+  /** What kind of record changed: 'voucher' | 'account' | 'loan' | … */
+  entity: string
+  entityId: number | null
+  /** Parsed before/after snapshots (when recorded). */
+  before: unknown
+  after: unknown
+}
+
+/** Stackable audit filters — every present field is ANDed. Rows come back newest-first. */
+export interface AuditFilter {
+  accountantName?: string
+  entity?: string
+  action?: AuditAction
+  /** Cap on rows returned (newest first); defaults to 500. */
+  limit?: number
+}
+
+/** Distinct values seen in the log, to populate the filter dropdowns. */
+export interface AuditFacets {
+  accountants: string[]
+  entities: string[]
+}

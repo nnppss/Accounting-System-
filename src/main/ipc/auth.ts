@@ -8,11 +8,14 @@ export function registerAuthIpc(): void {
   ipcMain.handle('auth:createYear', (_e, year: number, rentRatePaise: number) =>
     createYear(year, rentRatePaise)
   )
-  ipcMain.handle('auth:login', (_e, year: number, username: string, password: string) => {
-    const session = login(year, username, password)
-    setSession(session)
-    return session
-  })
+  ipcMain.handle(
+    'auth:login',
+    (_e, year: number, username: string, password: string, accountantName?: string) => {
+      const session = login(year, username, password, accountantName)
+      setSession(session)
+      return session
+    }
+  )
   ipcMain.handle('auth:logout', () => clearSession())
   ipcMain.handle('auth:session', () => getSession())
 }
