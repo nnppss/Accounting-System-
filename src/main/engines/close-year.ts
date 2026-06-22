@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../data/db'
 import {
   account,
@@ -6,11 +6,12 @@ import {
   loan,
   loanEvent,
   openingBalance,
+  subgroup,
   voucher,
   voucherEntry,
   yearClose
 } from '../data/schema'
-import type { AccountType, LoanCategory } from '../../shared/enums'
+import type { AccountType, LoanCategory, SubgroupNature } from '../../shared/enums'
 import type {
   CloseException,
   ClosePreview,
@@ -94,16 +95,45 @@ interface PartyAccount {
   id: number
   name: string
   type: AccountType
+  nature: SubgroupNature
+  subgroupName: string
+  isSystem: boolean
 }
 
-/** Every party (non-system) account. */
-function partyAccounts(): PartyAccount[] {
+/**
+ * Balance-sheet accounts carried across the year boundary: everything of asset or liability
+ * nature — cash, banks, cheques-in-clearing, and every debtor/creditor party. Income, expense and
+ * capital (incl. Opening Balance Equity) are P&L / plug accounts and are intentionally NOT carried.
+ *
+ * We deliberately do NOT filter on `isSystem` here: **Cash** is a system account but its balance is
+ * real and must roll forward, while the **bank** accounts a user creates are non-system yet must
+ * never be mistaken for owing parties (that distinction is `isTradeParty`). Keying off the crude
+ * `isSystem` flag was the original bug — it dropped Cash and swept banks into dues/defaulters.
+ */
+function carriedAccounts(): PartyAccount[] {
   return db()
-    .select({ id: account.id, name: account.name, type: account.type })
+    .select({
+      id: account.id,
+      name: account.name,
+      type: account.type,
+      nature: subgroup.nature,
+      subgroupName: subgroup.name,
+      isSystem: account.isSystem
+    })
     .from(account)
-    .where(eq(account.isSystem, false))
+    .innerJoin(subgroup, eq(account.subgroupId, subgroup.id))
+    .where(inArray(subgroup.nature, ['asset', 'liability']))
     .orderBy(asc(account.id))
     .all()
+}
+
+/**
+ * A carried account that is a genuine **trade party** — a real debtor/creditor whose closing dues
+ * may roll into an indirect loan and a defaulter flag. Excludes cash & bank (the cold's own funds)
+ * and system accounts like Cheques-in-Clearing, which carry their balance but are never "owing".
+ */
+function isTradeParty(a: { isSystem: boolean; subgroupName: string }): boolean {
+  return !a.isSystem && a.subgroupName !== 'Cash and Bank'
 }
 
 /**
@@ -205,16 +235,19 @@ export function previewClose(yearId: number): ClosePreview {
   const onDate = nextJan1(yr.year)
   const interestByAccount = projectedInterestByAccount(yearId, onDate)
 
-  const closings = partyAccounts()
+  const closings = carriedAccounts()
     .map((a) => ({
       accountId: a.id,
       name: a.name,
       type: a.type,
+      isSystem: a.isSystem,
+      subgroupName: a.subgroupName,
       balancePaise: getAccountBalance(a.id, yearId) + (interestByAccount.get(a.id) ?? 0)
     }))
     .filter((c) => c.balancePaise !== 0)
 
-  const owing = closings.filter((c) => c.balancePaise > 0)
+  const parties = closings.filter(isTradeParty)
+  const owing = parties.filter((c) => c.balancePaise > 0)
   const alreadyDefaulter = new Set(
     db().select({ id: account.id }).from(account).where(eq(account.isDefaulter, true)).all().map((r) => r.id)
   )
@@ -234,7 +267,7 @@ export function previewClose(yearId: number): ClosePreview {
     nextYear: yr.year + 1,
     accountsCarried: closings.length,
     totalDuesPaise: owing.reduce((s, c) => s + c.balancePaise, 0),
-    totalCreditsPaise: closings.filter((c) => c.balancePaise < 0).reduce((s, c) => s - c.balancePaise, 0),
+    totalCreditsPaise: parties.filter((c) => c.balancePaise < 0).reduce((s, c) => s - c.balancePaise, 0),
     newDefaulters: owing.filter((c) => !alreadyDefaulter.has(c.accountId)).length,
     indirectLoans: owing.length,
     indirectLoanTotalPaise: owing.reduce((s, c) => s + c.balancePaise, 0),
@@ -245,7 +278,7 @@ export function previewClose(yearId: number): ClosePreview {
 
   return {
     summary,
-    exceptions: buildExceptions(yearId, closings, leftoverPackets),
+    exceptions: buildExceptions(yearId, parties, leftoverPackets),
     alreadyClosed: getCloseStatus(yearId) !== null
   }
 }
@@ -291,10 +324,18 @@ export function closeYear(yearId: number, userId?: number): CloseResult {
     }
 
     // Final closing balances (now including the capitalised interest).
-    const closings = partyAccounts()
-      .map((a) => ({ accountId: a.id, name: a.name, type: a.type, balancePaise: getAccountBalance(a.id, yearId) }))
+    const closings = carriedAccounts()
+      .map((a) => ({
+        accountId: a.id,
+        name: a.name,
+        type: a.type,
+        isSystem: a.isSystem,
+        subgroupName: a.subgroupName,
+        balancePaise: getAccountBalance(a.id, yearId)
+      }))
       .filter((c) => c.balancePaise !== 0)
-    const owing = closings.filter((c) => c.balancePaise > 0)
+    const parties = closings.filter(isTradeParty)
+    const owing = parties.filter((c) => c.balancePaise > 0)
 
     // 2. Carry each closing balance forward as the new year's opening.
     let totalDuesPaise = 0
@@ -308,8 +349,11 @@ export function closeYear(yearId: number, userId?: number): CloseResult {
 
       const drCr = c.balancePaise > 0 ? 'dr' : 'cr'
       setOpeningBalance(c.accountId, nextYearId, Math.abs(c.balancePaise), drCr, onDate, userId)
-      if (c.balancePaise > 0) totalDuesPaise += c.balancePaise
-      else totalCreditsPaise += -c.balancePaise
+      // Dues/credits are a trade-party concept; cash & bank balances carry but aren't "dues".
+      if (isTradeParty(c)) {
+        if (c.balancePaise > 0) totalDuesPaise += c.balancePaise
+        else totalCreditsPaise += -c.balancePaise
+      }
 
       const ov = db()
         .select({ id: voucher.id })
@@ -386,7 +430,7 @@ export function closeYear(yearId: number, userId?: number): CloseResult {
       interestCapitalisedPaise,
       leftoverPackets
     }
-    const exceptions = buildExceptions(yearId, closings, leftoverPackets)
+    const exceptions = buildExceptions(yearId, parties, leftoverPackets)
 
     const closeRow = db()
       .insert(yearClose)

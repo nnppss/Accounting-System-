@@ -75,7 +75,7 @@ describe('previewClose — the dry run', () => {
     expect(p.alreadyClosed).toBe(false)
     // Capitalisation is projected but NOT posted — the books are untouched by a preview.
     expect(getTrialBalance(yearId).totalDr).toBe(before.totalDr)
-    expect(p.summary.accountsCarried).toBe(3) // kisan + vyapari + creditor
+    expect(p.summary.accountsCarried).toBe(4) // kisan + vyapari + creditor + Cash (loan paid out in cash)
     expect(p.summary.totalDuesPaise).toBe(LAKH + 1800000 + 200000) // vyapari 1,18,000 + kisan 2,000
     expect(p.summary.totalCreditsPaise).toBe(500000)
     expect(p.summary.loansCapitalised).toBe(1)
@@ -95,7 +95,7 @@ describe('closeYear — the real close', () => {
     const res = closeYear(yearId)
 
     // Summary matches the preview projection to the paise.
-    expect(res.summary.accountsCarried).toBe(3)
+    expect(res.summary.accountsCarried).toBe(4)
     expect(res.summary.totalDuesPaise).toBe(LAKH + 1800000 + 200000)
     expect(res.summary.totalCreditsPaise).toBe(500000)
     expect(res.summary.loansCapitalised).toBe(1)
@@ -112,9 +112,10 @@ describe('closeYear — the real close', () => {
     const ny = nextYearId()
     expect(getTrialBalance(ny).balanced).toBe(true)
 
-    // Carry-forward: an opening_balance row per non-zero account in the new year.
+    // Carry-forward: an opening_balance row per non-zero balance-sheet account in the new year
+    // (the 3 parties + Cash, which is overdrawn ₹1,00,000 from paying the loan out in cash).
     const rows = openingRows(ny)
-    expect(rows).toHaveLength(3)
+    expect(rows).toHaveLength(4)
     const kisanOpen = rows.find((r) => r.accountId === kisan)!
     expect(kisanOpen.amountPaise).toBe(200000)
     expect(kisanOpen.drCr).toBe('dr')
@@ -124,6 +125,11 @@ describe('closeYear — the real close', () => {
     const creditorOpen = rows.find((r) => r.accountId === creditor)!
     expect(creditorOpen.amountPaise).toBe(500000)
     expect(creditorOpen.drCr).toBe('cr')
+    // Cash (a system account) carries forward too — its balance is real money on hand.
+    const cashId = db().select({ id: account.id }).from(account).where(eq(account.name, 'Cash')).get()!.id
+    const cashOpen = rows.find((r) => r.accountId === cashId)!
+    expect(cashOpen.amountPaise).toBe(LAKH)
+    expect(cashOpen.drCr).toBe('cr')
     // The carried opening reproduces the closing balance in the new year.
     expect(getAccountBalance(vyapari, ny)).toBe(LAKH + 1800000)
 
@@ -163,7 +169,7 @@ describe('rollbackClose — the undo', () => {
 
     closeYear(yearId)
     const ny = nextYearId()
-    expect(openingRows(ny)).toHaveLength(3)
+    expect(openingRows(ny)).toHaveLength(4) // 3 parties + Cash
     expect(listLoans(ny)).toHaveLength(2)
 
     rollbackClose(yearId)
@@ -190,7 +196,7 @@ describe('rollbackClose — the undo', () => {
     closeYear(yearId)
     rollbackClose(yearId)
     const res = closeYear(yearId) // fresh close + plan
-    expect(res.summary.accountsCarried).toBe(3)
+    expect(res.summary.accountsCarried).toBe(4)
     expect(getCloseStatus(yearId)!.status).toBe('closed')
     expect(getTrialBalance(yearId).balanced).toBe(true)
     expect(getTrialBalance(nextYearId()).balanced).toBe(true)
@@ -210,5 +216,37 @@ describe('exceptions', () => {
     })
     const p = previewClose(yearId)
     expect(p.exceptions.some((e) => e.kind === 'pending_cheque' && e.accountId === vyapari)).toBe(true)
+  })
+})
+
+describe('cash & bank carry-forward (regression)', () => {
+  // A user-created bank account is non-system but lives in 'Cash and Bank'. The close must carry
+  // its balance forward as a plain opening, and must NOT mistake it for an owing party (no indirect
+  // loan, no defaulter flag). Cash (a system account) must carry too. Earlier the close keyed off
+  // the crude isSystem flag, dropping Cash and turning bank accounts into loans + defaulters.
+  it('carries bank/cash balances but never loans or flags them', () => {
+    const bank = makeAccount('SBI Current A/c', 'other', 'Cash and Bank')
+    setOpeningBalance(bank, yearId, 5000000, 'dr', '2026-01-01') // ₹50,000 sitting in the bank
+
+    closeYear(yearId)
+    const ny = nextYearId()
+
+    // Bank balance carries forward as a Dr opening…
+    const bankOpen = openingRows(ny).find((r) => r.accountId === bank)!
+    expect(bankOpen.amountPaise).toBe(5000000)
+    expect(bankOpen.drCr).toBe('dr')
+    // …Cash carries too (overdrawn ₹1,00,000 from the cash loan)…
+    const cashId = db().select({ id: account.id }).from(account).where(eq(account.name, 'Cash')).get()!.id
+    expect(openingRows(ny).some((r) => r.accountId === cashId)).toBe(true)
+
+    // …but neither bank nor cash becomes an indirect loan or a defaulter.
+    expect(listLoans(ny).some((l) => l.accountId === bank)).toBe(false)
+    expect(listLoans(ny).some((l) => l.accountId === cashId)).toBe(false)
+    expect(isDefaulter(bank)).toBe(false)
+    expect(isDefaulter(cashId)).toBe(false)
+
+    // Bank dues don't inflate the dues/indirect-loan totals — still just the 2 real owing parties.
+    expect(getCloseStatus(yearId)!.summary.indirectLoans).toBe(2)
+    expect(getTrialBalance(ny).balanced).toBe(true)
   })
 })

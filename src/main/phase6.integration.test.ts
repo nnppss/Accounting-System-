@@ -71,8 +71,9 @@ describe('Phase 6 done/verify — close a worked year, roll it back, re-close', 
     expect(res.summary.interestCapitalisedPaise).toBe(360000)
     expect(getAccountBalance(hariVyapari, yearId)).toBe(2360000)
 
-    // Three non-zero accounts carried; dues = Gopal ₹32,000 + Hari(V) ₹23,600; credit = Hari(K) ₹30,000.
-    expect(res.summary.accountsCarried).toBe(3)
+    // Four non-zero accounts carried (the 3 parties + Cash, overdrawn ₹20,000 from the cash loan);
+    // dues = Gopal ₹32,000 + Hari(V) ₹23,600; credit (trade parties) = Hari(K) ₹30,000.
+    expect(res.summary.accountsCarried).toBe(4)
     expect(res.summary.totalDuesPaise).toBe(3200000 + 2360000)
     expect(res.summary.totalCreditsPaise).toBe(3000000)
     expect(res.summary.indirectLoans).toBe(2)
