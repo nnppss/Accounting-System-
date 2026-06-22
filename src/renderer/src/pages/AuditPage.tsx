@@ -15,6 +15,22 @@ const ACTION_COLORS: Record<AuditAction, string> = {
 /** 'loading_contractor_year' → 'loading contractor year' for display. */
 const prettyEntity = (e: string): string => e.replace(/_/g, ' ')
 
+/**
+ * A human-readable label for the affected record, pulled from the snapshot recorded with the
+ * change (before for deletes/voids, after for creates). Lets the audit trail be scanned by name —
+ * vital for deletes, where the record no longer exists to look up. Falls back to '—'.
+ */
+function recordLabel(row: AuditLogRow): string {
+  const d = (row.before ?? row.after) as Record<string, unknown> | null
+  if (!d) return '—'
+  if (typeof d.name === 'string' && d.name) return d.name
+  if (typeof d.no === 'string' && d.no) return `${d.no}`
+  if (typeof d.billNo === 'number') return `#${d.billNo}`
+  if (typeof d.voidedReason === 'string' && d.voidedReason) return d.voidedReason
+  if (typeof d.narration === 'string' && d.narration) return d.narration
+  return '—'
+}
+
 /** Expanded row: the before/after snapshots recorded with the change. */
 function AuditDetail({ row }: { row: AuditLogRow }): JSX.Element {
   const { t } = useTranslation()
@@ -79,7 +95,13 @@ export default function AuditPage(): JSX.Element {
     {
       title: t('audit.entity'),
       dataIndex: 'entity',
+      width: 150,
       render: (e: string) => prettyEntity(e)
+    },
+    {
+      title: t('audit.detail'),
+      key: 'detail',
+      render: (_: unknown, r: AuditLogRow) => recordLabel(r)
     },
     {
       title: t('audit.record'),

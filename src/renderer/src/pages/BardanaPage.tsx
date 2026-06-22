@@ -6,6 +6,7 @@ import {
   DatePicker,
   Form,
   InputNumber,
+  Popconfirm,
   Row,
   Select,
   Statistic,
@@ -49,11 +50,23 @@ export default function BardanaPage(): JSX.Element {
     onError: (e: Error) => message.error(e.message)
   })
 
+  const remove = useMutation({
+    mutationFn: (id: number) => window.api.bardana.delete(id),
+    onSuccess: () => {
+      message.success(t('bardana.deleted'))
+      invalidate()
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['moneybook'] })
+    },
+    onError: (e: Error) => message.error(e.message)
+  })
+
   const partyOptions = (accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))
   const bankOptions = (banks.data ?? []).filter((b) => b.name !== 'Cash').map((b) => ({ value: b.id, label: b.name }))
   const computedAmount = (rate ?? 0) > 0 && (qty ?? 0) > 0 ? toPaise(rate!) * qty! : 0
 
   const columns = [
+    { title: 'ID', dataIndex: 'id', width: 60, render: (id: number) => `#${id}` },
     { title: t('common.date'), dataIndex: 'date', width: 110 },
     {
       title: t('bardana.direction'),
@@ -84,6 +97,25 @@ export default function BardanaPage(): JSX.Element {
       key: 'mode',
       width: 120,
       render: (_: unknown, r: BardanaRow) => (r.mode === 'bank' ? r.bankName : t('loans.mode.cash'))
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 100,
+      align: 'center' as const,
+      render: (_: unknown, r: BardanaRow) => (
+        <Popconfirm
+          title={t('bardana.deleteConfirm')}
+          okText={t('common.delete')}
+          okButtonProps={{ danger: true }}
+          cancelText={t('common.cancel')}
+          onConfirm={() => remove.mutate(r.id)}
+        >
+          <Button size="small" danger type="text">
+            {t('common.delete')}
+          </Button>
+        </Popconfirm>
+      )
     }
   ]
 

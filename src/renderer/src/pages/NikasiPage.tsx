@@ -9,8 +9,8 @@ import {
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Segmented,
-  Select,
   Space,
   Table,
   Tag,
@@ -24,6 +24,7 @@ import type { DeliveryTarget } from '@shared/enums'
 import type { NikasiListRow } from '@shared/contracts'
 import { formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
+import AccountSearchSelect from '../components/AccountSearchSelect'
 
 export default function NikasiPage(): JSX.Element {
   const { t } = useTranslation()
@@ -35,14 +36,6 @@ export default function NikasiPage(): JSX.Element {
   const deliveredToType = Form.useWatch('deliveredToType', form) as DeliveryTarget | undefined
   const deliveredToAccountId = Form.useWatch('deliveredToAccountId', form) as number | undefined
 
-  const vyaparis = useQuery({
-    queryKey: ['accounts', 'vyapari'],
-    queryFn: () => window.api.accounts.list({ type: 'vyapari' })
-  })
-  const kisans = useQuery({
-    queryKey: ['accounts', 'kisan'],
-    queryFn: () => window.api.accounts.list({ type: 'kisan' })
-  })
   const nikasis = useQuery({ queryKey: ['nikasi'], queryFn: () => window.api.nikasi.list() })
   const detail = useQuery({
     queryKey: ['nikasi', detailId],
@@ -63,9 +56,16 @@ export default function NikasiPage(): JSX.Element {
     onError: (e: Error) => message.error(e.message)
   })
 
-  const kisanOptions = (kisans.data ?? []).map((k) => ({ value: k.id, label: k.name }))
-  const vyapariOptions = (vyaparis.data ?? []).map((v) => ({ value: v.id, label: v.name }))
-  const deliveredToOptions = deliveredToType === 'vyapari' ? vyapariOptions : kisanOptions
+  const remove = useMutation({
+    mutationFn: (id: number) => window.api.nikasi.delete(id),
+    onSuccess: () => {
+      message.success(t('nikasi.deleted'))
+      queryClient.invalidateQueries({ queryKey: ['nikasi'] })
+      queryClient.invalidateQueries({ queryKey: ['maps'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    },
+    onError: (e: Error) => message.error(e.message)
+  })
 
   // When a line's kisan changes on a vyapari sale, pre-fill its rate from the latest sauda.
   const onValuesChange = async (changed: Record<string, unknown>): Promise<void> => {
@@ -121,6 +121,7 @@ export default function NikasiPage(): JSX.Element {
   }
 
   const columns = [
+    { title: 'ID', dataIndex: 'id', width: 60, render: (id: number) => `#${id}` },
     { title: t('nikasi.billNo'), dataIndex: 'billNo', width: 90 },
     { title: t('common.date'), dataIndex: 'date', width: 110 },
     {
@@ -145,13 +146,26 @@ export default function NikasiPage(): JSX.Element {
         r.isPosted ? formatINR(v) : <Typography.Text type="secondary">{formatINR(v)}</Typography.Text>
     },
     {
-      title: '',
-      key: 'view',
-      width: 80,
+      title: t('common.actions'),
+      key: 'actions',
+      width: 150,
       render: (_: unknown, r: NikasiListRow) => (
-        <Button size="small" onClick={() => setDetailId(r.id)}>
-          {t('common.view')}
-        </Button>
+        <Space>
+          <Button size="small" onClick={() => setDetailId(r.id)}>
+            {t('common.view')}
+          </Button>
+          <Popconfirm
+            title={t('nikasi.deleteConfirm')}
+            okText={t('common.delete')}
+            okButtonProps={{ danger: true }}
+            cancelText={t('common.cancel')}
+            onConfirm={() => remove.mutate(r.id)}
+          >
+            <Button size="small" danger type="text">
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
+        </Space>
       )
     }
   ]
@@ -187,10 +201,9 @@ export default function NikasiPage(): JSX.Element {
               label={deliveredToType === 'vyapari' ? t('sauda.vyapari') : t('aamad.kisan')}
               rules={[{ required: true }]}
             >
-              <Select
-                options={deliveredToOptions}
-                showSearch
-                optionFilterProp="label"
+              <AccountSearchSelect
+                type={deliveredToType === 'vyapari' ? 'vyapari' : 'kisan'}
+                placeholder={deliveredToType === 'vyapari' ? t('sauda.vyapari') : t('aamad.kisan')}
                 style={{ width: 200 }}
               />
             </Form.Item>
@@ -211,11 +224,9 @@ export default function NikasiPage(): JSX.Element {
                 {fields.map((field) => (
                   <Space key={field.key} align="baseline" wrap>
                     <Form.Item name={[field.name, 'fromKisanAccountId']} rules={[{ required: true }]}>
-                      <Select
+                      <AccountSearchSelect
+                        type="kisan"
                         placeholder={t('nikasi.fromKisan')}
-                        options={kisanOptions}
-                        showSearch
-                        optionFilterProp="label"
                         style={{ width: 180 }}
                       />
                     </Form.Item>

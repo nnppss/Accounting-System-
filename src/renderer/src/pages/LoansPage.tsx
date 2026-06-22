@@ -19,6 +19,7 @@ import dayjs from 'dayjs'
 import type { LoanRow } from '@shared/contracts'
 import type { LoanCategory, LoanMode } from '@shared/enums'
 import { formatINR, toPaise } from '../lib/format'
+import AccountSearchSelect from '../components/AccountSearchSelect'
 
 const CATEGORY_TYPE: Record<LoanCategory, 'kisan' | 'vyapari' | null> = {
   kisan: 'kisan',
@@ -35,10 +36,6 @@ export default function LoansPage(): JSX.Element {
   const mode = Form.useWatch('mode', form) as LoanMode | undefined
   const [payLoan, setPayLoan] = useState<LoanRow | null>(null)
 
-  const accounts = useQuery({
-    queryKey: ['accounts', 'all'],
-    queryFn: () => window.api.accounts.list({})
-  })
   const banks = useQuery({
     queryKey: ['moneybook', 'accounts'],
     queryFn: () => window.api.moneybook.accounts()
@@ -56,12 +53,8 @@ export default function LoansPage(): JSX.Element {
     onError: (e: Error) => message.error(e.message)
   })
 
-  const accountOptions = (accounts.data ?? [])
-    .filter((a) => {
-      const wanted = category ? CATEGORY_TYPE[category] : null
-      return wanted ? a.type === wanted : true
-    })
-    .map((a) => ({ value: a.id, label: a.name }))
+  // Restrict the party search to the category's account type; 'other' searches all.
+  const partyType = category ? (CATEGORY_TYPE[category] ?? undefined) : undefined
   // For a bank loan, a real bank book (the cash/bank accounts other than plain Cash).
   const bankOptions = (banks.data ?? [])
     .filter((b) => b.name !== 'Cash')
@@ -156,11 +149,9 @@ export default function LoansPage(): JSX.Element {
             />
           </Form.Item>
           <Form.Item name="accountId" rules={[{ required: true }]}>
-            <Select
+            <AccountSearchSelect
+              type={partyType}
               placeholder={t('loans.party')}
-              options={accountOptions}
-              showSearch
-              optionFilterProp="label"
               style={{ width: 180 }}
             />
           </Form.Item>

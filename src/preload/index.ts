@@ -142,11 +142,13 @@ const api = {
     create: (input: AamadInput): Promise<number> => ipcRenderer.invoke('aamad:create', input),
     list: (filter?: AamadSearchFilter): Promise<AamadListResult> =>
       ipcRenderer.invoke('aamad:list', filter),
-    get: (id: number): Promise<AamadDetail | null> => ipcRenderer.invoke('aamad:get', id)
+    get: (id: number): Promise<AamadDetail | null> => ipcRenderer.invoke('aamad:get', id),
+    delete: (id: number): Promise<void> => ipcRenderer.invoke('aamad:delete', id)
   },
   sauda: {
     create: (input: SaudaInput): Promise<number> => ipcRenderer.invoke('sauda:create', input),
     list: (): Promise<SaudaListRow[]> => ipcRenderer.invoke('sauda:list'),
+    delete: (id: number): Promise<void> => ipcRenderer.invoke('sauda:delete', id),
     latestRate: (vyapariAccountId: number, kisanAccountId: number): Promise<number | null> =>
       ipcRenderer.invoke('sauda:latestRate', vyapariAccountId, kisanAccountId)
   },
@@ -154,7 +156,8 @@ const api = {
     create: (input: NikasiInput): Promise<CreateNikasiResult> =>
       ipcRenderer.invoke('nikasi:create', input),
     list: (): Promise<NikasiListRow[]> => ipcRenderer.invoke('nikasi:list'),
-    get: (id: number): Promise<NikasiDetail | null> => ipcRenderer.invoke('nikasi:get', id)
+    get: (id: number): Promise<NikasiDetail | null> => ipcRenderer.invoke('nikasi:get', id),
+    delete: (id: number): Promise<void> => ipcRenderer.invoke('nikasi:delete', id)
   },
   maps: {
     get: (type: MapType): Promise<StockMap> => ipcRenderer.invoke('maps:get', type),
@@ -205,7 +208,8 @@ const api = {
       ipcRenderer.invoke('bardana:create', input),
     list: (direction?: BardanaDirection): Promise<BardanaRow[]> =>
       ipcRenderer.invoke('bardana:list', direction),
-    account: (): Promise<BardanaAccount> => ipcRenderer.invoke('bardana:account')
+    account: (): Promise<BardanaAccount> => ipcRenderer.invoke('bardana:account'),
+    delete: (id: number): Promise<void> => ipcRenderer.invoke('bardana:delete', id)
   },
   expenses: {
     paySalary: (input: ExpensePaymentInput): Promise<PayExpenseResult> =>

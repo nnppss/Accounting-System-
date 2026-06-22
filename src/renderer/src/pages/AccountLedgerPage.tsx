@@ -144,7 +144,24 @@ export default function AccountLedgerPage(): JSX.Element {
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       navigate('/accounts')
     },
-    onError: (e: Error) => message.error(e.message)
+    onError: (e: Error) => {
+      // Electron wraps IPC errors as "Error invoking remote method '…': Error: <message>".
+      // Strip that wrapper so the user sees only the real reason.
+      const msg = e.message.replace(/^Error invoking remote method '[^']*':\s*Error:\s*/, '')
+      // A reference-block message is multi-line and actionable — show it in a dialog the user can
+      // actually read, not a one-line toast. Simple errors (e.g. wrong password) stay as a toast.
+      if (msg.includes('cannot be deleted')) {
+        setDeleteOpen(false)
+        deleteForm.resetFields()
+        modal.error({
+          title: t('accounts.deleteTitle'),
+          width: 520,
+          content: <div style={{ whiteSpace: 'pre-line' }}>{msg}</div>
+        })
+      } else {
+        message.error(msg)
+      }
+    }
   })
 
   const columns = [

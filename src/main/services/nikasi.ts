@@ -145,6 +145,38 @@ export function createNikasi(
   })
 }
 
+/**
+ * Delete a nikasi (gate pass) with its lines. If it was a vyapari sale, its auto-posted voucher is
+ * voided first (no hard ledger deletes) so the sale reverses out of every balance; the voided
+ * voucher stays for the audit trail. Self-withdrawals have no voucher. Scoped to the year, atomic,
+ * and audited.
+ */
+export function deleteNikasi(yearId: number, id: number, userId?: number): void {
+  db().transaction((tx) => {
+    const header = tx
+      .select()
+      .from(nikasi)
+      .where(and(eq(nikasi.id, id), eq(nikasi.yearId, yearId)))
+      .get()
+    if (!header) throw new Error(`Nikasi ${id} not found`)
+
+    if (header.voucherId) {
+      const v = tx.select().from(voucher).where(eq(voucher.id, header.voucherId)).get()
+      if (v && !v.voidedAt) {
+        tx.update(voucher)
+          .set({ voidedAt: new Date(), voidedReason: `Nikasi gate pass #${header.billNo} deleted` })
+          .where(eq(voucher.id, header.voucherId))
+          .run()
+        writeAudit({ userId, action: 'void', entity: 'voucher', entityId: header.voucherId, before: v }, tx)
+      }
+    }
+
+    tx.delete(nikasiLine).where(eq(nikasiLine.nikasiId, id)).run()
+    tx.delete(nikasi).where(eq(nikasi.id, id)).run()
+    writeAudit({ userId, action: 'delete', entity: 'nikasi', entityId: id, before: header }, tx)
+  })
+}
+
 export function listNikasi(yearId: number): NikasiListRow[] {
   const headers = db()
     .select({

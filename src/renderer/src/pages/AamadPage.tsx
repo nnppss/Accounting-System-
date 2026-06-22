@@ -7,7 +7,7 @@ import {
   Input,
   InputNumber,
   Modal,
-  Select,
+  Popconfirm,
   Space,
   Statistic,
   Table,
@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { AamadListRow } from '@shared/contracts'
+import AccountSearchSelect from '../components/AccountSearchSelect'
 
 export default function AamadPage(): JSX.Element {
   const { t } = useTranslation()
@@ -28,10 +29,6 @@ export default function AamadPage(): JSX.Element {
   const [open, setOpen] = useState(false)
   const [form] = Form.useForm()
 
-  const kisans = useQuery({
-    queryKey: ['accounts', 'kisan'],
-    queryFn: () => window.api.accounts.list({ type: 'kisan' })
-  })
   const aamads = useQuery({
     queryKey: ['aamad', kisanFilter, range],
     queryFn: () =>
@@ -55,7 +52,15 @@ export default function AamadPage(): JSX.Element {
     onError: (e: Error) => message.error(e.message)
   })
 
-  const kisanOptions = (kisans.data ?? []).map((k) => ({ value: k.id, label: k.name }))
+  const remove = useMutation({
+    mutationFn: (id: number) => window.api.aamad.delete(id),
+    onSuccess: () => {
+      message.success(t('aamad.deleted'))
+      queryClient.invalidateQueries({ queryKey: ['aamad'] })
+      queryClient.invalidateQueries({ queryKey: ['maps'] })
+    },
+    onError: (e: Error) => message.error(e.message)
+  })
 
   const onFinish = (v: {
     no: string
@@ -80,6 +85,7 @@ export default function AamadPage(): JSX.Element {
   }
 
   const columns = [
+    { title: 'ID', dataIndex: 'id', width: 70, render: (id: number) => `#${id}` },
     { title: t('aamad.no'), dataIndex: 'no', width: 120 },
     { title: t('common.date'), dataIndex: 'date', width: 120 },
     { title: t('aamad.kisan'), dataIndex: 'kisanName' },
@@ -88,6 +94,25 @@ export default function AamadPage(): JSX.Element {
       dataIndex: 'totalPackets',
       align: 'right' as const,
       width: 140
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 100,
+      align: 'center' as const,
+      render: (_: unknown, r: AamadListRow) => (
+        <Popconfirm
+          title={t('aamad.deleteConfirm')}
+          okText={t('common.delete')}
+          okButtonProps={{ danger: true }}
+          cancelText={t('common.cancel')}
+          onConfirm={() => remove.mutate(r.id)}
+        >
+          <Button size="small" danger type="text">
+            {t('common.delete')}
+          </Button>
+        </Popconfirm>
+      )
     }
   ]
 
@@ -103,14 +128,12 @@ export default function AamadPage(): JSX.Element {
       </Space>
 
       <Space style={{ marginBottom: 16 }} wrap>
-        <Select
+        <AccountSearchSelect
+          type="kisan"
           allowClear
           style={{ width: 220 }}
           placeholder={t('aamad.kisan')}
-          options={kisanOptions}
           value={kisanFilter}
-          showSearch
-          optionFilterProp="label"
           onChange={(v) => setKisanFilter(v)}
         />
         <DatePicker.RangePicker
@@ -153,7 +176,7 @@ export default function AamadPage(): JSX.Element {
               <DatePicker format="YYYY-MM-DD" />
             </Form.Item>
             <Form.Item name="kisanAccountId" label={t('aamad.kisan')} rules={[{ required: true }]}>
-              <Select options={kisanOptions} showSearch optionFilterProp="label" style={{ width: 220 }} />
+              <AccountSearchSelect type="kisan" placeholder={t('aamad.kisan')} style={{ width: 220 }} />
             </Form.Item>
           </Space>
 

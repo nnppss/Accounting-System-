@@ -1,10 +1,17 @@
 import { and, asc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm'
 import { db } from '../data/db'
 import {
+  aamad,
   account,
   accountSeries,
+  bardana,
+  cheque,
+  loan,
+  nikasi,
+  nikasiLine,
   openingBalance,
   person,
+  sauda,
   subgroup,
   voucher,
   voucherEntry
@@ -311,31 +318,127 @@ export function setDefaulter(accountId: number, isDefaulter: boolean, userId?: n
 }
 
 /**
+ * Find every row, in every table, that still points at this account — collecting the actual record
+ * ids so the error can name them (e.g. "sauda #1, #4"). Ordered so the most fundamental blocker
+ * (ledger entries) reads first. Returns only the tables that actually reference it, each with a
+ * human label, the blocking ids, and what the user must remove to clear it.
+ */
+function findAccountReferences(
+  accountId: number
+): { label: string; ids: number[]; remove: string }[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const idsWhere = (table: any, idColumn: any, condition: any): number[] => {
+    const rows = db().selectDistinct({ id: idColumn }).from(table).where(condition).all()
+    return rows
+      .map((r: { id: number | null }) => r.id)
+      .filter((v): v is number => v != null)
+      .sort((a, b) => a - b)
+  }
+
+  // A party can appear on a nikasi as the delivery target and/or on its lines as the stock source;
+  // collapse both to the parent gate-pass ids so the user sees one nikasi to remove.
+  const nikasiIds = [
+    ...new Set([
+      ...idsWhere(nikasi, nikasi.id, eq(nikasi.deliveredToAccountId, accountId)),
+      ...idsWhere(nikasiLine, nikasiLine.nikasiId, eq(nikasiLine.fromKisanAccountId, accountId))
+    ])
+  ].sort((a, b) => a - b)
+
+  const checks: { label: string; ids: number[]; remove: string }[] = [
+    {
+      label: 'ledger voucher',
+      ids: idsWhere(voucherEntry, voucherEntry.voucherId, eq(voucherEntry.accountId, accountId)),
+      remove: 'these are posted vouchers — they cannot be removed; keep the account as a dormant record instead'
+    },
+    {
+      label: 'aamad (intake)',
+      ids: idsWhere(aamad, aamad.id, eq(aamad.kisanAccountId, accountId)),
+      remove: 'delete the aamad entries for this party first'
+    },
+    {
+      label: 'sauda (deal)',
+      ids: idsWhere(
+        sauda,
+        sauda.id,
+        or(eq(sauda.vyapariAccountId, accountId), eq(sauda.kisanAccountId, accountId))
+      ),
+      remove: 'delete the sauda entries that name this party first'
+    },
+    {
+      label: 'nikasi (gate pass)',
+      ids: nikasiIds,
+      remove: 'delete the nikasi gate passes that name this party first'
+    },
+    {
+      label: 'loan',
+      ids: idsWhere(loan, loan.id, or(eq(loan.accountId, accountId), eq(loan.bankAccountId, accountId))),
+      remove: 'delete the loan entries linked to this party first'
+    },
+    {
+      label: 'bardana entry',
+      ids: idsWhere(
+        bardana,
+        bardana.id,
+        or(eq(bardana.partyAccountId, accountId), eq(bardana.bankAccountId, accountId))
+      ),
+      remove: 'delete the bardana entries that name this party first'
+    },
+    {
+      label: 'cheque',
+      ids: idsWhere(
+        cheque,
+        cheque.id,
+        or(eq(cheque.partyAccountId, accountId), eq(cheque.bankAccountId, accountId))
+      ),
+      remove: 'delete the cheque entries linked to this party first'
+    }
+  ]
+
+  return checks.filter((c) => c.ids.length > 0)
+}
+
+/** "#1, #4, #7" — capped so a long list does not bloat the message. */
+function formatIds(ids: number[]): string {
+  const shown = ids.slice(0, 10).map((id) => `#${id}`).join(', ')
+  return ids.length > 10 ? `${shown}, …` : shown
+}
+
+/**
  * Permanently delete a party account. Refused for the cold's own system heads, and for any account
- * that has ledger activity (a voucher entry) — those must stay for an auditable trail; mark them a
- * defaulter or leave them dormant instead. Foreign keys are the backstop if some other table still
- * references the account. Password-gating happens at the IPC layer.
+ * still referenced by a financial or physical-stock document. Before deleting we scan every table
+ * that can point at the account so the error can name the exact blocker(s), their record ids, and
+ * tell the user what to remove — rather than relying on the opaque foreign-key failure.
+ * Password-gating happens at the IPC layer.
  */
 export function deleteAccount(accountId: number, userId?: number): void {
   const acct = db().select().from(account).where(eq(account.id, accountId)).get()
   if (!acct) throw new Error(`Account ${accountId} not found`)
   if (acct.isSystem) throw new Error('System accounts cannot be deleted')
 
-  const used = db()
-    .select({ id: voucherEntry.id })
-    .from(voucherEntry)
-    .where(eq(voucherEntry.accountId, accountId))
-    .get()
-  if (used) {
+  const refs = findAccountReferences(accountId)
+  if (refs.length > 0) {
+    const summary = refs
+      .map((r) => `${r.ids.length} ${r.label}${r.ids.length === 1 ? '' : 's'} (${formatIds(r.ids)})`)
+      .join(', ')
+    const steps = refs.map((r) => `• ${r.remove}`)
+    // De-duplicate guidance lines (e.g. several physical docs share the same instruction).
+    const uniqueSteps = [...new Set(steps)]
     throw new Error(
-      'This account has ledger transactions and cannot be deleted. Mark it a defaulter or leave it dormant.'
+      `"${acct.name}" cannot be deleted because it is still referenced by: ${summary}.\n\n` +
+        `To delete this account, first:\n${uniqueSteps.join('\n')}\n\n` +
+        `If it has ledger transactions, the account must be kept for an auditable trail — ` +
+        `mark it a defaulter or leave it dormant instead.`
     )
   }
 
   try {
     db().delete(account).where(eq(account.id, accountId)).run()
   } catch {
-    throw new Error('This account is referenced by other records and cannot be deleted.')
+    // Backstop: a foreign key we didn't enumerate above still references the account.
+    throw new Error(
+      `"${acct.name}" is still referenced by another record and cannot be deleted. ` +
+        `Remove the documents that name this party, then try again.`
+    )
   }
   writeAudit({ userId, action: 'delete', entity: 'account', entityId: accountId, before: acct })
 }

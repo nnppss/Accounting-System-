@@ -5,7 +5,7 @@ import {
   DatePicker,
   Form,
   InputNumber,
-  Select,
+  Popconfirm,
   Space,
   Table,
   Typography
@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { SaudaListRow } from '@shared/contracts'
 import { formatINR, toPaise } from '../lib/format'
+import AccountSearchSelect from '../components/AccountSearchSelect'
 
 export default function SaudaPage(): JSX.Element {
   const { t } = useTranslation()
@@ -22,14 +23,6 @@ export default function SaudaPage(): JSX.Element {
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
 
-  const vyaparis = useQuery({
-    queryKey: ['accounts', 'vyapari'],
-    queryFn: () => window.api.accounts.list({ type: 'vyapari' })
-  })
-  const kisans = useQuery({
-    queryKey: ['accounts', 'kisan'],
-    queryFn: () => window.api.accounts.list({ type: 'kisan' })
-  })
   const saudas = useQuery({ queryKey: ['sauda'], queryFn: () => window.api.sauda.list() })
 
   const create = useMutation({
@@ -43,10 +36,17 @@ export default function SaudaPage(): JSX.Element {
     onError: (e: Error) => message.error(e.message)
   })
 
-  const vyapariOptions = (vyaparis.data ?? []).map((v) => ({ value: v.id, label: v.name }))
-  const kisanOptions = (kisans.data ?? []).map((k) => ({ value: k.id, label: k.name }))
+  const remove = useMutation({
+    mutationFn: (id: number) => window.api.sauda.delete(id),
+    onSuccess: () => {
+      message.success(t('sauda.deleted'))
+      queryClient.invalidateQueries({ queryKey: ['sauda'] })
+    },
+    onError: (e: Error) => message.error(e.message)
+  })
 
   const columns = [
+    { title: 'ID', dataIndex: 'id', width: 70, render: (id: number) => `#${id}` },
     { title: t('common.date'), dataIndex: 'date', width: 120 },
     { title: t('sauda.vyapari'), dataIndex: 'vyapariName' },
     { title: t('sauda.kisan'), dataIndex: 'kisanName' },
@@ -57,6 +57,25 @@ export default function SaudaPage(): JSX.Element {
       align: 'right' as const,
       width: 140,
       render: (v: number) => formatINR(v)
+    },
+    {
+      title: t('common.actions'),
+      key: 'actions',
+      width: 100,
+      align: 'center' as const,
+      render: (_: unknown, r: SaudaListRow) => (
+        <Popconfirm
+          title={t('sauda.deleteConfirm')}
+          okText={t('common.delete')}
+          okButtonProps={{ danger: true }}
+          cancelText={t('common.cancel')}
+          onConfirm={() => remove.mutate(r.id)}
+        >
+          <Button size="small" danger type="text">
+            {t('common.delete')}
+          </Button>
+        </Popconfirm>
+      )
     }
   ]
 
@@ -85,22 +104,14 @@ export default function SaudaPage(): JSX.Element {
             <DatePicker format="YYYY-MM-DD" />
           </Form.Item>
           <Form.Item name="vyapariAccountId" rules={[{ required: true }]}>
-            <Select
+            <AccountSearchSelect
+              type="vyapari"
               placeholder={t('sauda.vyapari')}
-              options={vyapariOptions}
-              showSearch
-              optionFilterProp="label"
               style={{ width: 180 }}
             />
           </Form.Item>
           <Form.Item name="kisanAccountId" rules={[{ required: true }]}>
-            <Select
-              placeholder={t('sauda.kisan')}
-              options={kisanOptions}
-              showSearch
-              optionFilterProp="label"
-              style={{ width: 180 }}
-            />
+            <AccountSearchSelect type="kisan" placeholder={t('sauda.kisan')} style={{ width: 180 }} />
           </Form.Item>
           <Form.Item name="packets" rules={[{ required: true }]}>
             <InputNumber min={1} placeholder={t('sauda.packets')} />

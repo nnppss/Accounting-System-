@@ -7,9 +7,9 @@ import type {
   SaudaInput,
   StoreConfig
 } from '../../shared/contracts'
-import { createAamad, getAamad, listAamad } from '../services/aamad'
-import { createSauda, latestRate, listSauda } from '../services/sauda'
-import { createNikasi, getNikasi, listNikasi } from '../services/nikasi'
+import { createAamad, deleteAamad, getAamad, listAamad } from '../services/aamad'
+import { createSauda, deleteSauda, latestRate, listSauda } from '../services/sauda'
+import { createNikasi, deleteNikasi, getNikasi, listNikasi } from '../services/nikasi'
 import { getMap, getRackStock } from '../services/maps'
 import { getStoreConfig, setStoreConfig } from '../services/store'
 import { accrueAllRent, accrueRent, getStandingBhada } from '../engines/bhada'
@@ -32,6 +32,10 @@ export function registerStockIpc(): void {
     listAamad(requireSession().yearId, filter)
   )
   ipcMain.handle('aamad:get', (_e, id: number) => getAamad(id))
+  ipcMain.handle('aamad:delete', (_e, id: number) => {
+    const s = requireSession()
+    return deleteAamad(s.yearId, id, s.userId)
+  })
 
   // Sauda
   ipcMain.handle('sauda:create', (_e, input: SaudaInput) => {
@@ -39,6 +43,10 @@ export function registerStockIpc(): void {
     return createSauda(s.yearId, input, s.userId)
   })
   ipcMain.handle('sauda:list', () => listSauda(requireSession().yearId))
+  ipcMain.handle('sauda:delete', (_e, id: number) => {
+    const s = requireSession()
+    return deleteSauda(s.yearId, id, s.userId)
+  })
   ipcMain.handle('sauda:latestRate', (_e, vyapariAccountId: number, kisanAccountId: number) =>
     latestRate(requireSession().yearId, vyapariAccountId, kisanAccountId)
   )
@@ -50,6 +58,10 @@ export function registerStockIpc(): void {
   })
   ipcMain.handle('nikasi:list', () => listNikasi(requireSession().yearId))
   ipcMain.handle('nikasi:get', (_e, id: number) => getNikasi(id))
+  ipcMain.handle('nikasi:delete', (_e, id: number) => {
+    const s = requireSession()
+    return deleteNikasi(s.yearId, id, s.userId)
+  })
 
   // Maps
   ipcMain.handle('maps:get', (_e, type: MapType) => getMap(requireSession().yearId, type))

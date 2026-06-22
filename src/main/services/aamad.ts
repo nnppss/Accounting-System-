@@ -60,6 +60,25 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
   })
 }
 
+/**
+ * Delete an aamad (stock-in) along with its location lines. Aamad posts nothing, so there is no
+ * voucher to reverse — but note that removing it lowers the stock the maps compute, so only delete
+ * mistaken entries. Scoped to the year and done in one transaction; the change is audited.
+ */
+export function deleteAamad(yearId: number, id: number, userId?: number): void {
+  db().transaction((tx) => {
+    const header = tx
+      .select()
+      .from(aamad)
+      .where(and(eq(aamad.id, id), eq(aamad.yearId, yearId)))
+      .get()
+    if (!header) throw new Error(`Aamad ${id} not found`)
+    tx.delete(aamadLocation).where(eq(aamadLocation.aamadId, id)).run()
+    tx.delete(aamad).where(eq(aamad.id, id)).run()
+    writeAudit({ userId, action: 'delete', entity: 'aamad', entityId: id, before: header }, tx)
+  })
+}
+
 export function listAamad(yearId: number, filter: AamadSearchFilter = {}): AamadListResult {
   const conds = [eq(aamad.yearId, yearId)]
   if (filter.kisanAccountId) conds.push(eq(aamad.kisanAccountId, filter.kisanAccountId))

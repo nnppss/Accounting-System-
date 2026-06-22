@@ -29,6 +29,22 @@ export function createSauda(yearId: number, input: SaudaInput, userId?: number):
   return row.id
 }
 
+/**
+ * Delete a sauda (deal record). Sauda posts nothing and is referenced by no other table, so it is
+ * a safe leaf delete — removing it simply withdraws the agreed rate. Scoped to the year so a stale
+ * id from another year can't be removed. The change is audited.
+ */
+export function deleteSauda(yearId: number, id: number, userId?: number): void {
+  const row = db()
+    .select()
+    .from(sauda)
+    .where(and(eq(sauda.id, id), eq(sauda.yearId, yearId)))
+    .get()
+  if (!row) throw new Error(`Sauda ${id} not found`)
+  db().delete(sauda).where(eq(sauda.id, id)).run()
+  writeAudit({ userId, action: 'delete', entity: 'sauda', entityId: id, before: row })
+}
+
 export function listSauda(yearId: number): SaudaListRow[] {
   const vyapari = aliasedTable(account, 'vyapari')
   const kisan = aliasedTable(account, 'kisan')

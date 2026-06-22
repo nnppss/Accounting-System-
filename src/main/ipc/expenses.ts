@@ -5,7 +5,7 @@ import type {
   LoadingContractorYearInput
 } from '../../shared/contracts'
 import type { BardanaDirection } from '../../shared/enums'
-import { createBardana, getBardanaAccount, listBardana } from '../services/bardana'
+import { createBardana, deleteBardana, getBardanaAccount, listBardana } from '../services/bardana'
 import {
   getLoadingContractorYear,
   listLoadingContractorYears,
@@ -28,6 +28,10 @@ export function registerExpensesIpc(): void {
     listBardana(requireSession().yearId, direction)
   )
   ipcMain.handle('bardana:account', () => getBardanaAccount(requireSession().yearId))
+  ipcMain.handle('bardana:delete', (_e, id: number) => {
+    const s = requireSession()
+    return deleteBardana(s.yearId, id, s.userId)
+  })
 
   // Staff salaries
   ipcMain.handle('expenses:paySalary', (_e, input: ExpensePaymentInput) => {

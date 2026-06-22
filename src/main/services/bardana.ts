@@ -1,6 +1,6 @@
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, bardana } from '../data/schema'
+import { account, bardana, voucher } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type { BardanaAccount, BardanaInput, BardanaRow, CreateBardanaResult } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
@@ -83,6 +83,36 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
     tx.update(bardana).set({ voucherId: res.voucherId }).where(eq(bardana.id, row.id)).run()
     writeAudit({ userId, action: 'create', entity: 'bardana', entityId: row.id, after: { ...input, amountPaise } }, tx)
     return { bardanaId: row.id, voucherId: res.voucherId }
+  })
+}
+
+/**
+ * Delete a bardana transaction. Its auto-posted voucher (purchase → payment, issue → receipt) is
+ * voided first so the cash/bank and bardana heads reverse out of every balance — no hard ledger
+ * deletes; the voided voucher stays for the trail. Scoped to the year, atomic, and audited.
+ */
+export function deleteBardana(yearId: number, id: number, userId?: number): void {
+  db().transaction((tx) => {
+    const row = tx
+      .select()
+      .from(bardana)
+      .where(and(eq(bardana.id, id), eq(bardana.yearId, yearId)))
+      .get()
+    if (!row) throw new Error(`Bardana ${id} not found`)
+
+    if (row.voucherId) {
+      const v = tx.select().from(voucher).where(eq(voucher.id, row.voucherId)).get()
+      if (v && !v.voidedAt) {
+        tx.update(voucher)
+          .set({ voidedAt: new Date(), voidedReason: `Bardana entry #${row.id} deleted` })
+          .where(eq(voucher.id, row.voucherId))
+          .run()
+        writeAudit({ userId, action: 'void', entity: 'voucher', entityId: row.voucherId, before: v }, tx)
+      }
+    }
+
+    tx.delete(bardana).where(eq(bardana.id, id)).run()
+    writeAudit({ userId, action: 'delete', entity: 'bardana', entityId: id, before: row }, tx)
   })
 }
 
