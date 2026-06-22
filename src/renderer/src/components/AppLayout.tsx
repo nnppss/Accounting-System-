@@ -10,6 +10,7 @@ import {
   FileDoneOutlined,
   FileTextOutlined,
   FilterOutlined,
+  IdcardOutlined,
   InboxOutlined,
   LockOutlined,
   LogoutOutlined,
@@ -25,6 +26,7 @@ import i18n from '../i18n'
 import { useSession } from '../store/session'
 import AccountsPage from '../pages/AccountsPage'
 import AccountLedgerPage from '../pages/AccountLedgerPage'
+import PeoplePage from '../pages/PeoplePage'
 import VouchersPage from '../pages/VouchersPage'
 import TrialBalancePage from '../pages/TrialBalancePage'
 import MoneyBookPage from '../pages/MoneyBookPage'
@@ -56,6 +58,7 @@ export default function AppLayout(): JSX.Element {
 
   const items = [
     { key: '/accounts', icon: <TeamOutlined />, label: t('nav.accounts') },
+    { key: '/people', icon: <IdcardOutlined />, label: t('nav.people') },
     { key: '/aamad', icon: <InboxOutlined />, label: t('nav.aamad') },
     { key: '/maps', icon: <AppstoreOutlined />, label: t('nav.maps') },
     { key: '/sauda', icon: <FileDoneOutlined />, label: t('nav.sauda') },
@@ -128,6 +131,7 @@ export default function AppLayout(): JSX.Element {
             <Route path="/" element={<Navigate to="/accounts" replace />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/accounts/:id" element={<AccountLedgerPage />} />
+            <Route path="/people" element={<PeoplePage />} />
             <Route path="/aamad" element={<AamadPage />} />
             <Route path="/maps" element={<MapsPage />} />
             <Route path="/sauda" element={<SaudaPage />} />

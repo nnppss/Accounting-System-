@@ -7,8 +7,10 @@ import {
   createAccount,
   createPerson,
   deleteAccount,
+  deletePerson,
   getAccountDetail,
   listAccounts,
+  listPersons,
   setDefaulter,
   setOpeningBalance,
   updateAccountIdentity
@@ -218,5 +220,27 @@ describe('Account Manager', () => {
   it('refuses to delete a system account', () => {
     const cash = listAccounts(yearId, { includeSystem: true }).find((r) => r.name === 'Cash')!
     expect(() => deleteAccount(cash.id)).toThrow(/System accounts/)
+  })
+
+  it('deletes an unlinked person', () => {
+    const personId = createPerson({ name: 'Orphan Singh', villageCity: 'Agra' })
+    deletePerson(personId)
+    expect(listPersons('Orphan')).toHaveLength(0)
+  })
+
+  it('refuses to delete a person still linked to an account', () => {
+    const personId = createPerson({ name: 'Linked Singh' })
+    const acctId = createAccount({
+      name: 'Linked (Kisan)',
+      type: 'kisan',
+      subgroupId: groupId('Farmer'),
+      personId
+    })
+    expect(() => deletePerson(personId)).toThrow(/still linked/)
+    expect(listPersons('Linked')).toHaveLength(1)
+    // Once the account is gone, the person can be removed.
+    deleteAccount(acctId)
+    deletePerson(personId)
+    expect(listPersons('Linked')).toHaveLength(0)
   })
 })

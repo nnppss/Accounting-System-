@@ -114,7 +114,8 @@ const api = {
   },
   persons: {
     create: (input: PersonInput): Promise<number> => ipcRenderer.invoke('persons:create', input),
-    list: (search?: string): Promise<PersonRow[]> => ipcRenderer.invoke('persons:list', search)
+    list: (search?: string): Promise<PersonRow[]> => ipcRenderer.invoke('persons:list', search),
+    delete: (personId: number): Promise<void> => ipcRenderer.invoke('persons:delete', personId)
   },
   vouchers: {
     receipt: (arg: ReceiptArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:receipt', arg),

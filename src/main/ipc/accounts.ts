@@ -4,6 +4,7 @@ import {
   createAccount,
   createPerson,
   deleteAccount,
+  deletePerson,
   getAccountDetail,
   listAccounts,
   listPersons,
@@ -71,4 +72,7 @@ export function registerAccountsIpc(): void {
   })
   ipcMain.handle('persons:create', (_e, input: PersonInput) => createPerson(input))
   ipcMain.handle('persons:list', (_e, search?: string) => listPersons(search))
+  ipcMain.handle('persons:delete', (_e, personId: number) =>
+    deletePerson(personId, requireSession().userId)
+  )
 }

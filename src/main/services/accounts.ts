@@ -85,6 +85,33 @@ export function listPersons(search?: string): Array<typeof person.$inferSelect> 
   return q.orderBy(asc(person.name)).limit(50).all()
 }
 
+/**
+ * Delete a person from the master identity list. Refuses while any account still links to them
+ * (account.personId) — those accounts must be deleted or re-pointed first. Audited.
+ */
+export function deletePerson(personId: number, userId?: number): void {
+  const p = db().select().from(person).where(eq(person.id, personId)).get()
+  if (!p) throw new Error(`Person ${personId} not found`)
+
+  const linked = db()
+    .select({ code: account.code, name: account.name })
+    .from(account)
+    .where(eq(account.personId, personId))
+    .orderBy(asc(account.name))
+    .all()
+  if (linked.length > 0) {
+    const list = linked.map((a) => (a.code ? `${a.code} (${a.name})` : a.name)).join(', ')
+    throw new Error(
+      `"${p.name}" cannot be deleted because it is still linked to ${linked.length} ` +
+        `account${linked.length === 1 ? '' : 's'}: ${list}.\n\n` +
+        `Delete or re-assign those accounts first, then remove this person.`
+    )
+  }
+
+  db().delete(person).where(eq(person.id, personId)).run()
+  writeAudit({ userId, action: 'delete', entity: 'person', entityId: personId, before: p })
+}
+
 /** Account-number prefix per type — e.g. a kisan account becomes K-26-0001. */
 const CODE_PREFIX: Record<AccountType, string> = {
   kisan: 'K',

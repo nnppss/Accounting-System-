@@ -108,9 +108,11 @@ export default function AccountsPage(): JSX.Element {
     enabled: hasQuery
   })
   const subgroups = useQuery({ queryKey: ['subgroups'], queryFn: () => window.api.accounts.subgroups() })
+  // Type-ahead only: don't fetch the full person master on open — wait for a search term.
   const persons = useQuery({
     queryKey: ['persons', personSearch],
-    queryFn: () => window.api.persons.list(personSearch || undefined)
+    queryFn: () => window.api.persons.list(personSearch),
+    enabled: personSearch.trim().length > 0
   })
 
   const onPersonSearch = (v: string): void => {
@@ -179,13 +181,16 @@ export default function AccountsPage(): JSX.Element {
   const typeOptions = ACCOUNT_TYPES.map((ty) => ({ value: ty, label: t(`accounts.type.${ty}`) }))
   const subgroupOptions = (subgroups.data ?? []).map((s) => ({ value: s.id, label: s.name }))
   const personOptions = useMemo(() => {
-    const base = (persons.data ?? []).map((p) => {
-      const id = p.sonOf ? `${p.name} s/o ${p.sonOf}` : p.name
-      return { value: p.id, label: p.villageCity ? `${id} · ${p.villageCity}` : id }
-    })
+    // Only surface matches once the user has typed; otherwise just keep pinned (selected/new) ones.
+    const base = personSearch.trim()
+      ? (persons.data ?? []).map((p) => {
+          const id = p.sonOf ? `${p.name} s/o ${p.sonOf}` : p.name
+          return { value: p.id, label: p.villageCity ? `${id} · ${p.villageCity}` : id }
+        })
+      : []
     const ids = new Set(base.map((o) => o.value))
     return [...pinnedPersons.filter((o) => !ids.has(o.value)), ...base]
-  }, [persons.data, pinnedPersons])
+  }, [persons.data, pinnedPersons, personSearch])
 
   const columns = [
     {
@@ -354,7 +359,17 @@ export default function AccountsPage(): JSX.Element {
                   onSearch={onPersonSearch}
                   options={personOptions}
                   loading={persons.isFetching}
-                  notFoundContent={persons.isFetching ? <Spin size="small" /> : null}
+                  notFoundContent={
+                    persons.isFetching ? (
+                      <Spin size="small" />
+                    ) : personSearch.trim() ? (
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noResults')} />
+                    ) : (
+                      <Typography.Text type="secondary" style={{ padding: '4px 0', display: 'block' }}>
+                        {t('common.typeToSearch')}
+                      </Typography.Text>
+                    )
+                  }
                   style={{ width: '100%' }}
                   placeholder={t('accounts.personSearch')}
                 />
