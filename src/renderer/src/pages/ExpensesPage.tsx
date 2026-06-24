@@ -1,16 +1,17 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   App as AntApp,
   Button,
-  Card,
   DatePicker,
+  Drawer,
   Form,
   Input,
   InputNumber,
   Modal,
   Select,
+  Space,
   Table,
-  Tabs,
+  Tag,
   Typography
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -19,100 +20,83 @@ import dayjs from 'dayjs'
 import type { ExpenseRow, LoadingContractorYearRow } from '@shared/contracts'
 import type { AccountType, PaymentMode } from '@shared/enums'
 import { formatINR, toPaise } from '../lib/format'
+import AccountSearchSelect from '../components/AccountSearchSelect'
 
-/** Shared salary / loading payment form: Dr Expense / Cr Cash-Bank. */
-function PayForm({
-  partyType,
-  partyLabel,
-  onPay,
-  pending
-}: {
-  partyType: AccountType
-  partyLabel: string
-  onPay: (input: {
-    partyAccountId: number
-    amountPaise: number
-    date: string
-    mode: PaymentMode
-    bankAccountId?: number
-    narration?: string
-  }) => void
-  pending: boolean
-}): JSX.Element {
-  const { t } = useTranslation()
-  const [form] = Form.useForm()
-  const mode = Form.useWatch('mode', form) as PaymentMode | undefined
+/** Salary and loading payments share one register; `kind` tags which expense head a row hit. */
+type ExpenseKind = 'salary' | 'loading'
+type ExpenseRegisterRow = ExpenseRow & { kind: ExpenseKind }
 
-  const parties = useQuery({
-    queryKey: ['accounts', partyType],
-    queryFn: () => window.api.accounts.list({ type: partyType })
-  })
-  const banks = useQuery({ queryKey: ['moneybook', 'accounts'], queryFn: () => window.api.moneybook.accounts() })
-  const partyOptions = (parties.data ?? []).map((a) => ({ value: a.id, label: a.name }))
-  const bankOptions = (banks.data ?? []).filter((b) => b.name !== 'Cash').map((b) => ({ value: b.id, label: b.name }))
-
-  return (
-    <Card style={{ marginBottom: 24 }}>
-      <Form
-        form={form}
-        layout="inline"
-        initialValues={{ date: dayjs(), mode: 'cash' }}
-        onFinish={(v) => {
-          onPay({
-            partyAccountId: v.partyAccountId,
-            amountPaise: toPaise(v.amount),
-            date: (v.date as dayjs.Dayjs).format('YYYY-MM-DD'),
-            mode: v.mode,
-            bankAccountId: v.mode === 'bank' ? v.bankAccountId : undefined,
-            narration: v.narration || undefined
-          })
-          form.resetFields()
-        }}
-      >
-        <Form.Item name="partyAccountId" rules={[{ required: true }]}>
-          <Select
-            placeholder={partyLabel}
-            options={partyOptions}
-            showSearch
-            optionFilterProp="label"
-            style={{ width: 180 }}
-          />
-        </Form.Item>
-        <Form.Item name="amount" rules={[{ required: true }]}>
-          <InputNumber min={0} precision={2} addonBefore="₹" placeholder={t('common.amount')} />
-        </Form.Item>
-        <Form.Item name="date" rules={[{ required: true }]}>
-          <DatePicker format="YYYY-MM-DD" />
-        </Form.Item>
-        <Form.Item name="mode" rules={[{ required: true }]}>
-          <Select
-            style={{ width: 110 }}
-            options={(['cash', 'bank'] as PaymentMode[]).map((m) => ({ value: m, label: t(`loans.mode.${m}`) }))}
-          />
-        </Form.Item>
-        {mode === 'bank' && (
-          <Form.Item name="bankAccountId" rules={[{ required: true }]}>
-            <Select placeholder={t('loans.bank')} options={bankOptions} style={{ width: 150 }} />
-          </Form.Item>
-        )}
-        <Form.Item name="narration">
-          <Input placeholder={t('common.narration')} style={{ width: 180 }} />
-        </Form.Item>
-        <Form.Item>
-          <Button type="primary" htmlType="submit" loading={pending}>
-            {t('expenses.pay')}
-          </Button>
-        </Form.Item>
-      </Form>
-    </Card>
-  )
+const KIND_META: Record<
+  ExpenseKind,
+  { partyType: AccountType; labelKey: string; color: string; defaultNarration: string }
+> = {
+  salary: { partyType: 'staff', labelKey: 'expenses.staff', color: 'blue', defaultNarration: 'Staff salary' },
+  loading: {
+    partyType: 'loading_contractor',
+    labelKey: 'expenses.contractor',
+    color: 'gold',
+    defaultNarration: 'Loading contractor charges'
+  }
 }
 
-function Register({ rows, loading }: { rows: ExpenseRow[]; loading: boolean }): JSX.Element {
+export default function ExpensesPage(): JSX.Element {
   const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [chargesOpen, setChargesOpen] = useState(false)
+
+  const [kindFilter, setKindFilter] = useState<'all' | ExpenseKind>('all')
+  const [partyFilter, setPartyFilter] = useState<number | undefined>()
+  const [range, setRange] = useState<[string, string] | undefined>()
+  const [minAmount, setMinAmount] = useState<number | undefined>()
+  const [maxAmount, setMaxAmount] = useState<number | undefined>()
+  const [narration, setNarration] = useState('')
+
+  const salary = useQuery({ queryKey: ['salaryRegister'], queryFn: () => window.api.expenses.salaryRegister() })
+  const loading = useQuery({ queryKey: ['loadingRegister'], queryFn: () => window.api.expenses.loadingRegister() })
+
+  const allRows = useMemo<ExpenseRegisterRow[]>(() => {
+    const s = (salary.data ?? []).map((r) => ({ ...r, kind: 'salary' as const }))
+    const l = (loading.data ?? []).map((r) => ({ ...r, kind: 'loading' as const }))
+    return [...s, ...l].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.voucherNo - a.voucherNo))
+  }, [salary.data, loading.data])
+
+  const rows = useMemo(() => {
+    const min = minAmount != null ? toPaise(minAmount) : undefined
+    const max = maxAmount != null ? toPaise(maxAmount) : undefined
+    const term = narration.trim().toLowerCase()
+    return allRows.filter((r) => {
+      if (kindFilter !== 'all' && r.kind !== kindFilter) return false
+      if (partyFilter && r.partyAccountId !== partyFilter) return false
+      if (range && (r.date < range[0] || r.date > range[1])) return false
+      if (min != null && r.amountPaise < min) return false
+      if (max != null && r.amountPaise > max) return false
+      if (term && !(r.narration ?? '').toLowerCase().includes(term)) return false
+      return true
+    })
+  }, [allRows, kindFilter, partyFilter, range, minAmount, maxAmount, narration])
+
+  const filtersActive =
+    kindFilter !== 'all' || partyFilter || range || minAmount != null || maxAmount != null || narration.trim()
+
+  const clearFilters = (): void => {
+    setKindFilter('all')
+    setPartyFilter(undefined)
+    setRange(undefined)
+    setMinAmount(undefined)
+    setMaxAmount(undefined)
+    setNarration('')
+  }
+
   const columns = [
     { title: t('vouchers.no'), dataIndex: 'voucherNo', width: 70 },
     { title: t('common.date'), dataIndex: 'date', width: 120 },
+    {
+      title: t('expenses.type'),
+      dataIndex: 'kind',
+      width: 130,
+      render: (k: ExpenseKind) => <Tag color={KIND_META[k].color}>{t(`expenses.${k}`)}</Tag>
+    },
     { title: t('expenses.party'), dataIndex: 'partyName', render: (n: string | null) => n ?? t('common.none') },
     { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? t('common.none') },
     {
@@ -123,70 +107,217 @@ function Register({ rows, loading }: { rows: ExpenseRow[]; loading: boolean }): 
       render: (v: number) => formatINR(v)
     }
   ]
+
   return (
-    <Table
-      rowKey="voucherId"
-      size="small"
-      loading={loading}
-      columns={columns}
-      dataSource={rows}
-      pagination={{ pageSize: 12 }}
-      summary={(data) => {
-        const total = data.reduce((s, r) => s + r.amountPaise, 0)
-        return (
-          <Table.Summary.Row>
-            <Table.Summary.Cell index={0} colSpan={4}>
-              <strong>{t('common.total')}</strong>
-            </Table.Summary.Cell>
-            <Table.Summary.Cell index={4} align="right">
-              <strong>{formatINR(total)}</strong>
-            </Table.Summary.Cell>
-          </Table.Summary.Row>
-        )
-      }}
-    />
+    <div>
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          {t('expenses.title')}
+        </Typography.Title>
+        <Space>
+          <Button onClick={() => setChargesOpen(true)}>{t('expenses.contractorCharges')}</Button>
+          <Button type="primary" onClick={() => setOpen(true)}>
+            {t('expenses.new')}
+          </Button>
+        </Space>
+      </Space>
+
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Select
+          style={{ width: 150 }}
+          value={kindFilter}
+          onChange={(v) => setKindFilter(v)}
+          options={[
+            { value: 'all', label: t('common.all') },
+            ...(['salary', 'loading'] as ExpenseKind[]).map((k) => ({ value: k, label: t(`expenses.${k}`) }))
+          ]}
+        />
+        <AccountSearchSelect
+          allowClear
+          style={{ width: 200 }}
+          placeholder={t('expenses.searchParty')}
+          value={partyFilter}
+          onChange={(v) => setPartyFilter(v)}
+        />
+        <DatePicker.RangePicker
+          format="YYYY-MM-DD"
+          value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
+          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+        />
+        <InputNumber
+          min={0}
+          precision={2}
+          prefix="₹"
+          style={{ width: 130 }}
+          placeholder={t('expenses.minAmount')}
+          value={minAmount}
+          onChange={(v) => setMinAmount(v ?? undefined)}
+        />
+        <InputNumber
+          min={0}
+          precision={2}
+          prefix="₹"
+          style={{ width: 130 }}
+          placeholder={t('expenses.maxAmount')}
+          value={maxAmount}
+          onChange={(v) => setMaxAmount(v ?? undefined)}
+        />
+        <Input
+          allowClear
+          style={{ width: 200 }}
+          placeholder={t('expenses.searchNarration')}
+          value={narration}
+          onChange={(e) => setNarration(e.target.value)}
+        />
+        {filtersActive && (
+          <Button type="link" onClick={clearFilters}>
+            {t('expenses.clearFilters')}
+          </Button>
+        )}
+      </Space>
+
+      <Table
+        rowKey="voucherId"
+        size="small"
+        loading={salary.isLoading || loading.isLoading}
+        columns={columns}
+        dataSource={rows}
+        pagination={{ pageSize: 15 }}
+        summary={(data) => {
+          const total = data.reduce((s, r) => s + r.amountPaise, 0)
+          return (
+            <Table.Summary.Row>
+              <Table.Summary.Cell index={0} colSpan={5}>
+                <strong>{t('common.total')}</strong>
+              </Table.Summary.Cell>
+              <Table.Summary.Cell index={5} align="right">
+                <strong>{formatINR(total)}</strong>
+              </Table.Summary.Cell>
+            </Table.Summary.Row>
+          )
+        }}
+      />
+
+      <NewExpenseModal open={open} onClose={() => setOpen(false)} />
+      <ContractorChargesDrawer open={chargesOpen} onClose={() => setChargesOpen(false)} />
+    </div>
   )
 }
 
-function SalaryTab(): JSX.Element {
+/** Record one expense payment: pick the head (salary/loading), then Dr Expense / Cr Cash-Bank. */
+function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
-  const register = useQuery({ queryKey: ['salaryRegister'], queryFn: () => window.api.expenses.salaryRegister() })
+  const [form] = Form.useForm()
+  const kind = (Form.useWatch('kind', form) as ExpenseKind | undefined) ?? 'salary'
+  const mode = Form.useWatch('mode', form) as PaymentMode | undefined
+
+  const banks = useQuery({ queryKey: ['moneybook', 'accounts'], queryFn: () => window.api.moneybook.accounts() })
+  const bankOptions = (banks.data ?? []).filter((b) => b.name !== 'Cash').map((b) => ({ value: b.id, label: b.name }))
+
   const pay = useMutation({
-    mutationFn: (input: Parameters<typeof window.api.expenses.paySalary>[0]) =>
-      window.api.expenses.paySalary(input),
-    onSuccess: () => {
+    mutationFn: (v: {
+      kind: ExpenseKind
+      partyAccountId: number
+      amountPaise: number
+      date: string
+      mode: PaymentMode
+      bankAccountId?: number
+      narration?: string
+    }) => {
+      const input = {
+        partyAccountId: v.partyAccountId,
+        amountPaise: v.amountPaise,
+        date: v.date,
+        mode: v.mode,
+        bankAccountId: v.bankAccountId,
+        narration: v.narration
+      }
+      return v.kind === 'salary' ? window.api.expenses.paySalary(input) : window.api.expenses.payLoading(input)
+    },
+    onSuccess: (_r, v) => {
       message.success(t('expenses.paid'))
-      queryClient.invalidateQueries({ queryKey: ['salaryRegister'] })
+      queryClient.invalidateQueries({ queryKey: [v.kind === 'salary' ? 'salaryRegister' : 'loadingRegister'] })
+      form.resetFields()
+      onClose()
     },
     onError: (e: Error) => message.error(e.message)
   })
+
   return (
-    <>
-      <PayForm partyType="staff" partyLabel={t('expenses.staff')} onPay={pay.mutate} pending={pay.isPending} />
-      <Register rows={(register.data ?? []) as ExpenseRow[]} loading={register.isLoading} />
-    </>
+    <Modal
+      title={t('expenses.new')}
+      open={open}
+      onCancel={onClose}
+      onOk={() => form.submit()}
+      confirmLoading={pay.isPending}
+      okText={t('expenses.pay')}
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{ date: dayjs(), kind: 'salary', mode: 'cash' }}
+        onFinish={(v) =>
+          pay.mutate({
+            kind: v.kind,
+            partyAccountId: v.partyAccountId,
+            amountPaise: toPaise(v.amount),
+            date: (v.date as dayjs.Dayjs).format('YYYY-MM-DD'),
+            mode: v.mode,
+            bankAccountId: v.mode === 'bank' ? v.bankAccountId : undefined,
+            narration: v.narration || undefined
+          })
+        }
+      >
+        <Form.Item name="kind" label={t('expenses.type')} rules={[{ required: true }]}>
+          <Select
+            // Switching head changes which party type is valid — drop the stale party.
+            onChange={() => form.setFieldValue('partyAccountId', undefined)}
+            options={(['salary', 'loading'] as ExpenseKind[]).map((k) => ({ value: k, label: t(`expenses.${k}`) }))}
+          />
+        </Form.Item>
+        <Form.Item name="partyAccountId" label={t(KIND_META[kind].labelKey)} rules={[{ required: true }]}>
+          <AccountSearchSelect
+            type={KIND_META[kind].partyType}
+            placeholder={t(KIND_META[kind].labelKey)}
+            style={{ width: '100%' }}
+          />
+        </Form.Item>
+        <Form.Item name="amount" label={t('common.amount')} rules={[{ required: true }]}>
+          <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
+        </Form.Item>
+        <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
+          <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+        </Form.Item>
+        <Form.Item name="mode" label={t('loans.mode')} rules={[{ required: true }]}>
+          <Select
+            options={(['cash', 'bank'] as PaymentMode[]).map((m) => ({ value: m, label: t(`loans.mode.${m}`) }))}
+          />
+        </Form.Item>
+        {mode === 'bank' && (
+          <Form.Item name="bankAccountId" label={t('loans.bank')} rules={[{ required: true }]}>
+            <Select placeholder={t('loans.bank')} options={bankOptions} />
+          </Form.Item>
+        )}
+        <Form.Item name="narration" label={t('common.narration')}>
+          <Input placeholder={t('common.narration')} />
+        </Form.Item>
+      </Form>
+    </Modal>
   )
 }
 
-function LoadingTab(): JSX.Element {
+/** The per-year loading-contractor charges (rates + labourer counts), edited per contractor. */
+function ContractorChargesDrawer({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element {
   const { t } = useTranslation()
-  const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
   const [editRow, setEditRow] = useState<LoadingContractorYearRow | null>(null)
 
-  const years = useQuery({ queryKey: ['loadingYears'], queryFn: () => window.api.expenses.loadingYears() })
-  const register = useQuery({ queryKey: ['loadingRegister'], queryFn: () => window.api.expenses.loadingRegister() })
-
-  const pay = useMutation({
-    mutationFn: (input: Parameters<typeof window.api.expenses.payLoading>[0]) =>
-      window.api.expenses.payLoading(input),
-    onSuccess: () => {
-      message.success(t('expenses.paid'))
-      queryClient.invalidateQueries({ queryKey: ['loadingRegister'] })
-    },
-    onError: (e: Error) => message.error(e.message)
+  const years = useQuery({
+    queryKey: ['loadingYears'],
+    queryFn: () => window.api.expenses.loadingYears(),
+    enabled: open
   })
 
   const yearColumns = [
@@ -203,8 +334,8 @@ function LoadingTab(): JSX.Element {
       align: 'right' as const,
       render: (v: number) => formatINR(v)
     },
-    { title: t('expenses.labourersLoading'), dataIndex: 'labourersLoading', align: 'right' as const, width: 110 },
-    { title: t('expenses.labourersUnloading'), dataIndex: 'labourersUnloading', align: 'right' as const, width: 110 },
+    { title: t('expenses.labourersLoading'), dataIndex: 'labourersLoading', align: 'right' as const, width: 100 },
+    { title: t('expenses.labourersUnloading'), dataIndex: 'labourersUnloading', align: 'right' as const, width: 100 },
     {
       title: t('common.actions'),
       key: 'actions',
@@ -218,28 +349,19 @@ function LoadingTab(): JSX.Element {
   ]
 
   return (
-    <>
-      <Typography.Title level={5}>{t('expenses.yearCharges')}</Typography.Title>
+    <Drawer open={open} onClose={onClose} width={720} title={t('expenses.contractorCharges')}>
+      <Typography.Title level={5} style={{ marginTop: 0 }}>
+        {t('expenses.yearCharges')}
+      </Typography.Title>
       <Table
         rowKey="accountId"
         size="small"
-        style={{ marginBottom: 24 }}
         loading={years.isLoading}
         columns={yearColumns}
         dataSource={(years.data ?? []) as LoadingContractorYearRow[]}
         pagination={false}
         locale={{ emptyText: t('expenses.noContractors') }}
       />
-
-      <Typography.Title level={5}>{t('expenses.payments')}</Typography.Title>
-      <PayForm
-        partyType="loading_contractor"
-        partyLabel={t('expenses.contractor')}
-        onPay={pay.mutate}
-        pending={pay.isPending}
-      />
-      <Register rows={(register.data ?? []) as ExpenseRow[]} loading={register.isLoading} />
-
       {editRow && (
         <ChargesModal
           row={editRow}
@@ -250,7 +372,7 @@ function LoadingTab(): JSX.Element {
           }}
         />
       )}
-    </>
+    </Drawer>
   )
 }
 
@@ -317,22 +439,5 @@ function ChargesModal({
         </Form.Item>
       </Form>
     </Modal>
-  )
-}
-
-export default function ExpensesPage(): JSX.Element {
-  const { t } = useTranslation()
-  return (
-    <div>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        {t('expenses.title')}
-      </Typography.Title>
-      <Tabs
-        items={[
-          { key: 'salary', label: t('expenses.salary'), children: <SalaryTab /> },
-          { key: 'loading', label: t('expenses.loading'), children: <LoadingTab /> }
-        ]}
-      />
-    </div>
   )
 }
