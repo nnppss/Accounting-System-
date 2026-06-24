@@ -1,0 +1,38 @@
+/* Global chrome for the Paritosh Cold makeover. Purely cosmetic — no layout
+   behaviour is changed here. */
+
+:root {
+  --pc-surface: #e7eff6;
+  --pc-on-surface-variant: #5b7385;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  background: var(--pc-surface);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Slim, muted scrollbars to match the design system. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c9d8e6;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #90a4b3;
+}

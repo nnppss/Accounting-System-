@@ -1,4 +1,4 @@
-import { Button, Layout, Menu, Space, Typography } from 'antd'
+import { Avatar, Button, Layout, Menu, Space, Typography } from 'antd'
 import {
   AppstoreOutlined,
   AuditOutlined,
@@ -10,6 +10,7 @@ import {
   FileDoneOutlined,
   FileTextOutlined,
   FilterOutlined,
+  GlobalOutlined,
   IdcardOutlined,
   InboxOutlined,
   LockOutlined,
@@ -18,6 +19,7 @@ import {
   ShoppingOutlined,
   TeamOutlined,
   ToolOutlined,
+  UserOutlined,
   WalletOutlined
 } from '@ant-design/icons'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
@@ -44,6 +46,7 @@ import PartyPage from '../pages/PartyPage'
 import ClosePage from '../pages/ClosePage'
 import AuditPage from '../pages/AuditPage'
 import StorePage from '../pages/StorePage'
+import { palette } from '../theme'
 
 const { Header, Sider, Content } = Layout
 
@@ -88,40 +91,104 @@ export default function AppLayout(): JSX.Element {
 
   return (
     <Layout style={{ height: '100vh' }}>
-      <Sider theme="light" width={220} style={{ borderRight: '1px solid #f0f0f0' }}>
-        <div style={{ padding: '16px 20px' }}>
-          <Typography.Title level={4} style={{ margin: 0 }}>
+      <Sider
+        theme="light"
+        width={240}
+        style={{ borderRight: `1px solid ${palette.outlineVariant}`, height: '100vh' }}
+      >
+        <div
+          style={{
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column'
+          }}
+        >
+        {/* Brand block */}
+        <div style={{ padding: '20px 24px 16px' }}>
+          <Typography.Title level={4} style={{ margin: 0, color: palette.primary }}>
             {t('app.title')}
           </Typography.Title>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text
+            style={{
+              fontSize: 11,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: palette.onSurfaceVariant,
+              fontWeight: 600
+            }}
+          >
             {t('app.tagline')}
           </Typography.Text>
         </div>
-        <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={items}
-          onClick={({ key }) => navigate(key)}
-        />
+        {/* Scrollable nav */}
+        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
+          <Menu
+            mode="inline"
+            selectedKeys={[selectedKey]}
+            items={items}
+            onClick={({ key }) => navigate(key)}
+            style={{ borderInlineEnd: 'none', background: 'transparent' }}
+          />
+        </div>
+        {/* Session card pinned to the bottom */}
+        <div style={{ padding: 12, borderTop: `1px solid ${palette.outlineVariant}` }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: 12,
+              background: palette.surfaceContainerLow,
+              border: `1px solid ${palette.surfaceContainer}`,
+              borderRadius: 12
+            }}
+          >
+            <Avatar
+              size={40}
+              icon={<UserOutlined />}
+              style={{ background: palette.primaryFixed, color: palette.primary }}
+            />
+            <div style={{ minWidth: 0 }}>
+              <Typography.Text strong style={{ display: 'block', lineHeight: 1.2 }} ellipsis>
+                {session?.accountantName}
+              </Typography.Text>
+              <Typography.Text
+                style={{
+                  fontSize: 10,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: palette.onSurfaceVariant,
+                  fontWeight: 600
+                }}
+              >
+                {session?.year}
+              </Typography.Text>
+            </div>
+          </div>
+        </div>
+        </div>
       </Sider>
       <Layout>
         <Header
           style={{
-            background: '#fff',
-            borderBottom: '1px solid #f0f0f0',
+            background: palette.surfaceContainerLowest,
+            borderBottom: `1px solid ${palette.outlineVariant}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
-            paddingInline: 24
+            paddingInline: 24,
+            boxShadow: '0 1px 2px rgba(26,27,32,0.04)'
           }}
         >
-          <Space size="large">
-            <Typography.Text strong>{session?.year}</Typography.Text>
-            <Typography.Text type="secondary">{session?.accountantName}</Typography.Text>
-            <Button size="small" onClick={toggleLang}>
+          <Space size="middle" align="center">
+            <Space size={6} align="center">
+              <Typography.Text strong>{session?.accountantName}</Typography.Text>
+              <Typography.Text type="secondary">· {session?.year}</Typography.Text>
+            </Space>
+            <Button size="small" icon={<GlobalOutlined />} onClick={toggleLang}>
               {t('lang.toggle')}
             </Button>
-            <Button size="small" icon={<LogoutOutlined />} onClick={logout}>
+            <Button size="small" danger icon={<LogoutOutlined />} onClick={logout}>
               {t('nav.logout')}
             </Button>
           </Space>

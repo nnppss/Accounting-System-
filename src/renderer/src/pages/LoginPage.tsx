@@ -49,12 +49,19 @@ export default function LoginPage(): JSX.Element {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#f5f5f5'
+        background: 'linear-gradient(160deg, #b2d8d8 0%, #e7eff6 50%, #ffffff 100%)'
       }}
     >
-      <Card style={{ width: 380 }}>
+      <Card
+        style={{
+          width: 380,
+          borderRadius: 16,
+          boxShadow: '0 12px 32px rgba(42,77,105,0.16)',
+          border: '1px solid #c9d8e6'
+        }}
+      >
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
-          <Typography.Title level={3} style={{ margin: 0 }}>
+          <Typography.Title level={3} style={{ margin: 0, color: '#008080' }}>
             {t('app.title')}
           </Typography.Title>
           <Button
