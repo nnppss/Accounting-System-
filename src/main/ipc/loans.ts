@@ -5,6 +5,7 @@ import {
   capitaliseAllLoans,
   createLoan,
   getLoan,
+  getLoanComposition,
   getStandingLoan,
   listLoans,
   recordPayment
@@ -23,6 +24,7 @@ export function registerLoansIpc(): void {
   })
   ipcMain.handle('loans:list', (_e, asOf?: string) => listLoans(requireSession().yearId, asOf))
   ipcMain.handle('loans:get', (_e, loanId: number, asOf?: string) => getLoan(loanId, asOf))
+  ipcMain.handle('loans:composition', (_e, loanId: number) => getLoanComposition(loanId))
   ipcMain.handle(
     'loans:pay',
     (_e, loanId: number, amountPaise: number, date: string, mode: 'cash' | 'bank', bankAccountId?: number) =>

@@ -1,10 +1,11 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, loan, loanEvent, voucher, voucherEntry } from '../data/schema'
+import { account, financialYear, loan, loanEvent, voucher, voucherEntry, yearClose } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type {
   CapitaliseAllResult,
   CreateLoanResult,
+  LoanComposition,
   LoanDetail,
   LoanEventRow,
   LoanInput,
@@ -12,6 +13,7 @@ import type {
   LoanRow,
   StandingLoan
 } from '../../shared/contracts'
+import type { EntryTag } from '../../shared/enums'
 import { writeAudit } from '../audit/audit'
 import { postCore } from './posting'
 import { accruedForPayment, capitaliseLoan, ensureCapitalisedBefore, outstandingAsOf } from '../engines/interest'
@@ -33,6 +35,7 @@ import { accruedForPayment, capitaliseLoan, ensureCapitalisedBefore, outstanding
 export type {
   CapitaliseAllResult,
   CreateLoanResult,
+  LoanComposition,
   LoanDetail,
   LoanEventRow,
   LoanInput,
@@ -248,6 +251,64 @@ export function getLoan(loanId: number, asOf?: string): LoanDetail | null {
     .orderBy(asc(loanEvent.date), asc(loanEvent.id))
     .all()
   return { ...rowFrom(r.loan, r.accountName, at), events, breakdown: outstandingAsOf(loanId, at) }
+}
+
+/**
+ * What a carried-forward indirect loan is made of. The year-end close records every indirect loan
+ * it creates in its `year_close.rollback_json` (`indirectLoanIds`); the loan's principal is exactly
+ * that party's closing balance for the **closed** year. We reconstruct the make-up by netting the
+ * closed year's ledger for the party, grouped by tag — no snapshot stored, so it can never drift
+ * from the books. Returns null for manual indirect loans (no year-end origin) and for direct loans.
+ */
+export function getLoanComposition(loanId: number): LoanComposition | null {
+  const ln = db().select().from(loan).where(eq(loan.id, loanId)).get()
+  if (!ln || ln.nature !== 'indirect') return null
+
+  // Find the close that created this loan, and the year it closed.
+  const closes = db()
+    .select({ yearId: yearClose.yearId, rollbackJson: yearClose.rollbackJson })
+    .from(yearClose)
+    .where(eq(yearClose.status, 'closed'))
+    .all()
+  let sourceYearId: number | null = null
+  for (const c of closes) {
+    const ids = (JSON.parse(c.rollbackJson) as { indirectLoanIds?: number[] }).indirectLoanIds ?? []
+    if (ids.includes(loanId)) {
+      sourceYearId = c.yearId
+      break
+    }
+  }
+  if (sourceYearId == null) return null
+
+  const yr = db().select({ year: financialYear.year }).from(financialYear).where(eq(financialYear.id, sourceYearId)).get()
+
+  // Net the party's closed-year ledger, grouped by tag — the slices sum to the loan principal.
+  const rows = db()
+    .select({
+      tag: voucherEntry.tag,
+      net: sql<number>`coalesce(sum(${voucherEntry.drPaise}), 0) - coalesce(sum(${voucherEntry.crPaise}), 0)`
+    })
+    .from(voucherEntry)
+    .innerJoin(voucher, eq(voucherEntry.voucherId, voucher.id))
+    .where(
+      and(
+        eq(voucherEntry.accountId, ln.accountId),
+        eq(voucher.yearId, sourceYearId),
+        isNull(voucher.voidedAt)
+      )
+    )
+    .groupBy(voucherEntry.tag)
+    .all()
+
+  const lines = rows
+    .filter((r) => r.net !== 0)
+    .map((r) => ({ tag: r.tag as EntryTag, paise: r.net }))
+  return {
+    loanId,
+    sourceYear: yr?.year ?? 0,
+    lines,
+    totalPaise: lines.reduce((s, l) => s + l.paise, 0)
+  }
 }
 
 /**

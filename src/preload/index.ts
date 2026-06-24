@@ -38,6 +38,7 @@ import type {
   LedgerLine,
   LoadingContractorYearInput,
   LoadingContractorYearRow,
+  LoanComposition,
   LoanDetail,
   LoanInput,
   LoanPaymentResult,
@@ -178,6 +179,8 @@ const api = {
     list: (asOf?: string): Promise<LoanRow[]> => ipcRenderer.invoke('loans:list', asOf),
     get: (loanId: number, asOf?: string): Promise<LoanDetail | null> =>
       ipcRenderer.invoke('loans:get', loanId, asOf),
+    composition: (loanId: number): Promise<LoanComposition | null> =>
+      ipcRenderer.invoke('loans:composition', loanId),
     pay: (
       loanId: number,
       amountPaise: number,
