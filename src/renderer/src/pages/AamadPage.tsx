@@ -4,7 +4,6 @@ import {
   Button,
   DatePicker,
   Form,
-  Input,
   InputNumber,
   Modal,
   Popconfirm,
@@ -19,11 +18,13 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { AamadListRow } from '@shared/contracts'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { useSession } from '../store/session'
 
 export default function AamadPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
+  const year = useSession((s) => s.session?.year)
   const [kisanFilter, setKisanFilter] = useState<number | undefined>()
   const [range, setRange] = useState<[string, string] | undefined>()
   const [open, setOpen] = useState(false)
@@ -63,7 +64,7 @@ export default function AamadPage(): JSX.Element {
   })
 
   const onFinish = (v: {
-    no: string
+    serial: number
     date: dayjs.Dayjs
     kisanAccountId: number
     locations: Array<{ room: number; floor: number; rack: number; packets: number }>
@@ -76,7 +77,7 @@ export default function AamadPage(): JSX.Element {
     }))
     const totalPackets = locations.reduce((s, l) => s + (l.packets || 0), 0)
     create.mutate({
-      no: v.no,
+      serial: v.serial,
       date: v.date.format('YYYY-MM-DD'),
       kisanAccountId: v.kisanAccountId,
       totalPackets,
@@ -169,8 +170,18 @@ export default function AamadPage(): JSX.Element {
           onFinish={onFinish}
         >
           <Space size="large" wrap>
-            <Form.Item name="no" label={t('aamad.no')} rules={[{ required: true }]}>
-              <Input style={{ width: 160 }} />
+            <Form.Item
+              name="serial"
+              label={t('aamad.serial')}
+              tooltip={t('aamad.serialHint')}
+              rules={[{ required: true }]}
+            >
+              <InputNumber
+                min={1}
+                precision={0}
+                addonBefore={year ? `${year}-` : undefined}
+                style={{ width: 160 }}
+              />
             </Form.Item>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
               <DatePicker format="YYYY-MM-DD" />

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, lte } from 'drizzle-orm'
 import { db } from '../data/db'
-import { aamad, aamadLocation, account } from '../data/schema'
+import { aamad, aamadLocation, account, financialYear } from '../data/schema'
 import type {
   AamadDetail,
   AamadInput,
@@ -21,10 +21,24 @@ export type {
 } from '../../shared/contracts'
 
 export function createAamad(yearId: number, input: AamadInput, userId?: number): number {
-  if (!input.no.trim()) throw new Error('Aamad number is required')
+  if (!Number.isInteger(input.serial) || input.serial <= 0) {
+    throw new Error('Aamad serial must be a positive whole number')
+  }
   if (input.locations.length === 0) throw new Error('Aamad needs at least one location line')
   const kisan = db().select().from(account).where(eq(account.id, input.kisanAccountId)).get()
   if (!kisan) throw new Error(`Kisan account ${input.kisanAccountId} not found`)
+
+  // Aamad no. = `YYYY-serial`: the year is the working storage year (not the entry date), so
+  // entries booked in early next year still belong to this season's series.
+  const fy = db().select().from(financialYear).where(eq(financialYear.id, yearId)).get()
+  if (!fy) throw new Error(`Financial year ${yearId} not found`)
+  const no = `${fy.year}-${input.serial}`
+  const clash = db()
+    .select({ id: aamad.id })
+    .from(aamad)
+    .where(and(eq(aamad.yearId, yearId), eq(aamad.no, no)))
+    .get()
+  if (clash) throw new Error(`Aamad ${no} already exists — serial ${input.serial} is used in ${fy.year}`)
 
   let locSum = 0
   for (const l of input.locations) {
@@ -43,7 +57,7 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
       .insert(aamad)
       .values({
         yearId,
-        no: input.no.trim(),
+        no,
         date: input.date,
         kisanAccountId: input.kisanAccountId,
         totalPackets: input.totalPackets

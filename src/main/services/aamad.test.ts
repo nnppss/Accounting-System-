@@ -18,7 +18,7 @@ afterEach(() => closeDb())
 describe('Aamad (stock-in)', () => {
   it('creates an aamad with location lines and reads it back', () => {
     const id = createAamad(yearId, {
-      no: 'A-1',
+      serial: 1,
       date: '2026-02-10',
       kisanAccountId: kisan,
       totalPackets: 150,
@@ -28,15 +28,41 @@ describe('Aamad (stock-in)', () => {
       ]
     })
     const detail = getAamad(id)!
+    expect(detail.no).toBe('2026-1') // YYYY (working year) + serial
     expect(detail.kisanName).toBe('Ramesh Kisan')
     expect(detail.totalPackets).toBe(150)
     expect(detail.locations).toHaveLength(2)
   })
 
+  it('rejects a duplicate serial within the same year', () => {
+    const mk = (serial: number): number =>
+      createAamad(yearId, {
+        serial,
+        date: '2026-02-10',
+        kisanAccountId: kisan,
+        totalPackets: 10,
+        locations: [{ room: 1, floor: 1, rack: 1, packets: 10 }]
+      })
+    mk(7)
+    expect(() => mk(7)).toThrow(/2026-7 already exists/i)
+  })
+
+  it('rejects a non-positive serial', () => {
+    expect(() =>
+      createAamad(yearId, {
+        serial: 0,
+        date: '2026-02-10',
+        kisanAccountId: kisan,
+        totalPackets: 10,
+        locations: [{ room: 1, floor: 1, rack: 1, packets: 10 }]
+      })
+    ).toThrow(/serial must be a positive/i)
+  })
+
   it('rejects a location/total packet mismatch', () => {
     expect(() =>
       createAamad(yearId, {
-        no: 'A-2',
+        serial: 2,
         date: '2026-02-10',
         kisanAccountId: kisan,
         totalPackets: 100,
@@ -48,7 +74,7 @@ describe('Aamad (stock-in)', () => {
   it('rejects a location outside the configured store (5×6×160)', () => {
     expect(() =>
       createAamad(yearId, {
-        no: 'A-3',
+        serial: 3,
         date: '2026-02-10',
         kisanAccountId: kisan,
         totalPackets: 10,
@@ -59,21 +85,21 @@ describe('Aamad (stock-in)', () => {
 
   it('searches by kisan with a count + total-packets summary', () => {
     createAamad(yearId, {
-      no: 'A-1',
+      serial: 1,
       date: '2026-02-10',
       kisanAccountId: kisan,
       totalPackets: 100,
       locations: [{ room: 1, floor: 1, rack: 1, packets: 100 }]
     })
     createAamad(yearId, {
-      no: 'A-2',
+      serial: 2,
       date: '2026-02-12',
       kisanAccountId: kisan,
       totalPackets: 60,
       locations: [{ room: 1, floor: 2, rack: 1, packets: 60 }]
     })
     createAamad(yearId, {
-      no: 'A-3',
+      serial: 3,
       date: '2026-02-15',
       kisanAccountId: kisan2,
       totalPackets: 40,
