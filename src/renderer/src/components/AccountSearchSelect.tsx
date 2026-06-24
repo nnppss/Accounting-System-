@@ -1,17 +1,23 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { Empty, Select, Spin } from 'antd'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Empty, Select, Spin, Typography } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { AccountType } from '@shared/enums'
 
 interface Option {
   value: number
-  label: string
+  label: ReactNode
 }
 
 interface Props {
   /** Restrict the search to one account type (e.g. 'kisan'). */
   type?: AccountType
+  /**
+   * Append the account's type (Kisan/Vyapari/…) to each option, so a person with
+   * more than one role-account (e.g. a kisan AND a vyapari ledger under the same
+   * name) is distinguishable. Off by default to keep single-type pickers tidy.
+   */
+  showType?: boolean
   value?: number
   onChange?: (value: number | undefined) => void
   placeholder?: string
@@ -29,6 +35,7 @@ interface Props {
  */
 export default function AccountSearchSelect({
   type,
+  showType,
   value,
   onChange,
   placeholder,
@@ -63,7 +70,17 @@ export default function AccountSearchSelect({
     enabled: term.length > 0
   })
 
-  const options: Option[] = (query.data ?? []).map((a) => ({ value: a.id, label: a.name }))
+  const options: Option[] = (query.data ?? []).map((a) => ({
+    value: a.id,
+    label: showType ? (
+      <span>
+        {a.name}{' '}
+        <Typography.Text type="secondary">· {t(`accounts.type.${a.type}`)}</Typography.Text>
+      </span>
+    ) : (
+      a.name
+    )
+  }))
   // Keep the current selection visible even when it's outside the latest results.
   if (selected && !options.some((o) => o.value === selected.value)) {
     options.unshift(selected)

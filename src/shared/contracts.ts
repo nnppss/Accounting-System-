@@ -281,7 +281,8 @@ export interface AamadLocationInput {
 }
 
 export interface AamadInput {
-  no: string
+  /** Serial allotted at the gate. The service prefixes the working year → `no` = `YYYY-serial`. */
+  serial: number
   date: string
   kisanAccountId: number
   totalPackets: number
@@ -360,6 +361,7 @@ export interface NikasiListRow {
   billNo: number
   date: string
   deliveredToType: DeliveryTarget
+  deliveredToAccountId: number
   deliveredToName: string
   totalPackets: number
   totalAmountPaise: number
@@ -502,6 +504,25 @@ export interface LoanDetail extends LoanRow {
   breakdown: LoanOutstanding
 }
 
+/** One tagged slice of what a carried-forward indirect loan's principal is made of. */
+export interface LoanComponentLine {
+  tag: EntryTag
+  paise: number
+}
+
+/**
+ * What constitutes a carried-forward indirect loan — the prior (closed) year's dues for the party,
+ * broken down by ledger tag (loan / interest / rent / trade / opening / general). The slices sum to
+ * the loan's principal. Null for manual indirect loans (no year-end origin to reconstruct).
+ */
+export interface LoanComposition {
+  loanId: number
+  /** The closed year whose dues rolled into this indirect loan. */
+  sourceYear: number
+  lines: LoanComponentLine[]
+  totalPaise: number
+}
+
 /** Party-level standing loan from the ledger (loan + interest tagged net) — mirrors StandingBhada. */
 export interface StandingLoan {
   accountId: number
@@ -572,12 +593,20 @@ export interface RecordChequeResult {
 export interface BardanaInput {
   direction: BardanaDirection
   date: string
-  /** The buyer/supplier ledger account (the "Name"); optional — recorded for the A/C lists. */
+  /**
+   * The buyer/supplier ledger account (the "Name"). Optional only when the deal is settled in full
+   * upfront; REQUIRED when any amount is left unpaid, since the balance is carried on this ledger.
+   */
   partyAccountId?: number
   ratePaise: number
   qty: number // pieces
+  /**
+   * How much was settled in cash/bank at the time of the deal. Omit to mean "paid in full"
+   * (= ratePaise × qty). 0 means fully on credit; anything in between is a partial payment.
+   */
+  paidPaise?: number
   mode: PaymentMode
-  bankAccountId?: number // required when mode = 'bank'
+  bankAccountId?: number // required when mode = 'bank' and paidPaise > 0
 }
 
 export interface BardanaRow {
@@ -589,6 +618,8 @@ export interface BardanaRow {
   ratePaise: number
   qty: number
   amountPaise: number
+  /** Settled in cash/bank; `amountPaise − paidPaise` is the outstanding amount on the party ledger. */
+  paidPaise: number
   mode: PaymentMode
   bankAccountId: number | null
   bankName: string | null
@@ -728,6 +759,8 @@ export interface BillSubject {
   roles: AccountType[]
   /** Combined net across the subject's accounts (Dr positive = owes the cold). */
   netPaise: number
+  /** Salary paid to this subject's staff account(s) this year (0 for non-staff). */
+  salaryPaidPaise: number
 }
 
 // ============================ PARTY SEARCH (Phase 5) ============================
