@@ -192,6 +192,13 @@ export function listBillSubjects(yearId: number, asOf?: string): BillSubject[] {
   const netFor = (id: number): number =>
     (balByAccount.get(id) ?? 0) + (interestByAccount.get(id) ?? 0)
 
+  // Salary paid per account this year — staff carry salary slips, not ledger bills.
+  const salaryByAccount = new Map<number, number>()
+  for (const r of listSalaryRegister(yearId)) {
+    if (r.partyAccountId == null) continue
+    salaryByAccount.set(r.partyAccountId, (salaryByAccount.get(r.partyAccountId) ?? 0) + r.amountPaise)
+  }
+
   // Group by person; accounts with no person are their own subject.
   const groups = new Map<string, typeof accounts>()
   for (const a of accounts) {
@@ -214,7 +221,8 @@ export function listBillSubjects(yearId: number, asOf?: string): BillSubject[] {
       villageCity: head.villageCity,
       phone: head.phone,
       roles: [...new Set(sorted.map((a) => a.type))],
-      netPaise: sorted.reduce((s, a) => s + netFor(a.id), 0)
+      netPaise: sorted.reduce((s, a) => s + netFor(a.id), 0),
+      salaryPaidPaise: sorted.reduce((s, a) => s + (salaryByAccount.get(a.id) ?? 0), 0)
     })
   }
   return subjects.sort((a, b) => a.name.localeCompare(b.name))

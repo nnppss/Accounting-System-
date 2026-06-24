@@ -34,7 +34,7 @@ describe('Bills — person-wise statement (software.md §3.11)', () => {
   function seed(): void {
     // Ram-kisan stores 100 packets, is charged full-year rent (₹1,000), then sells 50 @ ₹500.
     createAamad(yearId, {
-      no: 'A1',
+      serial: 1,
       date: '2026-01-10',
       kisanAccountId: kisan,
       totalPackets: 100,
