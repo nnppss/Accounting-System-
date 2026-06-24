@@ -30,7 +30,7 @@ describe('Phase 2 done/verify — worked settlement', () => {
 
     // 1) Kisan stores 200 packets across two racks.
     createAamad(yearId, {
-      no: 'A-1',
+      serial: 1,
       date: '2026-02-10',
       kisanAccountId: kisan,
       totalPackets: 200,

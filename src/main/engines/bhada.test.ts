@@ -18,7 +18,7 @@ beforeEach(() => {
   kisan = makeAccount('Ramesh Kisan', 'kisan', 'Farmer')
   vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
   createAamad(yearId, {
-    no: 'A-1',
+    serial: 1,
     date: '2026-02-10',
     kisanAccountId: kisan,
     totalPackets: 100,
@@ -61,7 +61,7 @@ describe('Bhada engine', () => {
     expect(getAccountBalance(kisan, yearId)).toBe(150000)
     // 50 more packets stored, then re-accrue.
     createAamad(yearId, {
-      no: 'A-2',
+      serial: 2,
       date: '2026-03-01',
       kisanAccountId: kisan,
       totalPackets: 50,
@@ -77,7 +77,7 @@ describe('Bhada engine', () => {
   it('accrues for every kisan who stored stock', () => {
     const kisan2 = makeAccount('Suresh Kisan', 'kisan', 'Farmer')
     createAamad(yearId, {
-      no: 'A-3',
+      serial: 3,
       date: '2026-02-12',
       kisanAccountId: kisan2,
       totalPackets: 40,

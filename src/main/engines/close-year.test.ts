@@ -5,7 +5,7 @@ import { account, financialYear, openingBalance } from '../data/schema'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
 import { createAamad } from '../services/aamad'
 import { accrueRent } from './bhada'
-import { createLoan, listLoans } from '../services/loans'
+import { createLoan, getLoanComposition, listLoans } from '../services/loans'
 import { setOpeningBalance } from '../services/accounts'
 import { recordCheque } from './cheque-clearing'
 import { getAccountBalance, getTrialBalance } from '../services/ledger'
@@ -44,7 +44,7 @@ beforeEach(() => {
 
   // Kisan stores 200 packets → owes ₹2,000 full-year rent (Dr 200,000 paise).
   createAamad(yearId, {
-    no: 'A1',
+    serial: 1,
     date: '2026-01-08',
     kisanAccountId: kisan,
     totalPackets: 200,
@@ -200,6 +200,42 @@ describe('rollbackClose — the undo', () => {
     expect(getCloseStatus(yearId)!.status).toBe('closed')
     expect(getTrialBalance(yearId).balanced).toBe(true)
     expect(getTrialBalance(nextYearId()).balanced).toBe(true)
+  })
+})
+
+describe('getLoanComposition — what a carried indirect loan is made of', () => {
+  it('breaks a carried indirect loan into its source-year tags, summing to the principal', () => {
+    closeYear(yearId)
+    const ny = nextYearId()
+    const loans = listLoans(ny)
+    const vyapariLoan = loans.find((l) => l.accountId === vyapari)!
+    const kisanLoan = loans.find((l) => l.accountId === kisan)!
+
+    // Vyapari: ₹1,00,000 loan principal + ₹18,000 capitalised interest = ₹1,18,000.
+    const vComp = getLoanComposition(vyapariLoan.id)!
+    expect(vComp.sourceYear).toBe(2026)
+    expect(vComp.totalPaise).toBe(LAKH + 1800000)
+    expect(vComp.totalPaise).toBe(vyapariLoan.principalPaise)
+    const vByTag = Object.fromEntries(vComp.lines.map((l) => [l.tag, l.paise]))
+    expect(vByTag.loan).toBe(LAKH)
+    expect(vByTag.interest).toBe(1800000)
+
+    // Kisan: pure ₹2,000 rent.
+    const kComp = getLoanComposition(kisanLoan.id)!
+    expect(kComp.totalPaise).toBe(200000)
+    expect(Object.fromEntries(kComp.lines.map((l) => [l.tag, l.paise])).rent).toBe(200000)
+  })
+
+  it('returns null for a manually-created (non-carry-forward) indirect loan', () => {
+    const { loanId } = createLoan(yearId, {
+      category: 'other',
+      accountId: creditor,
+      date: '2026-03-01',
+      amountPaise: 50000,
+      mode: 'cash',
+      nature: 'indirect'
+    })
+    expect(getLoanComposition(loanId)).toBeNull()
   })
 })
 

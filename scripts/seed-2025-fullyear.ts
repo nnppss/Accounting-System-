@@ -130,18 +130,18 @@ createContra({ yearId: Y, date: '2025-10-31', fromAccountId: HDFC, toAccountId: 
 // 4) AAMAD — FILLING SEASON (mid-Feb → mid-Mar)
 // ============================================================
 log('\n=== AAMAD (filling season) ===')
-const A = (no: string, date: string, k: number, total: number, locs: Array<{ room: number; floor: number; rack: number; packets: number }>): void => {
-  createAamad(Y, { no, date, kisanAccountId: k, totalPackets: total, locations: locs }, U); did(`${no} ${date} ${total} pkts (${locs.length} loc)`)
+const A = (serial: number, date: string, k: number, total: number, locs: Array<{ room: number; floor: number; rack: number; packets: number }>): void => {
+  createAamad(Y, { serial, date, kisanAccountId: k, totalPackets: total, locations: locs }, U); did(`2025-${serial} ${date} ${total} pkts (${locs.length} loc)`)
 }
-A('A-2025-001', '2025-02-15', SAHIL, 600, [{ room: 1, floor: 1, rack: 1, packets: 300 }, { room: 1, floor: 1, rack: 2, packets: 300 }])
-A('A-2025-002', '2025-02-16', SP, 700, [{ room: 4, floor: 1, rack: 40, packets: 400 }, { room: 4, floor: 2, rack: 40, packets: 300 }])
-A('A-2025-003', '2025-02-18', ABHISHEK, 900, [{ room: 2, floor: 1, rack: 10, packets: 300 }, { room: 2, floor: 2, rack: 10, packets: 300 }, { room: 2, floor: 3, rack: 10, packets: 300 }])
-A('A-2025-004', '2025-02-20', MOHIT, 500, [{ room: 3, floor: 1, rack: 5, packets: 250 }, { room: 3, floor: 2, rack: 5, packets: 250 }])
-A('A-2025-005', '2025-02-22', SAURABH, 800, [{ room: 5, floor: 6, rack: 160, packets: 400 }, { room: 5, floor: 6, rack: 159, packets: 400 }]) // max room/floor/rack
-A('A-2025-006', '2025-02-25', NANU, 1500, [{ room: 1, floor: 3, rack: 20, packets: 500 }, { room: 1, floor: 4, rack: 20, packets: 500 }, { room: 1, floor: 5, rack: 20, packets: 500 }])
-A('A-2025-007', '2025-03-05', MOHIT, 400, [{ room: 3, floor: 3, rack: 5, packets: 400 }]) // second aamad, same kisan
-A('A-2025-008', '2025-03-10', NANU, 1, [{ room: 2, floor: 6, rack: 1, packets: 1 }]) // smallest possible
-A('A-2025-009', '2025-03-12', SP, 300, [{ room: 4, floor: 3, rack: 40, packets: 300 }]) // late filling near boundary
+A(1, '2025-02-15', SAHIL, 600, [{ room: 1, floor: 1, rack: 1, packets: 300 }, { room: 1, floor: 1, rack: 2, packets: 300 }])
+A(2, '2025-02-16', SP, 700, [{ room: 4, floor: 1, rack: 40, packets: 400 }, { room: 4, floor: 2, rack: 40, packets: 300 }])
+A(3, '2025-02-18', ABHISHEK, 900, [{ room: 2, floor: 1, rack: 10, packets: 300 }, { room: 2, floor: 2, rack: 10, packets: 300 }, { room: 2, floor: 3, rack: 10, packets: 300 }])
+A(4, '2025-02-20', MOHIT, 500, [{ room: 3, floor: 1, rack: 5, packets: 250 }, { room: 3, floor: 2, rack: 5, packets: 250 }])
+A(5, '2025-02-22', SAURABH, 800, [{ room: 5, floor: 6, rack: 160, packets: 400 }, { room: 5, floor: 6, rack: 159, packets: 400 }]) // max room/floor/rack
+A(6, '2025-02-25', NANU, 1500, [{ room: 1, floor: 3, rack: 20, packets: 500 }, { room: 1, floor: 4, rack: 20, packets: 500 }, { room: 1, floor: 5, rack: 20, packets: 500 }])
+A(7, '2025-03-05', MOHIT, 400, [{ room: 3, floor: 3, rack: 5, packets: 400 }]) // second aamad, same kisan
+A(8, '2025-03-10', NANU, 1, [{ room: 2, floor: 6, rack: 1, packets: 1 }]) // smallest possible
+A(9, '2025-03-12', SP, 300, [{ room: 4, floor: 3, rack: 40, packets: 300 }]) // late filling near boundary
 
 // ============================================================
 // 5) SAUDA — deals (rates) struck before sales
@@ -301,8 +301,9 @@ setDefaulter(DHARAMVEER, true, U); did('Dharamveer flagged DEFAULTER (₹60,000 
 // ============================================================
 log('\n=== NEGATIVE / EDGE CASES (must reject) ===')
 expectReject('over-stock nikasi (draw > available)', () => createNikasi(Y, { date: '2025-10-30', deliveredToType: 'vyapari', deliveredToAccountId: MANOJ, lines: [{ fromKisanAccountId: SAHIL, room: 1, floor: 1, rack: 1, packets: 9999, ratePaise: R(450) }] }, U))
-expectReject('aamad totals mismatch', () => createAamad(Y, { no: 'BAD-1', date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 100, locations: [{ room: 1, floor: 1, rack: 3, packets: 50 }] }, U))
-expectReject('aamad rack out of bounds (rack 9999)', () => createAamad(Y, { no: 'BAD-2', date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 10, locations: [{ room: 1, floor: 1, rack: 9999, packets: 10 }] }, U))
+expectReject('aamad totals mismatch', () => createAamad(Y, { serial: 9001, date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 100, locations: [{ room: 1, floor: 1, rack: 3, packets: 50 }] }, U))
+expectReject('aamad rack out of bounds (rack 9999)', () => createAamad(Y, { serial: 9002, date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 10, locations: [{ room: 1, floor: 1, rack: 9999, packets: 10 }] }, U))
+expectReject('aamad duplicate serial in year', () => createAamad(Y, { serial: 1, date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 10, locations: [{ room: 1, floor: 1, rack: 4, packets: 10 }] }, U))
 expectReject('loan amount zero', () => createLoan(Y, { category: 'kisan', accountId: SAHIL, date: '2025-01-01', amountPaise: 0, mode: 'cash', nature: 'direct' }, U))
 expectReject('contra same account', () => createContra({ yearId: Y, date: '2025-01-01', fromAccountId: CASH_ID, toAccountId: CASH_ID, amountPaise: R(100) }))
 expectReject('repayment exceeds outstanding', () => recordPayment(l4.loanId, R(99999999), '2025-12-31', 'cash', undefined, U))

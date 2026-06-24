@@ -39,7 +39,7 @@ describe('Phase 6 done/verify — close a worked year, roll it back, re-close', 
 
     // Kisan stores 200 packets (₹2,000 rent), sells 80 @ ₹400 to Gopal (₹32,000 proceeds).
     createAamad(yearId, {
-      no: 'A1',
+      serial: 1,
       date: '2026-01-08',
       kisanAccountId: kisan,
       totalPackets: 200,

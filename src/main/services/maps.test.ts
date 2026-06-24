@@ -19,7 +19,7 @@ beforeEach(() => {
   kisan = makeAccount('Ramesh Kisan', 'kisan', 'Farmer')
   vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
   createAamad(yearId, {
-    no: 'A-1',
+    serial: 1,
     date: '2026-02-10',
     kisanAccountId: kisan,
     totalPackets: 100,

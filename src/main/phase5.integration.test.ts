@@ -34,7 +34,7 @@ describe('Phase 5 done/verify — Bills + Party over a multi-role person', () =>
 
     // Kisan stores 200, charged full-year rent (₹2,000), sells 80 @ ₹400 (= ₹32,000 proceeds).
     createAamad(yearId, {
-      no: 'A1',
+      serial: 1,
       date: '2026-01-08',
       kisanAccountId: kisan,
       totalPackets: 200,
