@@ -307,7 +307,12 @@ export const storeConfig = sqliteTable('store_config', {
   racksPerFloor: integer('racks_per_floor').notNull().default(160)
 })
 
-/** Inward stock (filling season). `no` is staff-typed (not auto-serialised). Physical only — posts nothing. */
+/**
+ * Inward stock (filling season). `no` is `YYYY-serial` (e.g. `2025-34`): the accountant types the
+ * serial allotted at the gate, the year comes from the working storage year, and the service
+ * composes the two. Unique per year (see uniqNo) — no two aamads in a year share a number.
+ * Physical only — posts nothing.
+ */
 export const aamad = sqliteTable(
   'aamad',
   {
@@ -325,7 +330,8 @@ export const aamad = sqliteTable(
   },
   (t) => ({
     byYearDate: index('aamad_year_date_idx').on(t.yearId, t.date),
-    byKisan: index('aamad_kisan_idx').on(t.kisanAccountId)
+    byKisan: index('aamad_kisan_idx').on(t.kisanAccountId),
+    uniqNo: uniqueIndex('aamad_year_no_idx').on(t.yearId, t.no)
   })
 )
 
@@ -472,14 +478,19 @@ export const loanEvent = sqliteTable(
 
 /**
  * A bardana (bag/sack) buy/sell transaction — software.md §3.7. Independent of stored packets:
- * the cold simply trades bags. `amountPaise = ratePaise × qty` (pieces). Each transaction posts
- * to cash or a bank (the `mode`); `partyAccountId` is the buyer/supplier name, recorded for the
- * A/C lists. The Bardana A/C is a pure aggregate: stock count = Σpurchased − Σissued (pieces),
- * profit = Σsales − Σpurchases (paise).
+ * the cold simply trades bags. `amountPaise = ratePaise × qty` (pieces). `paidPaise` is what was
+ * settled in cash/bank at the time of the deal; the remainder (`amountPaise − paidPaise`) is
+ * carried on the named party's own ledger (tag 'trade'), exactly like a Nikasi sale — so bardana
+ * can be paid in full, paid partly, or left on credit. `partyAccountId` is the buyer/supplier;
+ * it is REQUIRED whenever anything is left unpaid (you cannot owe / be owed by nobody).
  *
- * Posting map (architecture.md §6):
- *   purchase  Dr Bardana Purchase / Cr Cash-Bank   (payment voucher)
- *   issue     Dr Cash-Bank / Cr Bardana Sales       (receipt voucher)
+ * The Bardana A/C stays a pure aggregate over the goods value (unaffected by how it was paid):
+ * stock count = Σpurchased − Σissued (pieces), profit = Σsales − Σpurchases (paise).
+ *
+ * Posting map (architecture.md §6) — `cash` = paidPaise, `credit` = amountPaise − paidPaise:
+ *   purchase  Dr Bardana Purchase (amount) / Cr Cash-Bank (cash) + Cr Party (credit, 'trade')
+ *   issue     Dr Cash-Bank (cash) + Dr Party (credit, 'trade') / Cr Bardana Sales (amount)
+ * Voucher type: payment (purchase) / receipt (issue) when any cash moves, else journal (full credit).
  */
 export const bardana = sqliteTable(
   'bardana',
@@ -490,12 +501,13 @@ export const bardana = sqliteTable(
       .references(() => financialYear.id),
     direction: text('direction', { enum: BARDANA_DIRECTIONS }).notNull(),
     date: text('date').notNull(),
-    partyAccountId: integer('party_account_id').references(() => account.id), // buyer/supplier name (recorded)
+    partyAccountId: integer('party_account_id').references(() => account.id), // buyer/supplier name
     ratePaise: integer('rate_paise').notNull(),
     qty: integer('qty').notNull(), // pieces
     amountPaise: integer('amount_paise').notNull(), // = ratePaise × qty
+    paidPaise: integer('paid_paise').notNull().default(0), // settled now in cash/bank; rest on party ledger
     mode: text('mode', { enum: PAYMENT_MODES }).notNull(),
-    bankAccountId: integer('bank_account_id').references(() => account.id), // when mode = 'bank'
+    bankAccountId: integer('bank_account_id').references(() => account.id), // when mode = 'bank' and paid > 0
     voucherId: integer('voucher_id').references(() => voucher.id),
     createdAt
   },

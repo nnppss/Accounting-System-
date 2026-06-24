@@ -57,6 +57,20 @@
       "when": 1782056535024,
       "tag": "0007_dashing_ego",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1782150777977,
+      "tag": "0008_petite_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1782199320992,
+      "tag": "0009_unique_galactus",
+      "breakpoints": true
     }
   ]
 }

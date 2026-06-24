@@ -1,0 +1,1 @@
+ALTER TABLE `bardana` ADD `paid_paise` integer DEFAULT 0 NOT NULL;

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `aamad_year_no_idx` ON `aamad` (`year_id`,`no`);
