@@ -8,16 +8,16 @@ import { postCore } from './posting'
 
 /**
  * Bardana (bags) buy/sell sub-ledger — software.md §3.7, posting map architecture.md §6. The cold
- * trades bags independently of stored packets. `amountPaise = ratePaise × qty` (pieces). Every
- * transaction settles to cash or a bank (the `mode`); the named party is recorded for the A/C
- * lists. The Bardana A/C is a pure aggregate (stock count + profit), nothing extra is stored.
+ * trades bags independently of stored packets. `amountPaise = ratePaise × qty` (pieces). A deal is
+ * not always settled upfront: `paidPaise` is what changed hands in cash/bank now, and the rest is
+ * carried on the named party's own ledger (tag 'trade'), exactly like a Nikasi sale. So bardana can
+ * be paid in full, paid partly, or left fully on credit. The Bardana A/C stays a pure aggregate over
+ * the goods value (stock count + profit), independent of how the deal was paid.
  *
- * Posting map:
- *   purchase  Dr Bardana Purchase / Cr Cash-Bank   (payment voucher)
- *   issue     Dr Cash-Bank / Cr Bardana Sales       (receipt voucher)
- *
- * On-credit bardana (settle to the party's own ledger rather than cash/bank) is parked for later;
- * v1 follows the software spec's "cash / which bank" payment mode.
+ * Posting map — let cash = paidPaise, credit = amountPaise − paidPaise:
+ *   purchase  Dr Bardana Purchase (amount) / Cr Cash-Bank (cash) + Cr Party (credit, 'trade')
+ *   issue     Dr Cash-Bank (cash) + Dr Party (credit, 'trade') / Cr Bardana Sales (amount)
+ *   voucher type: payment/receipt when cash moves, else journal (full credit).
  */
 export type { BardanaAccount, BardanaInput, BardanaRow, CreateBardanaResult } from '../../shared/contracts'
 
@@ -29,14 +29,34 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
   if (!Number.isInteger(input.ratePaise) || input.ratePaise < 0) {
     throw new Error('Bardana rate must be a non-negative whole number of paise')
   }
-  if (input.mode === 'bank' && !input.bankAccountId) {
-    throw new Error('A bank settlement needs a bank account')
-  }
   const amountPaise = input.ratePaise * input.qty
   if (amountPaise <= 0) throw new Error('Bardana amount cannot be zero')
 
+  // Omitting paidPaise means "settled in full" — keeps the simple cash deal a one-liner.
+  const paidPaise = input.paidPaise ?? amountPaise
+  if (!Number.isInteger(paidPaise) || paidPaise < 0) {
+    throw new Error('Bardana paid amount must be a non-negative whole number of paise')
+  }
+  if (paidPaise > amountPaise) {
+    throw new Error('Bardana paid amount cannot exceed the deal amount')
+  }
+  const creditPaise = amountPaise - paidPaise
+
+  // Anything left unpaid has to live on someone's ledger.
+  if (creditPaise > 0 && !input.partyAccountId) {
+    throw new Error('An unpaid (credit) bardana needs a party to carry the balance')
+  }
+  // The cash/bank leg only exists when money actually moves now.
+  if (paidPaise > 0 && input.mode === 'bank' && !input.bankAccountId) {
+    throw new Error('A bank settlement needs a bank account')
+  }
+
   const cashBank =
-    input.mode === 'cash' ? getSystemAccountId(SYSTEM_ACCOUNTS.CASH) : input.bankAccountId!
+    paidPaise > 0
+      ? input.mode === 'cash'
+        ? getSystemAccountId(SYSTEM_ACCOUNTS.CASH)
+        : input.bankAccountId!
+      : null
   const purchase = input.direction === 'purchase'
   const bardanaHead = getSystemAccountId(
     purchase ? SYSTEM_ACCOUNTS.BARDANA_PURCHASE : SYSTEM_ACCOUNTS.BARDANA_SALES
@@ -53,25 +73,33 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
         ratePaise: input.ratePaise,
         qty: input.qty,
         amountPaise,
+        paidPaise,
         mode: input.mode,
-        bankAccountId: input.mode === 'bank' ? (input.bankAccountId ?? null) : null
+        bankAccountId: paidPaise > 0 && input.mode === 'bank' ? (input.bankAccountId ?? null) : null
       })
       .returning({ id: bardana.id })
       .get()
 
-    // purchase: Dr Bardana Purchase / Cr Cash-Bank.  issue: Dr Cash-Bank / Cr Bardana Sales.
+    // Bardana head takes the full goods value; the contra side splits cash (paid) vs party (credit).
+    // For a purchase the contra is on the Cr side; for an issue it is on the Dr side.
+    const contra: { accountId: number; paise: number; tag: 'general' | 'trade' }[] = []
+    if (paidPaise > 0) contra.push({ accountId: cashBank!, paise: paidPaise, tag: 'general' })
+    if (creditPaise > 0) contra.push({ accountId: input.partyAccountId!, paise: creditPaise, tag: 'trade' })
+
     const entries = purchase
       ? [
           { accountId: bardanaHead, drPaise: amountPaise, crPaise: 0, tag: 'general' as const },
-          { accountId: cashBank, drPaise: 0, crPaise: amountPaise, tag: 'general' as const }
+          ...contra.map((c) => ({ accountId: c.accountId, drPaise: 0, crPaise: c.paise, tag: c.tag }))
         ]
       : [
-          { accountId: cashBank, drPaise: amountPaise, crPaise: 0, tag: 'general' as const },
+          ...contra.map((c) => ({ accountId: c.accountId, drPaise: c.paise, crPaise: 0, tag: c.tag })),
           { accountId: bardanaHead, drPaise: 0, crPaise: amountPaise, tag: 'general' as const }
         ]
+
     const res = postCore(tx, {
       yearId,
-      type: purchase ? 'payment' : 'receipt',
+      // Cash moved → payment (we paid) / receipt (we received). Pure credit → journal.
+      type: paidPaise > 0 ? (purchase ? 'payment' : 'receipt') : 'journal',
       date: input.date,
       narration: `Bardana ${input.direction} — ${input.qty} pcs @ ${input.ratePaise} paise`,
       accountantUserId: userId,
@@ -81,7 +109,7 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
       entries
     })
     tx.update(bardana).set({ voucherId: res.voucherId }).where(eq(bardana.id, row.id)).run()
-    writeAudit({ userId, action: 'create', entity: 'bardana', entityId: row.id, after: { ...input, amountPaise } }, tx)
+    writeAudit({ userId, action: 'create', entity: 'bardana', entityId: row.id, after: { ...input, amountPaise, paidPaise } }, tx)
     return { bardanaId: row.id, voucherId: res.voucherId }
   })
 }
@@ -144,6 +172,7 @@ function rowFrom(b: typeof bardana.$inferSelect, partyName: string | null): Bard
     ratePaise: b.ratePaise,
     qty: b.qty,
     amountPaise: b.amountPaise,
+    paidPaise: b.paidPaise,
     mode: b.mode,
     bankAccountId: b.bankAccountId,
     bankName

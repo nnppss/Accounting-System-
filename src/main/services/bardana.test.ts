@@ -88,4 +88,52 @@ describe('Bardana sub-ledger (software.md §3.7)', () => {
       createBardana(yearId, { direction: 'purchase', date: '2026-02-01', ratePaise: 2000, qty: 0, mode: 'cash' })
     ).toThrow()
   })
+
+  it('credit purchase: nothing paid → Dr Bardana Purchase / Cr Supplier (no cash)', () => {
+    const supplier = makeAccount('Suresh Supplier', 'vyapari', 'Sundry Creditors')
+    // 50 pcs @ ₹20 = ₹1,000, fully on credit.
+    createBardana(yearId, {
+      direction: 'purchase',
+      date: '2026-02-01',
+      partyAccountId: supplier,
+      ratePaise: 2000,
+      qty: 50,
+      mode: 'cash',
+      paidPaise: 0
+    })
+    expect(getAccountBalance(bardanaPurchase, yearId)).toBe(100000) // full goods value Dr
+    expect(getAccountBalance(supplier, yearId)).toBe(-100000) // we owe the supplier (Cr)
+    expect(getAccountBalance(cash, yearId)).toBe(0) // no cash moved
+    expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+
+  it('partial issue: part cash now, rest owed by the buyer', () => {
+    const vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
+    // 20 pcs @ ₹30 = ₹600; buyer pays ₹250 now, owes ₹350.
+    createBardana(yearId, {
+      direction: 'issue',
+      date: '2026-04-02',
+      partyAccountId: vyapari,
+      ratePaise: 3000,
+      qty: 20,
+      mode: 'cash',
+      paidPaise: 25000
+    })
+    expect(getAccountBalance(cash, yearId)).toBe(25000) // ₹250 received now
+    expect(getAccountBalance(vyapari, yearId)).toBe(35000) // ₹350 owed by buyer (Dr)
+    expect(getAccountBalance(bardanaSales, yearId)).toBe(-60000) // full ₹600 booked as sales
+    const acct = getBardanaAccount(yearId)
+    expect(acct.totalSalesPaise).toBe(60000) // A/C aggregates the goods value, not the cash
+    expect(acct.issues[0].paidPaise).toBe(25000)
+    expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+
+  it('rejects an unpaid bardana with no party, and paid > amount', () => {
+    expect(() =>
+      createBardana(yearId, { direction: 'purchase', date: '2026-02-01', ratePaise: 2000, qty: 5, mode: 'cash', paidPaise: 0 })
+    ).toThrow()
+    expect(() =>
+      createBardana(yearId, { direction: 'issue', date: '2026-02-01', ratePaise: 2000, qty: 5, mode: 'cash', paidPaise: 999999 })
+    ).toThrow()
+  })
 })
