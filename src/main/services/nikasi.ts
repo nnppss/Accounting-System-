@@ -184,6 +184,7 @@ export function listNikasi(yearId: number): NikasiListRow[] {
       billNo: nikasi.billNo,
       date: nikasi.date,
       deliveredToType: nikasi.deliveredToType,
+      deliveredToAccountId: nikasi.deliveredToAccountId,
       deliveredToName: account.name,
       voucherId: nikasi.voucherId
     })
@@ -207,6 +208,7 @@ export function listNikasi(yearId: number): NikasiListRow[] {
       billNo: h.billNo,
       date: h.date,
       deliveredToType: h.deliveredToType,
+      deliveredToAccountId: h.deliveredToAccountId,
       deliveredToName: h.deliveredToName,
       totalPackets: agg?.packets ?? 0,
       totalAmountPaise: agg?.amount ?? 0,

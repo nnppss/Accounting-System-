@@ -18,14 +18,14 @@ beforeEach(() => {
   vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
   // Stock: kisan has 100 packets at R1/F1/Rack1; kisan2 has 80 at R1/F1/Rack2.
   createAamad(yearId, {
-    no: 'A-1',
+    serial: 1,
     date: '2026-02-10',
     kisanAccountId: kisan,
     totalPackets: 100,
     locations: [{ room: 1, floor: 1, rack: 1, packets: 100 }]
   })
   createAamad(yearId, {
-    no: 'A-2',
+    serial: 2,
     date: '2026-02-11',
     kisanAccountId: kisan2,
     totalPackets: 80,

@@ -1,14 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   App as AntApp,
   Button,
-  Card,
   DatePicker,
   Descriptions,
   Drawer,
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
   Segmented,
   Space,
@@ -32,9 +32,14 @@ export default function NikasiPage(): JSX.Element {
   const print = usePrinter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
+  const [open, setOpen] = useState(false)
   const [detailId, setDetailId] = useState<number | null>(null)
   const deliveredToType = Form.useWatch('deliveredToType', form) as DeliveryTarget | undefined
   const deliveredToAccountId = Form.useWatch('deliveredToAccountId', form) as number | undefined
+
+  const [accountFilter, setAccountFilter] = useState<number | undefined>()
+  const [typeFilter, setTypeFilter] = useState<'all' | DeliveryTarget>('all')
+  const [range, setRange] = useState<[string, string] | undefined>()
 
   const nikasis = useQuery({ queryKey: ['nikasi'], queryFn: () => window.api.nikasi.list() })
   const detail = useQuery({
@@ -43,11 +48,22 @@ export default function NikasiPage(): JSX.Element {
     enabled: detailId !== null
   })
 
+  const rows = useMemo(() => {
+    const all = (nikasis.data ?? []) as NikasiListRow[]
+    return all.filter((r) => {
+      if (accountFilter && r.deliveredToAccountId !== accountFilter) return false
+      if (typeFilter !== 'all' && r.deliveredToType !== typeFilter) return false
+      if (range && (r.date < range[0] || r.date > range[1])) return false
+      return true
+    })
+  }, [nikasis.data, accountFilter, typeFilter, range])
+
   const create = useMutation({
     mutationFn: (input: Parameters<typeof window.api.nikasi.create>[0]) =>
       window.api.nikasi.create(input),
     onSuccess: (r) => {
       message.success(t('nikasi.created', { no: r.billNo }))
+      setOpen(false)
       form.resetFields()
       queryClient.invalidateQueries({ queryKey: ['nikasi'] })
       queryClient.invalidateQueries({ queryKey: ['maps'] })
@@ -172,11 +188,69 @@ export default function NikasiPage(): JSX.Element {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        {t('nikasi.title')}
-      </Typography.Title>
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          {t('nikasi.title')}
+        </Typography.Title>
+        <Button type="primary" onClick={() => setOpen(true)}>
+          {t('nikasi.new')}
+        </Button>
+      </Space>
 
-      <Card style={{ marginBottom: 24 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <AccountSearchSelect
+          allowClear
+          style={{ width: 220 }}
+          placeholder={t('nikasi.searchAccount')}
+          value={accountFilter}
+          onChange={(v) => setAccountFilter(v)}
+        />
+        <Segmented
+          value={typeFilter}
+          onChange={(v) => setTypeFilter(v as 'all' | DeliveryTarget)}
+          options={[
+            { value: 'all', label: t('common.all') },
+            { value: 'vyapari', label: t('delivery.vyapari') },
+            { value: 'kisan', label: t('delivery.kisan') }
+          ]}
+        />
+        <DatePicker.RangePicker
+          format="YYYY-MM-DD"
+          value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
+          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+        />
+        {(accountFilter || typeFilter !== 'all' || range) && (
+          <Button
+            type="link"
+            onClick={() => {
+              setAccountFilter(undefined)
+              setTypeFilter('all')
+              setRange(undefined)
+            }}
+          >
+            {t('nikasi.clearFilters')}
+          </Button>
+        )}
+      </Space>
+
+      <Table
+        rowKey="id"
+        size="small"
+        loading={nikasis.isLoading}
+        columns={columns}
+        dataSource={rows}
+        pagination={{ pageSize: 15 }}
+      />
+
+      <Modal
+        title={t('nikasi.new')}
+        open={open}
+        onCancel={() => setOpen(false)}
+        onOk={() => form.submit()}
+        confirmLoading={create.isPending}
+        okText={t('common.create')}
+        width={920}
+      >
         <Form
           form={form}
           layout="vertical"
@@ -249,9 +323,9 @@ export default function NikasiPage(): JSX.Element {
                       <InputNumber
                         min={0}
                         precision={2}
-                        addonBefore="₹"
+                        prefix="₹"
                         placeholder={t('nikasi.rate')}
-                        style={{ width: 130 }}
+                        style={{ width: 150 }}
                       />
                     </Form.Item>
                     {fields.length > 1 && <DeleteOutlined onClick={() => remove(field.name)} />}
@@ -263,21 +337,8 @@ export default function NikasiPage(): JSX.Element {
               </div>
             )}
           </Form.List>
-
-          <Button type="primary" htmlType="submit" loading={create.isPending}>
-            {t('common.create')}
-          </Button>
         </Form>
-      </Card>
-
-      <Table
-        rowKey="id"
-        size="small"
-        loading={nikasis.isLoading}
-        columns={columns}
-        dataSource={(nikasis.data ?? []) as NikasiListRow[]}
-        pagination={{ pageSize: 15 }}
-      />
+      </Modal>
 
       <Drawer
         title={detail.data ? `${t('nikasi.billNo')} ${detail.data.billNo}` : ''}
