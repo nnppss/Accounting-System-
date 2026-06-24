@@ -13,8 +13,8 @@ Read order for a cold start:
 1. **This file** (where we are + how to build the next phase).
 2. **[phase2.md](phase2.md) §2–§4** — the architecture conventions, reusable building blocks, and the
    shared-contract boundary. Still 100% accurate; do not re-derive them.
-3. [software.md](software.md) — *what* the app does. §3.6 Bardana, §3.7 Staff/Loading for Phase 4.
-4. [architecture.md](architecture.md) — *how* it's built. §5 data model, §6 posting map, §7 engines.
+3. [software.md](../software.md) — *what* the app does. §3.6 Bardana, §3.7 Staff/Loading for Phase 4.
+4. [architecture.md](../architecture.md) — *how* it's built. §5 data model, §6 posting map, §7 engines.
 
 Git baseline: Phase 0/1/2 are committed on `main` (latest commit `8dd1eea`). **Phase 3 is on the
 working tree, not yet committed** — review, then commit.

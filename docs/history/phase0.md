@@ -10,8 +10,8 @@ Handoff doc. Read this, then start **Phase 1 (Foundation)**. It records exactly 
 exists, the conventions already baked in, the gotchas that will bite you, and where to
 make the first Phase 1 change.
 
-See [software.md](software.md) for *what* the app does, [architecture.md](architecture.md)
-for *how* it's built (§10 is the build order), and [README.md](README.md) for the dev
+See [software.md](../software.md) for *what* the app does, [architecture.md](../architecture.md)
+for *how* it's built (§10 is the build order), and [README.md](../../README.md) for the dev
 commands.
 
 ---

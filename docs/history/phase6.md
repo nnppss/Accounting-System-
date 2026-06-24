@@ -10,8 +10,8 @@ Read order for a cold start:
 2. **[phase2.md](phase2.md) §2–§4** — the architecture conventions, reusable building blocks, and
    the shared-contract boundary. Still 100% accurate; do not re-derive them.
 3. [phase5.md](phase5.md) §2–§4 — the Bills/Party read models Phase 6's printing reuses.
-4. [software.md](software.md) — *what* the app does. §5 Login/users/safety for Phase 7 backups.
-5. [architecture.md](architecture.md) — *how* it's built. §7 engines, §8 cross-cutting (backups/printing).
+4. [software.md](../software.md) — *what* the app does. §5 Login/users/safety for Phase 7 backups.
+5. [architecture.md](../architecture.md) — *how* it's built. §7 engines, §8 cross-cutting (backups/printing).
 
 Git baseline: Phase 0–5 are committed on `main` (latest commit `ce01801` — "Phase 5: Bills + Party
 search (read layers)"). **Phase 6 is on the working tree, not yet committed** — review, then commit.

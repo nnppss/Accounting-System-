@@ -11,9 +11,9 @@ brief (Loans + interest engine + cheque-clearing) with worked examples and a bui
 
 Read order for a cold start:
 1. **This file** (where we are + how to build the next phase).
-2. [software.md](software.md) — *what* the app does (business rules). §3.8 Loans, §3.9 Money/cheques.
-3. [architecture.md](architecture.md) — *how* it's built. §5 data model, §6 posting map, §7 engines.
-4. [README.md](README.md) — dev commands. [phase0.md](phase0.md)/[phase1.md](phase1.md) — older history.
+2. [software.md](../software.md) — *what* the app does (business rules). §3.8 Loans, §3.9 Money/cheques.
+3. [architecture.md](../architecture.md) — *how* it's built. §5 data model, §6 posting map, §7 engines.
+4. [README.md](../../README.md) — dev commands. [phase0.md](phase0.md)/[phase1.md](phase1.md) — older history.
 
 Git baseline: Phase 0/1/2 are committed on `main` (latest: `46b2222` — "Phase 1 (complete) +
 Phase 2: ledger core and stock operations"). Working tree clean.

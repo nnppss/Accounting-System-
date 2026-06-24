@@ -1,6 +1,6 @@
 # Paritosh Cold — Architecture & Tech Stack
 
-Technical design of the Paritosh Cold accounting software, **as built**. See [software.md](software.md) for *what* it does; this document is *how* it's built. (Updated to reflect the shipped code — phases 0–6 complete plus the accountant-identity / account-numbers / people-management hardening that followed.)
+Technical design of the Paritosh Cold accounting software, **as built**. See [software.md](software.md) for *what* it does; this document is *how* it's built. (Updated to reflect the shipped code — phases 0–6 complete plus the post-phase hardening that followed: accountant identity, account numbers, people management, the Bills & Salaries view, and the Material-3 UI theme makeover.)
 
 ---
 
@@ -23,7 +23,8 @@ This gives a modern UI and easy AI integration (it's JavaScript/TypeScript) with
 | UI | **React 18 + TypeScript 5.6 + Vite 5** | |
 | Routing | **react-router-dom 6**, `HashRouter` | hash routing works from `file://` in the packaged app |
 | Component kit | **Ant Design 5** (`antd` + `@ant-design/icons`) | tables / forms / date-pickers for a data-dense accounting UI |
-| Data fetching / state | **TanStack Query 5** + **Zustand 5** | Query caches the IPC API; Zustand holds session + UI filter state |
+| Theming | shared antd **`ConfigProvider` theme** (`renderer/src/theme.ts`) + global CSS (`styles.css`) + **Inter** web font | Material-3-derived teal/cool-slate palette; cosmetic only — no page changes its markup |
+| Data fetching / state | **TanStack Query 5** + **Zustand 5** | Query caches the IPC API; Zustand holds session + UI filter state (`accountsFilter`, `billsView`) |
 | i18n | **i18next + react-i18next** | **bilingual English / Hindi**, toggled live from the header (`locales/en.json`, `hi.json`) |
 | Database | **SQLite** via **better-sqlite3 11** | embedded, synchronous; one file; ACID; WAL; FKs on |
 | Schema / migrations | **Drizzle ORM 0.36** + **drizzle-kit** | typed schema; generated SQL migrations in `drizzle/` (0000 → 0009) |
@@ -89,14 +90,16 @@ paritosh/
     renderer/                   # React app
       src/pages/                # 20 route pages (see §8)
       src/components/           # AppLayout, AccountSearchSelect
-      src/store/                # zustand: session, accountsFilter
+      src/store/                # zustand: session, accountsFilter, billsView
       src/locales/              # en.json, hi.json
       src/lib/                  # format, usePrinter
+      src/theme.ts · src/styles.css  # shared antd theme + global CSS (UI makeover)
     shared/                     # enums.ts, contracts.ts, money.ts (+ tests)
   drizzle/                      # generated migrations 0000–0009 + meta
   scripts/                      # seed-2025-fullyear.ts, test-close-2025.ts, verify-close-fix.ts
+  docs/                         # architecture.md, software.md, BUILD.md, README.md + history/ (phase0–6 build journals)
   electron.vite.config.ts · electron-builder.yml · drizzle.config.ts · vitest.config.ts
-  architecture.md · software.md · README.md · phase0–6.md (build journals)
+  README.md                     # repo-root dev quickstart
 ```
 
 ---
@@ -186,11 +189,11 @@ Every money action calls one **`PostingService.post()`** (`services/posting.ts`)
 
 **20 route pages** (`AppLayout.tsx`), behind an auth gate (`App.tsx` → `LoginPage` until a session exists):
 
-Accounts · Account ledger (`/accounts/:id`) · People · Aamad · Maps · Sauda · Nikasi · Loans · Cheques · Bardana · Expenses · Bills · Bill (`/bills/:accountId`) · Party · Vouchers · Trial Balance · Money Book · Close · Audit · Store (config).
+Accounts · Account ledger (`/accounts/:id`) · People · Aamad · Maps · Sauda · Nikasi · Loans · Cheques · Bardana · Expenses · Bills & Salaries · Bill (`/bills/:accountId`) · Party · Vouchers · Trial Balance · Money Book · Close · Audit · Store (config).
 
 **IPC namespaces** (`window.api.*`): `auth, accounts, persons, vouchers, ledger, moneybook, store, aamad, sauda, nikasi, maps, bhada, loans, cheques, bardana, expenses, bills, party, audit, close, print`.
 
-Reusable UI: `AccountSearchSelect` (type-ahead party picker), `usePrinter` hook, money/format helpers, live **EN/HI** language toggle.
+Reusable UI: `AccountSearchSelect` (type-ahead party picker, with an optional `showType` flag to disambiguate a person's multi-role accounts), `usePrinter` hook, money/format helpers, the shared antd theme (`theme.ts`), and a live **EN/HI** language toggle. Cross-navigation UI state (e.g. the Bills & Salaries Bill/Salary tab + search, the Accounts filters) lives in small zustand stores so it survives a drill-down and back.
 
 ---
 
@@ -226,6 +229,6 @@ Reusable UI: `AccountSearchSelect` (type-ahead party picker), `usePrinter` hook,
 5. **Phase 4** — Bardana sub-ledger + staff/loading expenses.
 6. **Phase 5** — Bills + Party search (read layers).
 7. **Phase 6** — Year-end Close + printing/PDF.
-8. **Post-phase hardening** — per-session accountant identity + audit trail; Accounts Master (search, account page, identity edit, account numbers); deletes + audit coverage for physical-stock docs + searchable account pickers; People management page + type-ahead person picker; year-end close fix (carry cash/bank, don't loan/flag banks).
+8. **Post-phase hardening** — per-session accountant identity + audit trail; Accounts Master (search, account page, identity edit, account numbers); deletes + audit coverage for physical-stock docs + searchable account pickers; People management page + type-ahead person picker; year-end close fix (carry cash/bank, don't loan/flag banks); aamad gate-serial numbering; bardana partial/on-credit settlement; loan composition breakdown; list filters across Nikasi / Cheques / Expenses / Sauda; **Bills & Salaries** (Bill/Salary toggle + salary register); **Material-3 UI theme makeover**.
 
-**Still open:** automated file backups, the optional AI chatbot. (See the memory note *Open Items / Gaps* and the `phase*.md` build journals.)
+**Still open:** automated file backups, the optional AI chatbot. (See the memory note *Open Items / Gaps* and the `history/phase*.md` build journals.)

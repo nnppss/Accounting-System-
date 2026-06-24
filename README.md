@@ -3,7 +3,7 @@
 Personal, offline, single-user accounting software for Paritosh Cold Storage.
 Local-first desktop app: **Electron + React + TypeScript + SQLite (better-sqlite3 + Drizzle)**.
 
-See [software.md](software.md) for what it does and [architecture.md](architecture.md) for how it's built.
+See [docs/software.md](docs/software.md) for what it does, [docs/architecture.md](docs/architecture.md) for how it's built, and [docs/BUILD.md](docs/BUILD.md) for the full build & run recipe.
 
 ## Develop (macOS)
 
@@ -30,13 +30,12 @@ npm test          # Vitest, runs in plain Node
 Push to `main` (or run the **Build Windows** workflow) — GitHub Actions produces the
 installer under `release/` as an artifact. Local packaging: `npm run package`.
 
-## Phase status
+## Status
 
-Phase 0 (scaffold) — **done**: Electron + React + Ant Design + i18n (en/hi) shell,
-secure typed IPC, SQLite (better-sqlite3 + Drizzle) wired with a live DB round-trip,
-integer-paise money utilities with tests, and the Windows CI/installer pipeline.
-`npm run typecheck`, `npm test`, and `npm run build` all pass.
-
-Next: Phase 1 (Foundation) — real Drizzle schema + migrations, auth/year-context,
-Account Manager, PostingService, live Trial Balance, Money Book. See
-[architecture.md](architecture.md) §10 for the full build order.
+All planned modules ship — Account Manager + People, Aamad, Maps, Sauda, Nikasi,
+Bhada, Loans, Cheques, Bardana, Expenses, the Vouchers/Ledger accounting core,
+Money Book, Trial Balance, Bills & Salaries, Party search, Audit Trail and the
+password-gated Year-end Close — behind a bilingual (en/hi) Electron shell with the
+Material-3 theme. The only unbuilt items are automated file backups and the optional
+AI assistant. See [docs/architecture.md](docs/architecture.md) §11 for the build
+history and [docs/history/](docs/history/) for the phase-by-phase journals.

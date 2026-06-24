@@ -29,7 +29,7 @@ Three kinds of modules sit on **one double-entry ledger**:
 
 - **Masters** — Account Manager + People (every party + the cold's own accounts).
 - **Operations** — Aamad, Sauda, Nikasi, Bhada, Loans, Cheques, Bardana, Expenses, Vouchers (these record real events and post Cr/Dr).
-- **Views** — Maps, Money Book, Trial Balance, Bills, Party, Audit (these only read and present).
+- **Views** — Maps, Money Book, Trial Balance, Bills & Salaries, Party, Audit (these only read and present).
 
 Underneath them is the **Accounting Engine** (vouchers + ledger) and the **Year-end Close**. Everything is reachable from a single left-nav shell (20 pages), behind a login gate.
 
@@ -147,9 +147,11 @@ The cold's pure money in/out record.
 - **Click a month** → every transaction (date, party, particulars, receipt/payment, running balance, cheque no.).
 - Transfers appear as a **payment in one book and a receipt in the other**; cheques appear only when **cleared**.
 
-### 3.14 Bills
-A **person-wise, record-to-date statement** of all transactions between a party and the cold — for clear records.
-- **One bill per person, with a section per role** (kisan / vyapari / staff / contractor / other), each showing that role's details and balance, plus a **single combined net** at the bottom.
+### 3.14 Bills & Salaries
+A **person-wise, record-to-date statement** of all dealings between a party and the cold — for clear records. The page has a **Bill / Salary toggle**, because staff don't carry bills, they carry **salary slips**:
+- **Bill** — every party with ledger dealings (kisan / vyapari / loading contractor / other). **One bill per person, with a section per role**, each showing that role's details and balance, plus a **single combined net**. The list's value column is the **Net** balance.
+- **Salary** — staff accounts. Salary is paid (cash or bank) against the Salary Expense head, not the staff member's own ledger, so their Net is always nil; the list's value column instead shows **Salary paid** (their year's total from the salary register). A person who is *both* staff and a trading party appears under both tabs.
+- The chosen tab and search **persist** when you open a slip and come back (like the Accounts list keeps its filters).
 - **Continuous** — viewable/printable any day (as-of date), reflecting state as of that date.
 - A **printout/record only — the ledger is the source of truth** (it computes live figures like loan interest, but posts nothing). Printable to PDF.
 - Same-person disambiguation by **father's name / village-city / phone**.

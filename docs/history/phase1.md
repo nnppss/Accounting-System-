@@ -8,8 +8,8 @@
 Handoff doc. Read this (and `phase0.md` for the scaffold baseline) for the ledger-core design
 that everything else builds on.
 
-See [software.md](software.md) for *what* the app does, [architecture.md](architecture.md)
-for *how* it's built, and [README.md](README.md) for dev commands.
+See [software.md](../software.md) for *what* the app does, [architecture.md](../architecture.md)
+for *how* it's built, and [README.md](../../README.md) for dev commands.
 
 ---
 
