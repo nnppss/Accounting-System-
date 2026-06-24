@@ -1,12 +1,15 @@
+import { useMemo, useState } from 'react'
 import {
   App as AntApp,
   Button,
-  Card,
+  Col,
   DatePicker,
   Form,
   Input,
   InputNumber,
+  Modal,
   Popconfirm,
+  Row,
   Select,
   Space,
   Table,
@@ -19,6 +22,7 @@ import dayjs from 'dayjs'
 import type { ChequeRow } from '@shared/contracts'
 import type { ChequeDirection, ChequeStatus } from '@shared/enums'
 import { formatINR, toPaise } from '../lib/format'
+import AccountSearchSelect from '../components/AccountSearchSelect'
 
 const STATUS_COLOR: Record<ChequeStatus, string> = {
   pending: 'gold',
@@ -31,8 +35,16 @@ export default function ChequesPage(): JSX.Element {
   const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
+  const [open, setOpen] = useState(false)
 
-  const accounts = useQuery({ queryKey: ['accounts', 'all'], queryFn: () => window.api.accounts.list({}) })
+  // ---- filters ----
+  const [fDirection, setFDirection] = useState<'all' | ChequeDirection>('all')
+  const [fStatus, setFStatus] = useState<'all' | ChequeStatus>('all')
+  const [fParty, setFParty] = useState<number | undefined>()
+  const [fBank, setFBank] = useState<number | undefined>()
+  const [fNo, setFNo] = useState('')
+  const [range, setRange] = useState<[string, string] | undefined>()
+
   const banks = useQuery({ queryKey: ['moneybook', 'accounts'], queryFn: () => window.api.moneybook.accounts() })
   const cheques = useQuery({ queryKey: ['cheques'], queryFn: () => window.api.cheques.list() })
 
@@ -45,6 +57,7 @@ export default function ChequesPage(): JSX.Element {
       window.api.cheques.record(input),
     onSuccess: () => {
       message.success(t('cheques.recorded'))
+      setOpen(false)
       form.resetFields()
       invalidate()
     },
@@ -67,8 +80,34 @@ export default function ChequesPage(): JSX.Element {
     onError: (e: Error) => message.error(e.message)
   })
 
-  const partyOptions = (accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))
-  const bankOptions = (banks.data ?? []).filter((b) => b.name !== 'Cash').map((b) => ({ value: b.id, label: b.name }))
+  const bankOptions = (banks.data ?? [])
+    .filter((b) => b.name !== 'Cash')
+    .map((b) => ({ value: b.id, label: b.name }))
+
+  const filtersActive =
+    fDirection !== 'all' || fStatus !== 'all' || fParty != null || fBank != null || fNo.trim() !== '' || !!range
+  const clearFilters = (): void => {
+    setFDirection('all')
+    setFStatus('all')
+    setFParty(undefined)
+    setFBank(undefined)
+    setFNo('')
+    setRange(undefined)
+  }
+
+  const rows = useMemo(() => {
+    const all = (cheques.data ?? []) as ChequeRow[]
+    const term = fNo.trim().toLowerCase()
+    return all.filter((r) => {
+      if (fDirection !== 'all' && r.direction !== fDirection) return false
+      if (fStatus !== 'all' && r.status !== fStatus) return false
+      if (fParty != null && r.partyAccountId !== fParty) return false
+      if (fBank != null && r.bankAccountId !== fBank) return false
+      if (term && !r.no.toLowerCase().includes(term)) return false
+      if (range && (!r.date || r.date < range[0] || r.date > range[1])) return false
+      return true
+    })
+  }, [cheques.data, fDirection, fStatus, fParty, fBank, fNo, range])
 
   const columns = [
     { title: t('cheques.no'), dataIndex: 'no', width: 110 },
@@ -120,14 +159,96 @@ export default function ChequesPage(): JSX.Element {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        {t('cheques.title')}
-      </Typography.Title>
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Typography.Title level={3} style={{ margin: 0 }}>
+          {t('cheques.title')}
+        </Typography.Title>
+        <Button type="primary" onClick={() => setOpen(true)}>
+          {t('cheques.new')}
+        </Button>
+      </Space>
 
-      <Card style={{ marginBottom: 24 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Select
+          style={{ width: 130 }}
+          value={fDirection}
+          onChange={setFDirection}
+          options={[
+            { value: 'all', label: t('cheques.allDirections') },
+            ...(['received', 'given'] as ChequeDirection[]).map((d) => ({
+              value: d,
+              label: t(`cheques.dir.${d}`)
+            }))
+          ]}
+        />
+        <Select
+          style={{ width: 130 }}
+          value={fStatus}
+          onChange={setFStatus}
+          options={[
+            { value: 'all', label: t('cheques.allStatuses') },
+            ...(['pending', 'cleared', 'bounced'] as ChequeStatus[]).map((s) => ({
+              value: s,
+              label: t(`cheques.st.${s}`)
+            }))
+          ]}
+        />
+        <AccountSearchSelect
+          showType
+          allowClear
+          style={{ width: 220 }}
+          placeholder={t('cheques.party')}
+          value={fParty}
+          onChange={setFParty}
+        />
+        <Select
+          allowClear
+          style={{ width: 160 }}
+          placeholder={t('cheques.bankAccount')}
+          value={fBank}
+          onChange={(v) => setFBank(v)}
+          options={bankOptions}
+        />
+        <Input
+          allowClear
+          style={{ width: 140 }}
+          placeholder={t('cheques.no')}
+          value={fNo}
+          onChange={(e) => setFNo(e.target.value)}
+        />
+        <DatePicker.RangePicker
+          format="YYYY-MM-DD"
+          value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
+          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+        />
+        {filtersActive && (
+          <Button type="link" onClick={clearFilters}>
+            {t('cheques.clearFilters')}
+          </Button>
+        )}
+      </Space>
+
+      <Table
+        rowKey="id"
+        size="small"
+        loading={cheques.isLoading}
+        columns={columns}
+        dataSource={rows}
+        pagination={{ pageSize: 15 }}
+      />
+
+      <Modal
+        title={t('cheques.new')}
+        open={open}
+        onCancel={() => setOpen(false)}
+        onOk={() => form.submit()}
+        confirmLoading={record.isPending}
+        okText={t('common.create')}
+        width={560}
+      >
         <Form
           form={form}
-          layout="inline"
+          layout="vertical"
           initialValues={{ direction: 'received' }}
           onFinish={(v) =>
             record.mutate({
@@ -144,58 +265,64 @@ export default function ChequesPage(): JSX.Element {
             })
           }
         >
-          <Form.Item name="direction" rules={[{ required: true }]}>
-            <Select
-              style={{ width: 130 }}
-              options={(['received', 'given'] as ChequeDirection[]).map((d) => ({
-                value: d,
-                label: t(`cheques.dir.${d}`)
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="partyAccountId" rules={[{ required: true }]}>
-            <Select
-              placeholder={t('cheques.party')}
-              options={partyOptions}
-              showSearch
-              optionFilterProp="label"
-              style={{ width: 170 }}
-            />
-          </Form.Item>
-          <Form.Item name="bankAccountId" rules={[{ required: true }]}>
-            <Select placeholder={t('cheques.bankAccount')} options={bankOptions} style={{ width: 150 }} />
-          </Form.Item>
-          <Form.Item name="amount" rules={[{ required: true }]}>
-            <InputNumber min={0} precision={2} addonBefore="₹" placeholder={t('common.amount')} />
-          </Form.Item>
-          <Form.Item name="no" rules={[{ required: true }]}>
-            <Input placeholder={t('cheques.no')} style={{ width: 120 }} />
-          </Form.Item>
-          <Form.Item name="bank">
-            <Input placeholder={t('cheques.bank')} style={{ width: 130 }} />
-          </Form.Item>
-          <Form.Item name="date">
-            <DatePicker format="YYYY-MM-DD" placeholder={t('common.date')} />
-          </Form.Item>
-          <Form.Item name="clearanceDate">
-            <DatePicker format="YYYY-MM-DD" placeholder={t('cheques.clearanceDate')} />
-          </Form.Item>
-          <Form.Item>
-            <Button type="primary" htmlType="submit" loading={record.isPending}>
-              {t('common.create')}
-            </Button>
-          </Form.Item>
-        </Form>
-      </Card>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="direction" label={t('cheques.direction')} rules={[{ required: true }]}>
+                <Select
+                  options={(['received', 'given'] as ChequeDirection[]).map((d) => ({
+                    value: d,
+                    label: t(`cheques.dir.${d}`)
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="partyAccountId" label={t('cheques.party')} rules={[{ required: true }]}>
+                <AccountSearchSelect showType placeholder={t('cheques.party')} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
 
-      <Table
-        rowKey="id"
-        size="small"
-        loading={cheques.isLoading}
-        columns={columns}
-        dataSource={(cheques.data ?? []) as ChequeRow[]}
-        pagination={{ pageSize: 15 }}
-      />
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="bankAccountId" label={t('cheques.bankAccount')} rules={[{ required: true }]}>
+                <Select placeholder={t('cheques.bankAccount')} options={bankOptions} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="amount" label={t('common.amount')} rules={[{ required: true }]}>
+                <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="no" label={t('cheques.no')} rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="bank" label={t('cheques.bank')}>
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="date" label={t('common.date')}>
+                <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="clearanceDate" label={t('cheques.clearanceDate')}>
+                <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
     </div>
   )
 }
