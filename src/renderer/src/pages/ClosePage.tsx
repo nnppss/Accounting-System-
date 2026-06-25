@@ -17,9 +17,30 @@ import {
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { CloseException, CloseSummary } from '@shared/contracts'
 import { useSession } from '../store/session'
 import { formatINR } from '../lib/format'
+import { SeverityTag } from '../components/Highlight'
+
+/**
+ * The English sentence beside each exception is built here (not in the backend engine) so it runs
+ * through i18n and follows the selected language. The tag/name/amount are rendered separately.
+ */
+function exceptionDetail(t: TFunction, ex: CloseException): string {
+  switch (ex.kind) {
+    case 'pending_cheque':
+      return t('close.exd.pending_cheque', {
+        no: ex.chequeNo,
+        direction: ex.chequeDirection ? t(`cheques.dir.${ex.chequeDirection}`) : ''
+      })
+    case 'leftover_stock':
+      return t('close.exd.leftover_stock', { packets: ex.packets ?? 0 })
+    case 'credit_balance':
+    case 'unbalanced':
+      return t(`close.exd.${ex.kind}`)
+  }
+}
 
 /**
  * Year-end Close (software.md §3.13) — the one screen that writes money on a button press. Shows a
@@ -108,16 +129,28 @@ export default function ClosePage(): JSX.Element {
               renderItem={(ex: CloseException) => (
                 <List.Item>
                   <Space>
-                    <Tag color="orange">{t(`close.ex.${ex.kind}`)}</Tag>
+                    <SeverityTag severity="warning" icon>
+                      {t(`close.ex.${ex.kind}`)}
+                    </SeverityTag>
                     {ex.accountName && <strong>{ex.accountName}</strong>}
                     {ex.amountPaise !== undefined && <span>{formatINR(ex.amountPaise)}</span>}
-                    <Typography.Text type="secondary">{ex.detail}</Typography.Text>
+                    <Typography.Text type="secondary">{exceptionDetail(t, ex)}</Typography.Text>
                   </Space>
                 </List.Item>
               )}
             />
           )}
         </Card>
+      )}
+
+      {!closed && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={t('close.runWarningTitle')}
+          description={t('close.runWarning')}
+        />
       )}
 
       <Space>

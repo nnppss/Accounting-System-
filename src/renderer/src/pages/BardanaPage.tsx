@@ -24,6 +24,7 @@ import type { BardanaRow } from '@shared/contracts'
 import type { BardanaDirection, PaymentMode } from '@shared/enums'
 import { formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { useCreateHotkey } from '../lib/useHotkeys'
 
 /** How a deal was settled, derived from amount vs paid. */
 type SettleMode = 'full' | 'partial' | 'credit'
@@ -41,6 +42,7 @@ export default function BardanaPage(): JSX.Element {
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
   const [open, setOpen] = useState(false)
+  useCreateHotkey(() => setOpen(true))
   const mode = Form.useWatch('mode', form) as PaymentMode | undefined
   const rate = Form.useWatch('rate', form) as number | undefined
   const qty = Form.useWatch('qty', form) as number | undefined

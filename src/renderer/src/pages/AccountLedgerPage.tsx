@@ -22,12 +22,13 @@ import {
   PrinterOutlined
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DrCr } from '@shared/enums'
 import type { AccountIdentityInput, LedgerLine } from '@shared/contracts'
-import { balanceLabel, formatINR, toPaise } from '../lib/format'
+import { formatINR, toPaise } from '../lib/format'
+import { BalanceAmount, BalanceSentence, SeverityTag } from '../components/Highlight'
 import { usePrinter } from '../lib/usePrinter'
 import { useAccountsFilter } from '../store/accountsFilter'
 import { useSession } from '../store/session'
@@ -57,6 +58,10 @@ export default function AccountLedgerPage(): JSX.Element {
   const print = usePrinter()
   const { id } = useParams()
   const accountId = Number(id)
+  // If this ledger was opened from another section (e.g. Party), go back there so the dashboard
+  // doesn't switch out from under the user. Default to the accounts list otherwise.
+  const location = useLocation()
+  const backTarget = (location.state as { fromNav?: string } | null)?.fromNav ?? '/accounts'
 
   const [openingOpen, setOpeningOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
@@ -142,7 +147,7 @@ export default function AccountLedgerPage(): JSX.Element {
     onSuccess: () => {
       message.success(t('accounts.deleted'))
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      navigate('/accounts')
+      navigate(backTarget)
     },
     onError: (e: Error) => {
       // Electron wraps IPC errors as "Error invoking remote method '…': Error: <message>".
@@ -198,7 +203,7 @@ export default function AccountLedgerPage(): JSX.Element {
       dataIndex: 'balancePaise',
       align: 'right' as const,
       width: 150,
-      render: (v: number) => balanceLabel(v)
+      render: (v: number) => <BalanceAmount paise={v} />
     }
   ]
 
@@ -210,21 +215,25 @@ export default function AccountLedgerPage(): JSX.Element {
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
         <Space>
           <Tooltip title={t('accounts.backToList')}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/accounts')} />
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(backTarget)} />
           </Tooltip>
           {acct?.code && <Typography.Text code>{acct.code}</Typography.Text>}
           <Typography.Title level={3} style={{ margin: 0 }}>
             {acct?.name ?? `#${accountId}`}
           </Typography.Title>
           {acct && <Tag>{t(`accounts.type.${acct.type}`)}</Tag>}
-          {acct?.isDefaulter && <Tag color="red">{t('accounts.defaulter')}</Tag>}
+          {acct?.isDefaulter && (
+            <SeverityTag severity="danger" icon>
+              {t('accounts.defaulter')}
+            </SeverityTag>
+          )}
         </Space>
         <Tooltip title={t('accounts.closeAccount')}>
           <Button
             icon={<CloseOutlined />}
             onClick={() => {
               resetFilters()
-              navigate('/accounts')
+              navigate(backTarget)
             }}
           >
             {t('common.close')}
@@ -239,14 +248,32 @@ export default function AccountLedgerPage(): JSX.Element {
             {acct && <Tag style={{ margin: 0 }}>{t(`accounts.type.${acct.type}`)}</Tag>}
           </IdentityItem>
           <IdentityItem label={t('accounts.subgroup')}>{acct?.subgroupName ?? '—'}</IdentityItem>
-          <IdentityItem label={t('accounts.village')}>{dash(acct?.villageCity ?? null)}</IdentityItem>
-          <IdentityItem label="S/o">{dash(acct?.sonOf ?? null)}</IdentityItem>
-          <IdentityItem label={t('accounts.state')}>{dash(acct?.state ?? null)}</IdentityItem>
-          <IdentityItem label={t('accounts.phone')}>{dash(acct?.phone ?? null)}</IdentityItem>
+          {acct?.type === 'bank' ? (
+            <>
+              <IdentityItem label={t('accounts.bankAccountNumber')}>
+                {dash(acct?.bankAccountNumber ?? null)}
+              </IdentityItem>
+              <IdentityItem label={t('accounts.bankIfsc')}>{dash(acct?.bankIfsc ?? null)}</IdentityItem>
+              <IdentityItem label={t('accounts.bankBranch')}>{dash(acct?.bankBranch ?? null)}</IdentityItem>
+            </>
+          ) : (
+            <>
+              <IdentityItem label={t('accounts.village')}>{dash(acct?.villageCity ?? null)}</IdentityItem>
+              <IdentityItem label="S/o">{dash(acct?.sonOf ?? null)}</IdentityItem>
+              <IdentityItem label={t('accounts.state')}>{dash(acct?.state ?? null)}</IdentityItem>
+              <IdentityItem label={t('accounts.phone')}>{dash(acct?.phone ?? null)}</IdentityItem>
+            </>
+          )}
           <IdentityItem label={t('common.balance')}>
-            {balanceLabel(acct?.balancePaise ?? 0)}
+            <BalanceAmount paise={acct?.balancePaise ?? 0} strong />
           </IdentityItem>
         </div>
+
+        {acct && (
+          <div style={{ marginTop: 12 }}>
+            <BalanceSentence name={acct.name} paise={acct.balancePaise} />
+          </div>
+        )}
 
         {acct && !acct.isSystem && (
           <Space style={{ marginTop: 16 }} wrap>
@@ -292,7 +319,7 @@ export default function AccountLedgerPage(): JSX.Element {
                 <strong>{t('common.balance')}</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={6} align="right">
-                <strong>{balanceLabel(last.balancePaise)}</strong>
+                <BalanceAmount paise={last.balancePaise} strong />
               </Table.Summary.Cell>
             </Table.Summary.Row>
           ) : null

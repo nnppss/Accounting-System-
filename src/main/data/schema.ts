@@ -111,6 +111,10 @@ export const account = sqliteTable(
     isDefaulter: integer('is_defaulter', { mode: 'boolean' }).notNull().default(false),
     isSystem: integer('is_system', { mode: 'boolean' }).notNull().default(false),
     job: text('job'), // staff role
+    // Bank details — set only for type 'bank' (the cold's own bank accounts).
+    bankAccountNumber: text('bank_account_number'),
+    bankIfsc: text('bank_ifsc'),
+    bankBranch: text('bank_branch'),
     createdAt
   },
   (t) => ({

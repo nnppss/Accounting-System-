@@ -2,14 +2,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Content-Security-Policy: the app only ever loads its own bundled assets, so default-src 'self'
+      blocks any remote fetch/exfiltration (this also enforces the "no remote fonts" rule below).
+      'unsafe-inline' for styles is required by Ant Design's runtime style injection; script
+      'unsafe-inline'/'unsafe-eval' and ws: are needed by the Vite dev/HMR client and are harmless
+      in the packaged build (which loads only bundled JS over file://).
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: http://localhost:*; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Paritosh Cold</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Fonts are served from the system stack (theme.ts / styles.css) — no remote font fetch, so the app renders fully offline. -->
   </head>
   <body>
     <div id="root"></div>

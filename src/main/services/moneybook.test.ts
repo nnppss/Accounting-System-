@@ -20,7 +20,7 @@ afterEach(() => closeDb())
 
 describe('Money Book', () => {
   it('lists Cash plus any bank accounts', () => {
-    makeAccount('SBI Current', 'other', 'Cash and Bank')
+    makeAccount('SBI Current', 'bank', 'Cash and Bank')
     const names = getCashBankAccounts().map((a) => a.name)
     expect(names).toContain('Cash')
     expect(names).toContain('SBI Current')

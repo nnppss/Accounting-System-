@@ -19,6 +19,7 @@ import dayjs from 'dayjs'
 import type { AamadListRow } from '@shared/contracts'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useSession } from '../store/session'
+import { useCreateHotkey } from '../lib/useHotkeys'
 
 export default function AamadPage(): JSX.Element {
   const { t } = useTranslation()
@@ -28,6 +29,7 @@ export default function AamadPage(): JSX.Element {
   const [kisanFilter, setKisanFilter] = useState<number | undefined>()
   const [range, setRange] = useState<[string, string] | undefined>()
   const [open, setOpen] = useState(false)
+  useCreateHotkey(() => setOpen(true))
   const [form] = Form.useForm()
 
   const aamads = useQuery({

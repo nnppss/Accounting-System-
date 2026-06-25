@@ -1,4 +1,18 @@
-import { Avatar, Button, Layout, Menu, Space, Typography } from 'antd'
+import {
+  Alert,
+  App as AntApp,
+  Avatar,
+  Button,
+  Dropdown,
+  Form,
+  Input,
+  Layout,
+  Menu,
+  Modal,
+  Space,
+  Typography
+} from 'antd'
+import type { MenuProps } from 'antd'
 import {
   AppstoreOutlined,
   AuditOutlined,
@@ -6,13 +20,16 @@ import {
   BookOutlined,
   CreditCardOutlined,
   DollarOutlined,
+  DownOutlined,
   ExportOutlined,
   FileDoneOutlined,
   FileTextOutlined,
   FilterOutlined,
   GlobalOutlined,
+  HomeOutlined,
   IdcardOutlined,
   InboxOutlined,
+  KeyOutlined,
   LockOutlined,
   LogoutOutlined,
   SettingOutlined,
@@ -22,6 +39,8 @@ import {
   UserOutlined,
   WalletOutlined
 } from '@ant-design/icons'
+import { useCallback, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
@@ -46,9 +65,88 @@ import PartyPage from '../pages/PartyPage'
 import ClosePage from '../pages/ClosePage'
 import AuditPage from '../pages/AuditPage'
 import StorePage from '../pages/StorePage'
+import HomePage from '../pages/HomePage'
 import { palette } from '../theme'
+import { useGlobalHotkeys } from '../lib/useHotkeys'
 
-const { Header, Sider, Content } = Layout
+const { Header, Content } = Layout
+
+/** Self-service password change for the signed-in accountant; the current password is re-verified
+ * in the main process. On success the parent clears the default-password nudge. */
+function ChangePasswordModal({
+  open,
+  onClose,
+  onChanged
+}: {
+  open: boolean
+  onClose: () => void
+  onChanged: () => void
+}): JSX.Element {
+  const { t } = useTranslation()
+  const { message } = AntApp.useApp()
+  const [form] = Form.useForm()
+
+  const mut = useMutation({
+    mutationFn: (v: { current: string; next: string }) =>
+      window.api.auth.changePassword(v.current, v.next),
+    onSuccess: () => {
+      message.success(t('password.changed'))
+      form.resetFields()
+      onChanged()
+      onClose()
+    },
+    onError: (e: Error) => message.error(e.message)
+  })
+
+  return (
+    <Modal
+      open={open}
+      title={t('password.change')}
+      okText={t('password.change')}
+      cancelText={t('common.cancel')}
+      confirmLoading={mut.isPending}
+      onOk={() => form.submit()}
+      onCancel={() => {
+        form.resetFields()
+        onClose()
+      }}
+      destroyOnClose
+    >
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(v) => mut.mutate({ current: v.current, next: v.next })}
+      >
+        <Form.Item name="current" label={t('password.current')} rules={[{ required: true }]}>
+          <Input.Password autoComplete="current-password" />
+        </Form.Item>
+        <Form.Item
+          name="next"
+          label={t('password.new')}
+          rules={[{ required: true }, { min: 6 }]}
+        >
+          <Input.Password autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item
+          name="confirm"
+          label={t('password.confirm')}
+          dependencies={['next']}
+          rules={[
+            { required: true },
+            ({ getFieldValue }) => ({
+              validator: (_, value) =>
+                !value || getFieldValue('next') === value
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(t('password.mismatch')))
+            })
+          ]}
+        >
+          <Input.Password autoComplete="new-password" />
+        </Form.Item>
+      </Form>
+    </Modal>
+  )
+}
 
 export default function AppLayout(): JSX.Element {
   const { t } = useTranslation()
@@ -56,28 +154,85 @@ export default function AppLayout(): JSX.Element {
   const location = useLocation()
   const session = useSession((s) => s.session)
   const setSession = useSession((s) => s.setSession)
+  const [pwOpen, setPwOpen] = useState(false)
 
-  const selectedKey = '/' + (location.pathname.split('/')[1] || 'accounts')
+  // Shared detail pages (the account ledger and the bill) can be reached from several sections —
+  // e.g. the Party page opens both. When a page is opened that way it passes `fromNav` so the
+  // nav keeps the *originating* section highlighted instead of jumping to Accounts/Bills.
+  const stateFrom = (location.state as { fromNav?: string } | null)?.fromNav
+  const selectedKey = stateFrom ?? '/' + (location.pathname.split('/')[1] || 'home')
 
+  // Grouped horizontal nav: a handful of headers, each opening a dropdown of sections. Leaf keys
+  // are route paths; group keys are inert ('g-…') and never fire onClick.
   const items = [
-    { key: '/accounts', icon: <TeamOutlined />, label: t('nav.accounts') },
-    { key: '/people', icon: <IdcardOutlined />, label: t('nav.people') },
-    { key: '/aamad', icon: <InboxOutlined />, label: t('nav.aamad') },
-    { key: '/maps', icon: <AppstoreOutlined />, label: t('nav.maps') },
-    { key: '/sauda', icon: <FileDoneOutlined />, label: t('nav.sauda') },
-    { key: '/nikasi', icon: <ExportOutlined />, label: t('nav.nikasi') },
-    { key: '/loans', icon: <DollarOutlined />, label: t('nav.loans') },
-    { key: '/cheques', icon: <CreditCardOutlined />, label: t('nav.cheques') },
-    { key: '/bardana', icon: <ShoppingOutlined />, label: t('nav.bardana') },
-    { key: '/expenses', icon: <ToolOutlined />, label: t('nav.expenses') },
-    { key: '/bills', icon: <FileTextOutlined />, label: t('nav.bills') },
-    { key: '/party', icon: <FilterOutlined />, label: t('nav.party') },
-    { key: '/vouchers', icon: <BankOutlined />, label: t('nav.vouchers') },
-    { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') },
-    { key: '/money-book', icon: <WalletOutlined />, label: t('nav.moneyBook') },
-    { key: '/close', icon: <LockOutlined />, label: t('nav.close') },
-    { key: '/audit', icon: <AuditOutlined />, label: t('nav.audit') },
-    { key: '/store', icon: <SettingOutlined />, label: t('nav.store') }
+    { key: '/home', icon: <HomeOutlined />, label: t('nav.home') },
+    {
+      key: 'g-accounts',
+      icon: <TeamOutlined />,
+      label: t('nav.group.accounts'),
+      children: [
+        { key: '/accounts', icon: <TeamOutlined />, label: t('nav.accounts') },
+        { key: '/people', icon: <IdcardOutlined />, label: t('nav.people') }
+      ]
+    },
+    {
+      key: 'g-stock',
+      icon: <AppstoreOutlined />,
+      label: t('nav.group.stock'),
+      children: [
+        { key: '/aamad', icon: <InboxOutlined />, label: t('nav.aamad') },
+        { key: '/maps', icon: <AppstoreOutlined />, label: t('nav.maps') },
+        { key: '/nikasi', icon: <ExportOutlined />, label: t('nav.nikasi') }
+      ]
+    },
+    {
+      key: 'g-dealings',
+      icon: <FileDoneOutlined />,
+      label: t('nav.group.dealings'),
+      children: [
+        { key: '/sauda', icon: <FileDoneOutlined />, label: t('nav.sauda') },
+        { key: '/bardana', icon: <ShoppingOutlined />, label: t('nav.bardana') },
+        { key: '/expenses', icon: <ToolOutlined />, label: t('nav.expenses') }
+      ]
+    },
+    {
+      key: 'g-money',
+      icon: <DollarOutlined />,
+      label: t('nav.group.money'),
+      children: [
+        { key: '/loans', icon: <DollarOutlined />, label: t('nav.loans') },
+        { key: '/cheques', icon: <CreditCardOutlined />, label: t('nav.cheques') },
+        { key: '/money-book', icon: <WalletOutlined />, label: t('nav.moneyBook') }
+      ]
+    },
+    {
+      key: 'g-books',
+      icon: <BankOutlined />,
+      label: t('nav.group.books'),
+      children: [
+        { key: '/vouchers', icon: <BankOutlined />, label: t('nav.vouchers') },
+        { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') }
+      ]
+    },
+    {
+      key: 'g-reports',
+      icon: <FileTextOutlined />,
+      label: t('nav.group.reports'),
+      children: [
+        { key: '/bills', icon: <FileTextOutlined />, label: t('nav.bills') },
+        { key: '/party', icon: <FilterOutlined />, label: t('nav.party') }
+      ]
+    },
+    {
+      key: 'g-admin',
+      icon: <SettingOutlined />,
+      label: t('nav.group.admin'),
+      children: [
+        { key: '/store', icon: <SettingOutlined />, label: t('nav.store') },
+        { key: '/close', icon: <LockOutlined />, label: t('nav.close') },
+        { key: '/audit', icon: <AuditOutlined />, label: t('nav.audit') }
+      ]
+    }
   ]
 
   const logout = async (): Promise<void> => {
@@ -85,118 +240,144 @@ export default function AppLayout(): JSX.Element {
     setSession(null)
   }
 
-  const toggleLang = (): void => {
+  const toggleLang = useCallback((): void => {
     i18n.changeLanguage(i18n.language === 'en' ? 'hi' : 'en')
+  }, [])
+
+  useGlobalHotkeys(toggleLang)
+
+  // Top-right chevron menu — per the landing sketch, only change-password and logout live here.
+  const userMenu: MenuProps = {
+    items: [
+      { key: 'pw', icon: <KeyOutlined />, label: t('password.change') },
+      { type: 'divider' },
+      { key: 'logout', icon: <LogoutOutlined />, danger: true, label: t('nav.logout') }
+    ],
+    onClick: ({ key }) => {
+      if (key === 'pw') setPwOpen(true)
+      else if (key === 'logout') void logout()
+    }
   }
 
   return (
     <Layout style={{ height: '100vh' }}>
-      <Sider
-        theme="light"
-        width={240}
-        style={{ borderRight: `1px solid ${palette.outlineVariant}`, height: '100vh' }}
+      {/* Brand bar — title left, language toggle + user dropdown right */}
+      <Header
+        style={{
+          background: palette.surfaceContainerLowest,
+          borderBottom: `1px solid ${palette.outlineVariant}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingInline: 24,
+          boxShadow: '0 1px 2px rgba(26,27,32,0.04)'
+        }}
       >
-        <div
-          style={{
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-        {/* Brand block */}
-        <div style={{ padding: '20px 24px 16px' }}>
-          <Typography.Title level={4} style={{ margin: 0, color: palette.primary }}>
-            {t('app.title')}
-          </Typography.Title>
-          <Typography.Text
-            style={{
-              fontSize: 11,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: palette.onSurfaceVariant,
-              fontWeight: 600
-            }}
-          >
-            {t('app.tagline')}
-          </Typography.Text>
-        </div>
-        {/* Scrollable nav */}
-        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
-          <Menu
-            mode="inline"
-            selectedKeys={[selectedKey]}
-            items={items}
-            onClick={({ key }) => navigate(key)}
-            style={{ borderInlineEnd: 'none', background: 'transparent' }}
-          />
-        </div>
-        {/* Session card pinned to the bottom */}
-        <div style={{ padding: 12, borderTop: `1px solid ${palette.outlineVariant}` }}>
+        <Space size={12} align="center">
           <div
             style={{
+              width: 34,
+              height: 34,
+              borderRadius: 9,
+              background: palette.primary,
+              color: palette.onPrimary,
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              padding: 12,
-              background: palette.surfaceContainerLow,
-              border: `1px solid ${palette.surfaceContainer}`,
-              borderRadius: 12
+              justifyContent: 'center',
+              fontWeight: 700,
+              letterSpacing: '0.02em'
             }}
           >
-            <Avatar
-              size={40}
-              icon={<UserOutlined />}
-              style={{ background: palette.primaryFixed, color: palette.primary }}
-            />
-            <div style={{ minWidth: 0 }}>
-              <Typography.Text strong style={{ display: 'block', lineHeight: 1.2 }} ellipsis>
-                {session?.accountantName}
-              </Typography.Text>
-              <Typography.Text
-                style={{
-                  fontSize: 10,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                  color: palette.onSurfaceVariant,
-                  fontWeight: 600
-                }}
-              >
-                {session?.year}
-              </Typography.Text>
+            PC
+          </div>
+          <div style={{ lineHeight: 1.1 }}>
+            <Typography.Text strong style={{ fontSize: 16, color: palette.primary }}>
+              {t('app.title')}
+            </Typography.Text>
+            <div
+              style={{
+                fontSize: 10,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: palette.onSurfaceVariant,
+                fontWeight: 600
+              }}
+            >
+              {t('app.tagline')}
             </div>
           </div>
-        </div>
-        </div>
-      </Sider>
-      <Layout>
-        <Header
-          style={{
-            background: palette.surfaceContainerLowest,
-            borderBottom: `1px solid ${palette.outlineVariant}`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            paddingInline: 24,
-            boxShadow: '0 1px 2px rgba(26,27,32,0.04)'
-          }}
-        >
-          <Space size="middle" align="center">
-            <Space size={6} align="center">
-              <Typography.Text strong>{session?.accountantName}</Typography.Text>
-              <Typography.Text type="secondary">· {session?.year}</Typography.Text>
-            </Space>
-            <Button size="small" icon={<GlobalOutlined />} onClick={toggleLang}>
-              {t('lang.toggle')}
-            </Button>
-            <Button size="small" danger icon={<LogoutOutlined />} onClick={logout}>
-              {t('nav.logout')}
-            </Button>
-          </Space>
-        </Header>
-        <Content style={{ padding: 24, overflow: 'auto' }}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/accounts" replace />} />
-            <Route path="/accounts" element={<AccountsPage />} />
+        </Space>
+
+        <Space size="middle" align="center">
+          <Button size="small" icon={<GlobalOutlined />} onClick={toggleLang}>
+            {t('lang.toggle')}
+          </Button>
+          <Dropdown menu={userMenu} trigger={['click']} placement="bottomRight">
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '4px 8px',
+                borderRadius: 10,
+                cursor: 'pointer'
+              }}
+            >
+              <Avatar
+                size={32}
+                icon={<UserOutlined />}
+                style={{ background: palette.primaryFixed, color: palette.primary }}
+              />
+              <div style={{ lineHeight: 1.15, textAlign: 'right' }}>
+                <Typography.Text strong style={{ display: 'block' }}>
+                  {session?.accountantName}
+                </Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  {session?.year}
+                </Typography.Text>
+              </div>
+              <DownOutlined style={{ fontSize: 11, color: palette.onSurfaceVariant }} />
+            </div>
+          </Dropdown>
+        </Space>
+      </Header>
+
+      {/* Section nav — grouped headers across the top */}
+      <div
+        style={{
+          background: palette.surfaceContainerLowest,
+          borderBottom: `1px solid ${palette.outlineVariant}`,
+          paddingInline: 16,
+          boxShadow: '0 1px 2px rgba(26,27,32,0.04)'
+        }}
+      >
+        <Menu
+          mode="horizontal"
+          selectedKeys={[selectedKey]}
+          items={items}
+          onClick={({ key }) => navigate(key)}
+          style={{ borderBottom: 'none', background: 'transparent' }}
+        />
+      </div>
+
+      <Content style={{ padding: 24, overflow: 'auto' }}>
+        {session?.mustChangePassword && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={t('password.defaultWarning')}
+            action={
+              <Button size="small" type="primary" onClick={() => setPwOpen(true)}>
+                {t('password.changeNow')}
+              </Button>
+            }
+          />
+        )}
+        <Routes>
+          <Route path="/" element={<Navigate to="/home" replace />} />
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/accounts/:id" element={<AccountLedgerPage />} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/aamad" element={<AamadPage />} />
@@ -218,7 +399,11 @@ export default function AppLayout(): JSX.Element {
             <Route path="/store" element={<StorePage />} />
           </Routes>
         </Content>
-      </Layout>
+      <ChangePasswordModal
+        open={pwOpen}
+        onClose={() => setPwOpen(false)}
+        onChanged={() => session && setSession({ ...session, mustChangePassword: false })}
+      />
     </Layout>
   )
 }

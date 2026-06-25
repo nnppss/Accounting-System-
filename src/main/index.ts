@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { ensureBootstrap } from './auth/auth'
 import { migrate, openDb } from './data/db'
@@ -41,6 +41,18 @@ function createWindow(): void {
   })
 
   win.on('ready-to-show', () => win.show())
+
+  // Hardening: the app is a self-contained SPA. Never let the renderer spawn child windows or
+  // navigate to another origin — both can only be injection/abuse. External links (if any are
+  // ever added) open in the user's real browser instead.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('will-navigate', (event, url) => {
+    const appOrigin = process.env['ELECTRON_RENDERER_URL'] ?? 'file://'
+    if (!url.startsWith(appOrigin)) event.preventDefault()
+  })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])

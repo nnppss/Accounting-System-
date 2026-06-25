@@ -23,7 +23,10 @@ import dayjs from 'dayjs'
 import type { Bill, LoanRow } from '@shared/contracts'
 import type { LoanCategory, LoanEventType, LoanMode, LoanNature } from '@shared/enums'
 import { formatINR, toPaise } from '../lib/format'
+import { SeverityText, interestSeverity, severityRowClass } from '../components/Highlight'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { useCreateHotkey } from '../lib/useHotkeys'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 const CATEGORY_TYPE: Record<LoanCategory, 'kisan' | 'vyapari' | null> = {
   kisan: 'kisan',
@@ -41,6 +44,7 @@ export default function LoansPage(): JSX.Element {
   const [payLoan, setPayLoan] = useState<LoanRow | null>(null)
   const [detailLoan, setDetailLoan] = useState<LoanRow | null>(null)
   const [open, setOpen] = useState(false)
+  useCreateHotkey(() => setOpen(true))
 
   const [accountFilter, setAccountFilter] = useState<number | undefined>()
   const [categoryFilter, setCategoryFilter] = useState<'all' | LoanCategory>('all')
@@ -63,6 +67,11 @@ export default function LoansPage(): JSX.Element {
       return true
     })
   }, [loans.data, accountFilter, categoryFilter, natureFilter, range])
+
+  const { containerRef, rowClassName: keyNavRowClass } = useTableKeyNav(
+    rows,
+    (row) => setDetailLoan(row)
+  )
 
   const create = useMutation({
     mutationFn: (input: Parameters<typeof window.api.loans.create>[0]) =>
@@ -121,7 +130,9 @@ export default function LoansPage(): JSX.Element {
       render: (_: unknown, row: LoanRow) => {
         const interest = row.outstandingPaise - row.principalPaise
         return interest > 0 ? (
-          <Typography.Text type="warning">+{formatINR(interest)}</Typography.Text>
+          <SeverityText severity="warning" strong>
+            +{formatINR(interest)}
+          </SeverityText>
         ) : (
           <Typography.Text type="secondary">—</Typography.Text>
         )
@@ -223,18 +234,23 @@ export default function LoansPage(): JSX.Element {
         )}
       </Space>
 
-      <Table
-        rowKey="id"
-        size="small"
-        loading={loans.isLoading}
-        columns={columns}
-        dataSource={rows}
-        pagination={{ pageSize: 15 }}
-        onRow={(row) => ({
-          onClick: () => setDetailLoan(row),
-          style: { cursor: 'pointer' }
-        })}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={loans.isLoading}
+          columns={columns}
+          dataSource={rows}
+          pagination={{ pageSize: 15 }}
+          rowClassName={(row, i) =>
+            [severityRowClass(interestSeverity(row.outstandingPaise - row.principalPaise)), keyNavRowClass(row, i)].filter(Boolean).join(' ')
+          }
+          onRow={(row) => ({
+            onClick: () => setDetailLoan(row),
+            style: { cursor: 'pointer' }
+          })}
+        />
+      </div>
 
       <Modal
         title={t('loans.new')}
@@ -477,9 +493,9 @@ function LoanDetailDrawer({
                     <Space direction="vertical" size={0} style={{ width: '100%' }}>
                       <strong>{formatINR(c.outstandingPaise)}</strong>
                       {c.interestPaise > 0 && (
-                        <Typography.Text type="warning" style={{ fontSize: 12 }}>
+                        <SeverityText severity="warning" style={{ fontSize: 12 }}>
                           {t('loans.inclInterest', { amount: formatINR(c.interestPaise) })}
-                        </Typography.Text>
+                        </SeverityText>
                       )}
                     </Space>
                   )

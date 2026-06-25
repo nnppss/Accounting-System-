@@ -46,12 +46,13 @@ Creates and manages the accounts of every party and the cold's own books, and sh
 - **Kisan**, **Vyapari** — the common fields.
 - **Staff** — common + **Job**; staff accounts track salaries.
 - **Loading Contractor** — common + **loading charge (year)**, **unloading charge (year)**, **labourers brought in during loading season**, **and during unloading season**.
-- **Other** — for all non-person accounts (cash, each bank, capital, rent income, etc.); person fields left blank.
+- **Bank** — one per real bank account (HDFC, Canara, Canara Current, …); fields **Account number**, **IFSC code**, **Branch** instead of the person fields. The **Subgroup is pinned to *Cash and Bank*** (locked at creation), so every bank automatically gets its own book in the Money Book.
+- **Other** — for the remaining non-person accounts (capital, rent income, suppliers, etc.); person fields left blank.
 - **Defaulter** — *not a type but a flag.* A Defaulter Kisan / Defaulter Vyapari **keeps their normal account and also appears in the Defaulters view**. Set **manually** (pre-existing defaulters at setup) or **automatically** at year-end.
 
 **Subgroups** (9 fixed accounting groups, free choice of any type): Capital Account · Cash and Bank · Direct Expense · Farmer · Sundry Creditors · Sundry Debtors · Secured Loans · Revenue Account · Income from Other Resource.
 
-**The cold's own books** are pre-seeded system accounts: Cash, Capital, Rent/Bhada Income, Interest Income, Bardana Sales, Bardana Purchase, Salary Expense, Loading Expense, Opening Balance Equity, and Cheques in Clearing. (Banks aren't seeded — you create one account per real bank.)
+**The cold's own books** are pre-seeded system accounts: Cash, Capital, Rent/Bhada Income, Interest Income, Bardana Sales, Bardana Purchase, Salary Expense, Loading Expense, Opening Balance Equity, and Cheques in Clearing. (Banks aren't seeded — you create one **Bank**-type account per real bank.)
 
 **Account page & search** — filter accounts by type/subgroup/search; open any account to view its identity (editable), its **ledger**, opening balance, and defaulter flag. Accounts can be deleted (password-gated, audited) when they carry no ledger history.
 

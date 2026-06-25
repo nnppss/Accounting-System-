@@ -191,6 +191,34 @@ describe('Account Manager', () => {
     expect(getAccountDetail(inserted.id, yearId)?.code).toBe('K-26-0001')
   })
 
+  it('creates a bank account with details and a B-prefixed code', () => {
+    const hdfc = createAccount(
+      {
+        name: 'HDFC',
+        type: 'bank',
+        subgroupId: groupId('Cash and Bank'),
+        bankAccountNumber: '50100123456789',
+        bankIfsc: 'HDFC0001234',
+        bankBranch: 'Main Market'
+      },
+      2026
+    )
+    expect(getAccountDetail(hdfc, yearId)).toMatchObject({
+      code: 'B-26-0001',
+      type: 'bank',
+      subgroupName: 'Cash and Bank',
+      bankAccountNumber: '50100123456789',
+      bankIfsc: 'HDFC0001234',
+      bankBranch: 'Main Market'
+    })
+  })
+
+  it('refuses to create a bank account outside the Cash and Bank subgroup', () => {
+    expect(() =>
+      createAccount({ name: 'Bad Bank', type: 'bank', subgroupId: groupId('Farmer') })
+    ).toThrow(/Cash and Bank/)
+  })
+
   it('finds an account by its code via the name filter', () => {
     const k1 = createAccount({ name: 'Ramesh', type: 'kisan', subgroupId: groupId('Farmer') }, 2026)
     expect(listAccounts(yearId, { name: 'K-26-0001' }).map((r) => r.id)).toContain(k1)

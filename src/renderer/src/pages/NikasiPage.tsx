@@ -25,6 +25,7 @@ import type { NikasiListRow } from '@shared/contracts'
 import { formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { useCreateHotkey } from '../lib/useHotkeys'
 
 export default function NikasiPage(): JSX.Element {
   const { t } = useTranslation()
@@ -33,6 +34,7 @@ export default function NikasiPage(): JSX.Element {
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
   const [open, setOpen] = useState(false)
+  useCreateHotkey(() => setOpen(true))
   const [detailId, setDetailId] = useState<number | null>(null)
   const deliveredToType = Form.useWatch('deliveredToType', form) as DeliveryTarget | undefined
   const deliveredToAccountId = Form.useWatch('deliveredToAccountId', form) as number | undefined

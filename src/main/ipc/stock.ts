@@ -7,12 +7,12 @@ import type {
   SaudaInput,
   StoreConfig
 } from '../../shared/contracts'
-import { createAamad, deleteAamad, getAamad, listAamad } from '../services/aamad'
+import { createAamad, deleteAamad, listAamad } from '../services/aamad'
 import { createSauda, deleteSauda, latestRate, listSauda } from '../services/sauda'
 import { createNikasi, deleteNikasi, getNikasi, listNikasi } from '../services/nikasi'
 import { getMap, getRackStock } from '../services/maps'
 import { getStoreConfig, setStoreConfig } from '../services/store'
-import { accrueAllRent, accrueRent, getStandingBhada } from '../engines/bhada'
+import { accrueAllRent } from '../engines/bhada'
 import { requireSession } from '../session'
 
 /** Phase 2 IPC — store layout, Aamad, Sauda, Nikasi, Maps, and the Bhada engine. */
@@ -31,7 +31,6 @@ export function registerStockIpc(): void {
   ipcMain.handle('aamad:list', (_e, filter?: AamadSearchFilter) =>
     listAamad(requireSession().yearId, filter)
   )
-  ipcMain.handle('aamad:get', (_e, id: number) => getAamad(id))
   ipcMain.handle('aamad:delete', (_e, id: number) => {
     const s = requireSession()
     return deleteAamad(s.yearId, id, s.userId)
@@ -70,15 +69,8 @@ export function registerStockIpc(): void {
   )
 
   // Bhada
-  ipcMain.handle('bhada:accrue', (_e, kisanAccountId: number, date: string) => {
-    const s = requireSession()
-    return accrueRent(kisanAccountId, s.yearId, date, s.userId)
-  })
   ipcMain.handle('bhada:accrueAll', (_e, date: string) => {
     const s = requireSession()
     return accrueAllRent(s.yearId, date, s.userId)
   })
-  ipcMain.handle('bhada:standing', (_e, kisanAccountId: number) =>
-    getStandingBhada(kisanAccountId, requireSession().yearId)
-  )
 }

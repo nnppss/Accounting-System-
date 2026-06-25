@@ -32,6 +32,8 @@ export interface Session {
   role: string
   yearId: number
   year: number
+  /** True while the user is still on the seeded default password — drives the change-password nudge. */
+  mustChangePassword?: boolean
 }
 
 export interface YearInfo {
@@ -72,6 +74,10 @@ export interface AccountInput {
   subgroupId: number
   personId?: number
   job?: string
+  /** Bank details — only meaningful for type 'bank'. */
+  bankAccountNumber?: string
+  bankIfsc?: string
+  bankBranch?: string
   /** Optional opening balance recorded at creation (setup time). */
   opening?: { amountPaise: number; drCr: DrCr; date: string }
 }
@@ -97,6 +103,9 @@ export interface AccountDetail {
   villageCity: string | null
   state: string | null
   phone: string | null
+  bankAccountNumber: string | null
+  bankIfsc: string | null
+  bankBranch: string | null
   isDefaulter: boolean
   isSystem: boolean
   balancePaise: number
@@ -885,7 +894,11 @@ export interface CloseException {
   accountId?: number
   accountName?: string
   amountPaise?: number
-  detail: string
+  /** pending_cheque only — cheque number and direction, for the localized detail line. */
+  chequeNo?: string
+  chequeDirection?: ChequeDirection
+  /** leftover_stock only — how many packets remain. */
+  packets?: number
 }
 
 /** A dry-run of the close — what it WOULD do, computed without posting anything. */

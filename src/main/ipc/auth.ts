@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
-import { createYear, listYears, login } from '../auth/auth'
-import { clearSession, getSession, setSession } from '../session'
+import { changePassword, createYear, listYears, login } from '../auth/auth'
+import { clearSession, getSession, requireSession, setSession } from '../session'
 
 /** Auth IPC — login stores the session in the main process (see session.ts). */
 export function registerAuthIpc(): void {
@@ -18,4 +18,11 @@ export function registerAuthIpc(): void {
   )
   ipcMain.handle('auth:logout', () => clearSession())
   ipcMain.handle('auth:session', () => getSession())
+  // Change the logged-in user's own password (current password re-verified in the service).
+  // On success the session's stale `mustChangePassword` flag is cleared.
+  ipcMain.handle('auth:changePassword', (_e, currentPassword: string, newPassword: string) => {
+    const s = requireSession()
+    changePassword(s.userId, currentPassword, newPassword)
+    setSession({ ...s, mustChangePassword: false })
+  })
 }

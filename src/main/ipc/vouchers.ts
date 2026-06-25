@@ -6,7 +6,6 @@ import {
   createJournal,
   createPayment,
   createReceipt,
-  getVoucher,
   listVouchers
 } from '../services/vouchers'
 import { requireSession } from '../session'
@@ -31,5 +30,4 @@ export function registerVouchersIpc(): void {
   ipcMain.handle('vouchers:list', (_e, type?: VoucherType) =>
     listVouchers(requireSession().yearId, type)
   )
-  ipcMain.handle('vouchers:get', (_e, id: number) => getVoucher(id))
 }

@@ -1,10 +1,11 @@
 import { Button, Card, Descriptions, Divider, Empty, Space, Statistic, Table, Tag, Typography } from 'antd'
 import { ArrowLeftOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { BillLoanLine, BillSection, LedgerLine } from '@shared/contracts'
-import { balanceLabel, formatINR } from '../lib/format'
+import { formatINR } from '../lib/format'
+import { BalanceAmount, BalanceSentence } from '../components/Highlight'
 import { usePrinter } from '../lib/usePrinter'
 
 /** A single person's bill (software.md §3.11): a section per role + a combined net. Print-ready. */
@@ -14,6 +15,11 @@ export default function BillPage(): JSX.Element {
   const print = usePrinter()
   const { accountId } = useParams()
   const id = Number(accountId)
+  // Keep the originating section (e.g. Party) highlighted: back returns there, and opening a
+  // ledger from here forwards the same origin so the dashboard never switches mid-flow.
+  const location = useLocation()
+  const fromNav = (location.state as { fromNav?: string } | null)?.fromNav
+  const backTarget = fromNav ?? '/bills'
 
   const bill = useQuery({ queryKey: ['bill', id], queryFn: () => window.api.bills.get(id) })
   const data = bill.data
@@ -21,7 +27,7 @@ export default function BillPage(): JSX.Element {
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/bills')} />
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(backTarget)} />
         <Typography.Title level={3} style={{ margin: 0 }}>
           {data?.name ?? `#${id}`}
         </Typography.Title>
@@ -51,14 +57,23 @@ export default function BillPage(): JSX.Element {
               </Descriptions>
               <Statistic
                 title={t('bills.combinedNet')}
-                value={balanceLabel(data.combinedNetPaise)}
-                valueStyle={{ color: data.combinedNetPaise >= 0 ? '#3f8600' : '#cf1322' }}
+                value={data.combinedNetPaise}
+                formatter={() => <BalanceAmount paise={data.combinedNetPaise} strong />}
               />
             </Space>
+            <div style={{ marginTop: 12 }}>
+              <BalanceSentence name={data.name} paise={data.combinedNetPaise} />
+            </div>
           </Card>
 
           {data.sections.map((s) => (
-            <SectionCard key={s.accountId} section={s} onLedger={() => navigate(`/accounts/${s.accountId}`)} />
+            <SectionCard
+              key={s.accountId}
+              section={s}
+              onLedger={() =>
+                navigate(`/accounts/${s.accountId}`, fromNav ? { state: { fromNav } } : undefined)
+              }
+            />
           ))}
         </>
       )}
@@ -103,7 +118,7 @@ function SectionCard({
       dataIndex: 'balancePaise',
       align: 'right' as const,
       width: 140,
-      render: (v: number) => balanceLabel(v)
+      render: (v: number) => <BalanceAmount paise={v} />
     }
   ]
 
@@ -195,7 +210,7 @@ function SectionCard({
       <Divider style={{ margin: '12px 0' }} />
       <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
         <Typography.Text strong>{t('bills.sectionNet')}:</Typography.Text>
-        <Typography.Text strong>{balanceLabel(section.netPaise)}</Typography.Text>
+        <BalanceAmount paise={section.netPaise} strong />
       </Space>
     </Card>
   )

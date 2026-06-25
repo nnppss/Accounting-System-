@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { MoneyBookMonth } from '@shared/contracts'
 import { formatINR, MONTH_NAMES } from '../lib/format'
+import { SeverityText } from '../components/Highlight'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 export default function MoneyBookPage(): JSX.Element {
   const { t } = useTranslation()
@@ -28,6 +30,12 @@ export default function MoneyBookPage(): JSX.Element {
     queryFn: () => window.api.moneybook.detail(accountId!, month!),
     enabled: accountId !== undefined && month !== null
   })
+
+  const monthData = summary.data?.months ?? []
+  const { containerRef, rowClassName } = useTableKeyNav(
+    monthData,
+    (r) => setMonth(r.month)
+  )
 
   const columns = [
     {
@@ -57,7 +65,15 @@ export default function MoneyBookPage(): JSX.Element {
       title: t('moneyBook.closing'),
       dataIndex: 'closingPaise',
       align: 'right' as const,
-      render: (v: number) => <strong>{formatINR(v)}</strong>
+      // A cash/bank book that goes negative is overdrawn — a genuine red flag, so call it out.
+      render: (v: number) =>
+        v < 0 ? (
+          <SeverityText severity="danger" strong>
+            {formatINR(v)}
+          </SeverityText>
+        ) : (
+          <strong>{formatINR(v)}</strong>
+        )
     }
   ]
 
@@ -95,18 +111,21 @@ export default function MoneyBookPage(): JSX.Element {
         />
       </Space>
 
-      <Table
-        rowKey="month"
-        size="small"
-        loading={summary.isLoading}
-        columns={columns}
-        dataSource={summary.data?.months ?? []}
-        pagination={false}
-        onRow={(r: MoneyBookMonth) => ({
-          onClick: () => setMonth(r.month),
-          style: { cursor: 'pointer' }
-        })}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="month"
+          size="small"
+          loading={summary.isLoading}
+          columns={columns}
+          dataSource={monthData}
+          pagination={false}
+          rowClassName={rowClassName}
+          onRow={(r: MoneyBookMonth) => ({
+            onClick: () => setMonth(r.month),
+            style: { cursor: 'pointer' }
+          })}
+        />
+      </div>
 
       <Drawer
         title={month ? `${MONTH_NAMES[month - 1]} — ${t('moneyBook.title')}` : ''}

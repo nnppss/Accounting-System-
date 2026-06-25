@@ -71,6 +71,13 @@
       "when": 1782199320992,
       "tag": "0009_unique_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1782290191591,
+      "tag": "0010_stiff_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

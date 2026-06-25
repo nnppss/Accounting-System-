@@ -5,8 +5,13 @@
  * never have to import backend files. `schema.ts` re-exports these for the Drizzle column enums.
  */
 
-/** Who/what an account is. "Defaulter" is a flag on the account, not a type. */
-export const ACCOUNT_TYPES = ['kisan', 'vyapari', 'staff', 'loading_contractor', 'other'] as const
+/**
+ * Who/what an account is. "Defaulter" is a flag on the account, not a type.
+ * 'bank' is a first-class type for the cold's own bank accounts: it is pinned to the
+ * 'Cash and Bank' subgroup (so it always surfaces in the Money Book) and carries bank
+ * details (account no./IFSC/branch) instead of a person identity.
+ */
+export const ACCOUNT_TYPES = ['kisan', 'vyapari', 'staff', 'loading_contractor', 'bank', 'other'] as const
 export type AccountType = (typeof ACCOUNT_TYPES)[number]
 
 /** Accounting nature of a subgroup — drives reporting/classification. */

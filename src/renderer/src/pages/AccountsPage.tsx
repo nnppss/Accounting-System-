@@ -23,9 +23,12 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ACCOUNT_TYPES, type AccountType, type DrCr } from '@shared/enums'
 import type { AccountInput, AccountListRow } from '@shared/contracts'
-import { balanceLabel, toPaise } from '../lib/format'
+import { toPaise } from '../lib/format'
+import { BalanceAmount, SeverityTag, severityRowClass } from '../components/Highlight'
 import { useAccountsFilter, type AccountFilters } from '../store/accountsFilter'
 import { useSession } from '../store/session'
+import { useCreateHotkey } from '../lib/useHotkeys'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 /** Debounce a value so we don't fire a query on every keystroke. */
 function useDebounced<T>(value: T, ms: number): T {
@@ -60,6 +63,7 @@ export default function AccountsPage(): JSX.Element {
   const { type, filters, includeSystem, setType, setFilters, setIncludeSystem, reset } =
     useAccountsFilter()
   const [newOpen, setNewOpen] = useState(false)
+  useCreateHotkey(() => setNewOpen(true))
   const [personOpen, setPersonOpen] = useState(false)
   const [personSearch, setPersonSearch] = useState('')
   // Persons selected/created during this session, so their label keeps rendering
@@ -107,6 +111,11 @@ export default function AccountsPage(): JSX.Element {
       }),
     enabled: hasQuery
   })
+  const tableData = hasQuery ? (accounts.data ?? []) : []
+  const { containerRef, rowClassName: keyNavRowClass } = useTableKeyNav(
+    tableData,
+    (r) => navigate(`/accounts/${r.id}`)
+  )
   const subgroups = useQuery({ queryKey: ['subgroups'], queryFn: () => window.api.accounts.subgroups() })
   // Type-ahead only: don't fetch the full person master on open — wait for a search term.
   const persons = useQuery({
@@ -157,6 +166,9 @@ export default function AccountsPage(): JSX.Element {
     subgroupId: number
     personId?: number
     job?: string
+    bankAccountNumber?: string
+    bankIfsc?: string
+    bankBranch?: string
     openingAmount?: number
     openingDrCr?: DrCr
   }): void => {
@@ -168,18 +180,27 @@ export default function AccountsPage(): JSX.Element {
             date: `${year ?? new Date().getFullYear()}-01-01`
           }
         : undefined
+    const isBank = v.type === 'bank'
     createAccount.mutate({
       name: v.name,
       type: v.type,
       subgroupId: v.subgroupId,
-      personId: v.personId,
+      personId: isBank ? undefined : v.personId,
       job: v.job,
+      bankAccountNumber: isBank ? v.bankAccountNumber : undefined,
+      bankIfsc: isBank ? v.bankIfsc : undefined,
+      bankBranch: isBank ? v.bankBranch : undefined,
       opening
     })
   }
 
   const typeOptions = ACCOUNT_TYPES.map((ty) => ({ value: ty, label: t(`accounts.type.${ty}`) }))
   const subgroupOptions = (subgroups.data ?? []).map((s) => ({ value: s.id, label: s.name }))
+  // A 'bank' account is pinned to this subgroup so it always shows up in the Money Book.
+  const cashBankSubgroupId = useMemo(
+    () => (subgroups.data ?? []).find((s) => s.name === 'Cash and Bank')?.id,
+    [subgroups.data]
+  )
   const personOptions = useMemo(() => {
     // Only surface matches once the user has typed; otherwise just keep pinned (selected/new) ones.
     const base = personSearch.trim()
@@ -205,7 +226,11 @@ export default function AccountsPage(): JSX.Element {
       render: (name: string, r: AccountListRow) => (
         <Space>
           <a>{name}</a>
-          {r.isDefaulter && <Tag color="red">{t('accounts.defaulter')}</Tag>}
+          {r.isDefaulter && (
+            <SeverityTag severity="danger" icon>
+              {t('accounts.defaulter')}
+            </SeverityTag>
+          )}
         </Space>
       )
     },
@@ -220,7 +245,7 @@ export default function AccountsPage(): JSX.Element {
       title: t('common.balance'),
       dataIndex: 'balancePaise',
       align: 'right' as const,
-      render: (b: number) => balanceLabel(b)
+      render: (b: number) => <BalanceAmount paise={b} />
     }
   ]
 
@@ -299,18 +324,23 @@ export default function AccountsPage(): JSX.Element {
       </Card>
 
       {hasQuery ? (
-        <Table
-          rowKey="id"
-          size="small"
-          loading={accounts.isFetching}
-          columns={columns}
-          dataSource={accounts.data ?? []}
-          pagination={{ pageSize: 20 }}
-          onRow={(r) => ({
-            onClick: () => navigate(`/accounts/${r.id}`),
-            style: { cursor: 'pointer' }
-          })}
-        />
+        <div ref={containerRef}>
+          <Table
+            rowKey="id"
+            size="small"
+            loading={accounts.isFetching}
+            columns={columns}
+            dataSource={tableData}
+            pagination={{ pageSize: 20 }}
+            rowClassName={(r, i) =>
+              [severityRowClass(r.isDefaulter ? 'danger' : null), keyNavRowClass(r, i)].filter(Boolean).join(' ')
+            }
+            onRow={(r) => ({
+              onClick: () => navigate(`/accounts/${r.id}`),
+              style: { cursor: 'pointer' }
+            })}
+          />
+        </div>
       ) : (
         <Empty
           style={{ marginTop: 64 }}
@@ -344,38 +374,63 @@ export default function AccountsPage(): JSX.Element {
             <Input />
           </Form.Item>
           <Form.Item name="type" label={t('accounts.type')} rules={[{ required: true }]}>
-            <Select options={typeOptions} />
+            <Select
+              options={typeOptions}
+              onChange={(ty: AccountType) => {
+                // A bank is pinned to 'Cash and Bank' and has no person; mirror that in the form.
+                if (ty === 'bank') {
+                  if (cashBankSubgroupId) accountForm.setFieldValue('subgroupId', cashBankSubgroupId)
+                  accountForm.setFieldValue('personId', undefined)
+                }
+              }}
+            />
           </Form.Item>
-          <Form.Item name="subgroupId" label={t('accounts.subgroup')} rules={[{ required: true }]}>
-            <Select options={subgroupOptions} showSearch optionFilterProp="label" />
-          </Form.Item>
-          <Form.Item label={t('accounts.person')}>
-            <Space.Compact style={{ width: '100%' }}>
-              <Form.Item name="personId" noStyle>
+          <Form.Item noStyle shouldUpdate={(p, c) => p.type !== c.type}>
+            {({ getFieldValue }) => (
+              <Form.Item name="subgroupId" label={t('accounts.subgroup')} rules={[{ required: true }]}>
                 <Select
-                  allowClear
+                  options={subgroupOptions}
                   showSearch
-                  filterOption={false}
-                  onSearch={onPersonSearch}
-                  options={personOptions}
-                  loading={persons.isFetching}
-                  notFoundContent={
-                    persons.isFetching ? (
-                      <Spin size="small" />
-                    ) : personSearch.trim() ? (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noResults')} />
-                    ) : (
-                      <Typography.Text type="secondary" style={{ padding: '4px 0', display: 'block' }}>
-                        {t('common.typeToSearch')}
-                      </Typography.Text>
-                    )
-                  }
-                  style={{ width: '100%' }}
-                  placeholder={t('accounts.personSearch')}
+                  optionFilterProp="label"
+                  // Banks must stay in 'Cash and Bank' (the Money Book's filter), so lock it.
+                  disabled={getFieldValue('type') === 'bank'}
                 />
               </Form.Item>
-              <Button onClick={() => setPersonOpen(true)}>+</Button>
-            </Space.Compact>
+            )}
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(p, c) => p.type !== c.type}>
+            {({ getFieldValue }) =>
+              getFieldValue('type') === 'bank' ? null : (
+                <Form.Item label={t('accounts.person')}>
+                  <Space.Compact style={{ width: '100%' }}>
+                    <Form.Item name="personId" noStyle>
+                      <Select
+                        allowClear
+                        showSearch
+                        filterOption={false}
+                        onSearch={onPersonSearch}
+                        options={personOptions}
+                        loading={persons.isFetching}
+                        notFoundContent={
+                          persons.isFetching ? (
+                            <Spin size="small" />
+                          ) : personSearch.trim() ? (
+                            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noResults')} />
+                          ) : (
+                            <Typography.Text type="secondary" style={{ padding: '4px 0', display: 'block' }}>
+                              {t('common.typeToSearch')}
+                            </Typography.Text>
+                          )
+                        }
+                        style={{ width: '100%' }}
+                        placeholder={t('accounts.personSearch')}
+                      />
+                    </Form.Item>
+                    <Button onClick={() => setPersonOpen(true)}>+</Button>
+                  </Space.Compact>
+                </Form.Item>
+              )
+            }
           </Form.Item>
           <Form.Item noStyle shouldUpdate={(p, c) => p.type !== c.type}>
             {({ getFieldValue }) =>
@@ -383,6 +438,18 @@ export default function AccountsPage(): JSX.Element {
                 <Form.Item name="job" label={t('accounts.job')}>
                   <Input />
                 </Form.Item>
+              ) : getFieldValue('type') === 'bank' ? (
+                <>
+                  <Form.Item name="bankAccountNumber" label={t('accounts.bankAccountNumber')}>
+                    <Input />
+                  </Form.Item>
+                  <Form.Item name="bankIfsc" label={t('accounts.bankIfsc')}>
+                    <Input />
+                  </Form.Item>
+                  <Form.Item name="bankBranch" label={t('accounts.bankBranch')}>
+                    <Input />
+                  </Form.Item>
+                </>
               ) : null
             }
           </Form.Item>

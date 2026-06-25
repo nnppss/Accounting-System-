@@ -13,6 +13,9 @@ import type { Session, YearInfo } from '../../shared/contracts'
 
 const BCRYPT_ROUNDS = 10
 
+/** The first-run admin password (see ensureBootstrap). Used to nudge the owner to change it. */
+const DEFAULT_ADMIN_PASSWORD = 'admin123'
+
 export type { Session, YearInfo } from '../../shared/contracts'
 
 export function createUser(
@@ -55,8 +58,30 @@ export function login(
     accountantName: accountantName?.trim() || u.accountantName,
     role: u.role,
     yearId: yr.id,
-    year: yr.year
+    year: yr.year,
+    // Nudge the owner to move off the seeded default — surfaced as a banner in the app.
+    mustChangePassword: bcrypt.compareSync(DEFAULT_ADMIN_PASSWORD, u.passwordHash)
   }
+}
+
+/**
+ * Change a user's password: the current one must verify, the new one must be at least 6 chars and
+ * actually different. Stores a fresh bcrypt hash. Audited as a change only — no password material
+ * is ever written to the audit trail.
+ */
+export function changePassword(userId: number, currentPassword: string, newPassword: string): void {
+  const u = db().select().from(user).where(eq(user.id, userId)).get()
+  if (!u) throw new Error('User not found')
+  if (!bcrypt.compareSync(currentPassword, u.passwordHash)) {
+    throw new Error('Current password is incorrect')
+  }
+  if (newPassword.length < 6) throw new Error('New password must be at least 6 characters')
+  if (bcrypt.compareSync(newPassword, u.passwordHash)) {
+    throw new Error('New password must be different from the current one')
+  }
+  const passwordHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS)
+  db().update(user).set({ passwordHash }).where(eq(user.id, userId)).run()
+  writeAudit({ userId, action: 'update', entity: 'user', entityId: userId, after: { passwordChanged: true } })
 }
 
 /**

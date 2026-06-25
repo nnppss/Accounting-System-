@@ -15,8 +15,11 @@ export const palette = {
   primaryFixed: '#b2d8d8', // light teal — avatars / soft accents
   onPrimary: '#ffffff',
   success: '#419873', // green — positive balances
-  error: '#ba1a1a',
-  warning: '#0086ad', // teal-blue — informational warnings
+  error: '#ba1a1a', // red — danger: defaulters, irreversible actions
+  errorContainer: '#fdf2f2', // faint red — danger row/surface tint
+  warning: '#c77800', // amber — attention: accruing interest, pending items, exceptions
+  warningContainer: '#fdf5e9', // faint amber — warning row/surface tint
+  info: '#0086ad', // teal-blue — neutral information
   surface: '#e7eff6', // app background (soft cool)
   surfaceContainerLowest: '#ffffff', // cards / sider / header / boxes
   surfaceContainerLow: '#eef4fa', // table header / hover / subtle fills

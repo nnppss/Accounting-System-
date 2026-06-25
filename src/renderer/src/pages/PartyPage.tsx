@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { ACCOUNT_TYPES, LOAN_CATEGORIES, type AccountType } from '@shared/enums'
 import type { NumericFilter, NumericOp, PartyCriteria, PartyRow } from '@shared/contracts'
 import { balanceLabel, formatINR, paiseToRupees, toPaise } from '../lib/format'
+import { BalanceAmount } from '../components/Highlight'
 
 type NumField = { op?: NumericOp; value?: number; value2?: number } | undefined
 
@@ -171,7 +172,9 @@ export default function PartyPage(): JSX.Element {
     {
       title: t('accounts.name'),
       dataIndex: 'name',
-      render: (name: string, r: PartyRow) => <a onClick={() => navigate(`/bills/${r.accountId}`)}>{name}</a>
+      render: (name: string, r: PartyRow) => (
+        <a onClick={() => navigate(`/bills/${r.accountId}`, { state: { fromNav: '/party' } })}>{name}</a>
+      )
     },
     { title: t('bills.sonOf'), dataIndex: 'sonOf', render: (v: string | null) => v ?? '—' },
     { title: t('bills.village'), dataIndex: 'villageCity', render: (v: string | null) => v ?? '—' },
@@ -184,7 +187,7 @@ export default function PartyPage(): JSX.Element {
       title: t('common.balance'),
       dataIndex: 'balancePaise',
       align: 'right' as const,
-      render: (v: number) => balanceLabel(v)
+      render: (v: number) => <BalanceAmount paise={v} />
     },
     { title: t('party.packetsBrought'), dataIndex: 'packetsBrought', align: 'right' as const },
     { title: t('party.currentStock'), dataIndex: 'currentStock', align: 'right' as const },
@@ -205,10 +208,16 @@ export default function PartyPage(): JSX.Element {
       key: 'a',
       render: (_: unknown, r: PartyRow) => (
         <Space>
-          <Button size="small" onClick={() => navigate(`/bills/${r.accountId}`)}>
+          <Button
+            size="small"
+            onClick={() => navigate(`/bills/${r.accountId}`, { state: { fromNav: '/party' } })}
+          >
             {t('party.bill')}
           </Button>
-          <Button size="small" onClick={() => navigate(`/accounts/${r.accountId}`)}>
+          <Button
+            size="small"
+            onClick={() => navigate(`/accounts/${r.accountId}`, { state: { fromNav: '/party' } })}
+          >
             {t('accounts.ledger')}
           </Button>
         </Space>

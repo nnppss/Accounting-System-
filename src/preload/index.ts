@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { BardanaDirection, ChequeStatus, DrCr, VoucherType } from '../shared/enums'
 import type {
-  AamadDetail,
   AamadInput,
   AamadListResult,
   AamadSearchFilter,
@@ -12,7 +11,6 @@ import type {
   AccountListFilter,
   AccountListRow,
   AccrueAllResult,
-  AccrueResult,
   AuditFacets,
   AuditFilter,
   AuditLogRow,
@@ -21,8 +19,6 @@ import type {
   BardanaRow,
   Bill,
   BillSubject,
-  CapitaliseAllResult,
-  CapitaliseResult,
   CashBankAccount,
   ChequeInput,
   ChequeRow,
@@ -62,13 +58,10 @@ import type {
   SaudaListRow,
   SavedFilterRow,
   Session,
-  StandingBhada,
-  StandingLoan,
   StockMap,
   StoreConfig,
   SubgroupRow,
   TrialBalance,
-  VoucherDetail,
   VoucherListRow,
   YearCloseInfo,
   YearInfo
@@ -93,7 +86,9 @@ const api = {
     ): Promise<Session> =>
       ipcRenderer.invoke('auth:login', year, username, password, accountantName),
     logout: (): Promise<void> => ipcRenderer.invoke('auth:logout'),
-    session: (): Promise<Session | null> => ipcRenderer.invoke('auth:session')
+    session: (): Promise<Session | null> => ipcRenderer.invoke('auth:session'),
+    changePassword: (currentPassword: string, newPassword: string): Promise<void> =>
+      ipcRenderer.invoke('auth:changePassword', currentPassword, newPassword)
   },
   accounts: {
     subgroups: (): Promise<SubgroupRow[]> => ipcRenderer.invoke('accounts:subgroups'),
@@ -123,8 +118,7 @@ const api = {
     payment: (arg: ReceiptArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:payment', arg),
     contra: (arg: ContraArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:contra', arg),
     journal: (arg: JournalArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:journal', arg),
-    list: (type?: VoucherType): Promise<VoucherListRow[]> => ipcRenderer.invoke('vouchers:list', type),
-    get: (id: number): Promise<VoucherDetail | null> => ipcRenderer.invoke('vouchers:get', id)
+    list: (type?: VoucherType): Promise<VoucherListRow[]> => ipcRenderer.invoke('vouchers:list', type)
   },
   ledger: {
     trialBalance: (): Promise<TrialBalance> => ipcRenderer.invoke('ledger:trialBalance')
@@ -144,7 +138,6 @@ const api = {
     create: (input: AamadInput): Promise<number> => ipcRenderer.invoke('aamad:create', input),
     list: (filter?: AamadSearchFilter): Promise<AamadListResult> =>
       ipcRenderer.invoke('aamad:list', filter),
-    get: (id: number): Promise<AamadDetail | null> => ipcRenderer.invoke('aamad:get', id),
     delete: (id: number): Promise<void> => ipcRenderer.invoke('aamad:delete', id)
   },
   sauda: {
@@ -167,12 +160,8 @@ const api = {
       ipcRenderer.invoke('maps:racks', room, floor, type)
   },
   bhada: {
-    accrue: (kisanAccountId: number, date: string): Promise<AccrueResult | null> =>
-      ipcRenderer.invoke('bhada:accrue', kisanAccountId, date),
     accrueAll: (date: string): Promise<AccrueAllResult> =>
-      ipcRenderer.invoke('bhada:accrueAll', date),
-    standing: (kisanAccountId: number): Promise<StandingBhada> =>
-      ipcRenderer.invoke('bhada:standing', kisanAccountId)
+      ipcRenderer.invoke('bhada:accrueAll', date)
   },
   loans: {
     create: (input: LoanInput): Promise<CreateLoanResult> => ipcRenderer.invoke('loans:create', input),
@@ -188,20 +177,12 @@ const api = {
       mode: 'cash' | 'bank',
       bankAccountId?: number
     ): Promise<LoanPaymentResult> =>
-      ipcRenderer.invoke('loans:pay', loanId, amountPaise, date, mode, bankAccountId),
-    capitalise: (loanId: number, onDate: string): Promise<CapitaliseResult | null> =>
-      ipcRenderer.invoke('loans:capitalise', loanId, onDate),
-    capitaliseAll: (onDate: string): Promise<CapitaliseAllResult> =>
-      ipcRenderer.invoke('loans:capitaliseAll', onDate),
-    standing: (accountId: number): Promise<StandingLoan> =>
-      ipcRenderer.invoke('loans:standing', accountId)
+      ipcRenderer.invoke('loans:pay', loanId, amountPaise, date, mode, bankAccountId)
   },
   cheques: {
     record: (input: ChequeInput): Promise<RecordChequeResult> =>
       ipcRenderer.invoke('cheques:record', input),
     list: (status?: ChequeStatus): Promise<ChequeRow[]> => ipcRenderer.invoke('cheques:list', status),
-    pendingTotals: (): Promise<{ receivedPaise: number; givenPaise: number }> =>
-      ipcRenderer.invoke('cheques:pendingTotals'),
     clear: (chequeId: number, clearanceDate: string): Promise<number> =>
       ipcRenderer.invoke('cheques:clear', chequeId, clearanceDate),
     bounce: (chequeId: number, date: string): Promise<number> =>
@@ -224,8 +205,6 @@ const api = {
     loadingRegister: (): Promise<ExpenseRow[]> => ipcRenderer.invoke('expenses:loadingRegister'),
     loadingYears: (): Promise<LoadingContractorYearRow[]> =>
       ipcRenderer.invoke('expenses:loadingYears'),
-    loadingYear: (accountId: number): Promise<LoadingContractorYearRow> =>
-      ipcRenderer.invoke('expenses:loadingYear', accountId),
     setLoadingYear: (input: LoadingContractorYearInput): Promise<void> =>
       ipcRenderer.invoke('expenses:setLoadingYear', input)
   },

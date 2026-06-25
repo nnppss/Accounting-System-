@@ -2,16 +2,13 @@ import { ipcMain } from 'electron'
 import type { ChequeInput, LoanInput } from '../../shared/contracts'
 import type { ChequeStatus } from '../../shared/enums'
 import {
-  capitaliseAllLoans,
   createLoan,
   getLoan,
   getLoanComposition,
-  getStandingLoan,
   listLoans,
   recordPayment
 } from '../services/loans'
-import { capitaliseLoan } from '../engines/interest'
-import { listCheques, pendingTotals } from '../services/cheques'
+import { listCheques } from '../services/cheques'
 import { bounceCheque, clearCheque, recordCheque } from '../engines/cheque-clearing'
 import { requireSession } from '../session'
 
@@ -30,16 +27,6 @@ export function registerLoansIpc(): void {
     (_e, loanId: number, amountPaise: number, date: string, mode: 'cash' | 'bank', bankAccountId?: number) =>
       recordPayment(loanId, amountPaise, date, mode, bankAccountId, requireSession().userId)
   )
-  ipcMain.handle('loans:capitalise', (_e, loanId: number, onDate: string) =>
-    capitaliseLoan(loanId, onDate, requireSession().userId)
-  )
-  ipcMain.handle('loans:capitaliseAll', (_e, onDate: string) => {
-    const s = requireSession()
-    return capitaliseAllLoans(s.yearId, onDate, s.userId)
-  })
-  ipcMain.handle('loans:standing', (_e, accountId: number) =>
-    getStandingLoan(accountId, requireSession().yearId)
-  )
 
   // Cheques
   ipcMain.handle('cheques:record', (_e, input: ChequeInput) => {
@@ -49,7 +36,6 @@ export function registerLoansIpc(): void {
   ipcMain.handle('cheques:list', (_e, status?: ChequeStatus) =>
     listCheques(requireSession().yearId, status)
   )
-  ipcMain.handle('cheques:pendingTotals', () => pendingTotals(requireSession().yearId))
   ipcMain.handle('cheques:clear', (_e, chequeId: number, clearanceDate: string) =>
     clearCheque(chequeId, clearanceDate, requireSession().userId)
   )

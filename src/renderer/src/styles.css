@@ -21,6 +21,30 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Severity row tints — faint, professional full-row highlighting for antd tables. Paired with
+   `severityRowClass()` in components/Highlight.tsx. Kept subtle so a row reads as "noteworthy",
+   not alarming; the :hover rules win over the table's default hover background. */
+.ant-table-tbody > tr.pc-row-danger > td {
+  background: #fdf2f2;
+}
+.ant-table-tbody > tr.pc-row-danger:hover > td {
+  background: #fbe7e7;
+}
+.ant-table-tbody > tr.pc-row-warning > td {
+  background: #fdf5e9;
+}
+.ant-table-tbody > tr.pc-row-warning:hover > td {
+  background: #fbeeda;
+}
+
+/* Keyboard-navigated active row — subtle teal tint matching the app's primary colour. */
+.ant-table-tbody > tr.pc-row-active > td {
+  background: #e1f5ee;
+}
+.ant-table-tbody > tr.pc-row-active:hover > td {
+  background: #c5ead9;
+}
+
 /* Slim, muted scrollbars to match the design system. */
 ::-webkit-scrollbar {
   width: 8px;

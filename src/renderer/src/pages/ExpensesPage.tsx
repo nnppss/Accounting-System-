@@ -21,6 +21,7 @@ import type { ExpenseRow, LoadingContractorYearRow } from '@shared/contracts'
 import type { AccountType, PaymentMode } from '@shared/enums'
 import { formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { useCreateHotkey } from '../lib/useHotkeys'
 
 /** Salary and loading payments share one register; `kind` tags which expense head a row hit. */
 type ExpenseKind = 'salary' | 'loading'
@@ -43,6 +44,7 @@ export default function ExpensesPage(): JSX.Element {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  useCreateHotkey(() => setOpen(true))
   const [chargesOpen, setChargesOpen] = useState(false)
 
   const [kindFilter, setKindFilter] = useState<'all' | ExpenseKind>('all')

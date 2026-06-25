@@ -110,7 +110,7 @@ All tables in `src/main/data/schema.ts`. Conventions: money as **integer paise**
 
 **Masters**
 - `person` (name, son_of, village_city, state, phone) — one human, many role-accounts.
-- `account` (**code**, name, type, subgroup_id, person_id?, is_defaulter, **is_system**, job?) — every party + the cold's own books. `code` is the human account number (e.g. `K-26-0001` = type prefix · 2-digit year · per-type serial); `is_system` marks the cold's own heads.
+- `account` (**code**, name, type, subgroup_id, person_id?, is_defaulter, **is_system**, job?, bank_account_number?, bank_ifsc?, bank_branch?) — every party + the cold's own books. `code` is the human account number (e.g. `K-26-0001` = type prefix · 2-digit year · per-type serial); `is_system` marks the cold's own heads. The `bank_*` fields hold details for `bank`-type accounts (the cold's own bank accounts, pinned to the `Cash and Bank` subgroup).
 - `account_series` (type → current_no) — lifetime per-type serial for account numbers.
 - `subgroup` (name, nature) — the **9 fixed groups** (seeded).
 - `financial_year` (year, status `open|closed`, **rent_rate_paise**).
@@ -139,7 +139,7 @@ All tables in `src/main/data/schema.ts`. Conventions: money as **integer paise**
 
 **Seeded reference data** (`data/seed.ts`, idempotent on startup):
 - The **9 subgroups**: Capital Account · Cash and Bank · Direct Expense · Farmer · Sundry Creditors · Sundry Debtors · Secured Loans · Revenue Account · Income from Other Resource.
-- The cold's own **system accounts**: Cash · Capital · Rent/Bhada Income · Interest Income · Bardana Sales · Bardana Purchase · Salary Expense · Loading Expense · Opening Balance Equity · **Cheques in Clearing**. (Banks are *not* seeded — the user creates one account per real bank.)
+- The cold's own **system accounts**: Cash · Capital · Rent/Bhada Income · Interest Income · Bardana Sales · Bardana Purchase · Salary Expense · Loading Expense · Opening Balance Equity · **Cheques in Clearing**. (Banks are *not* seeded — the user creates one `bank`-type account per real bank.)
 
 **Read models — stored nowhere, all computed by queries:** ledger, trial balance, the three stock maps, money book, bills, party search.
 

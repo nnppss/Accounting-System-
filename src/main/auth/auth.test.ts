@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { closeDb } from '../data/db'
 import { setupDb } from '../test-utils'
-import { createUser, createYear, ensureBootstrap, listYears, login } from './auth'
+import { changePassword, createUser, createYear, ensureBootstrap, listYears, login } from './auth'
 
 beforeEach(() => setupDb())
 afterEach(() => closeDb())
@@ -36,5 +36,29 @@ describe('auth', () => {
     ensureBootstrap(2026)
     expect(listYears().map((y) => y.year)).toContain(2026)
     expect(login(2026, 'admin', 'admin123').role).toBe('admin')
+  })
+
+  it('flags the seeded default password so the UI can nudge a change', () => {
+    ensureBootstrap(2026)
+    expect(login(2026, 'admin', 'admin123').mustChangePassword).toBe(true)
+  })
+
+  it('changes a password and clears the default-password flag', () => {
+    createYear(2026)
+    const id = createUser('admin', 'admin123', 'Administrator', 'admin')
+    expect(login(2026, 'admin', 'admin123').mustChangePassword).toBe(true)
+
+    changePassword(id, 'admin123', 'fresh-secret')
+    expect(() => login(2026, 'admin', 'admin123')).toThrow(/invalid/i)
+    const session = login(2026, 'admin', 'fresh-secret')
+    expect(session.mustChangePassword).toBeFalsy()
+  })
+
+  it('rejects a password change with the wrong current password, too-short or unchanged', () => {
+    createYear(2026)
+    const id = createUser('seema', 'secret123', 'Seema')
+    expect(() => changePassword(id, 'wrong', 'newsecret')).toThrow(/current password/i)
+    expect(() => changePassword(id, 'secret123', 'short')).toThrow(/6 characters/i)
+    expect(() => changePassword(id, 'secret123', 'secret123')).toThrow(/different/i)
   })
 })

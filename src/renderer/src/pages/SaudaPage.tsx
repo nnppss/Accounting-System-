@@ -17,6 +17,7 @@ import dayjs from 'dayjs'
 import type { SaudaListRow } from '@shared/contracts'
 import { formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { useCreateHotkey } from '../lib/useHotkeys'
 
 export default function SaudaPage(): JSX.Element {
   const { t } = useTranslation()
@@ -28,6 +29,7 @@ export default function SaudaPage(): JSX.Element {
   const [kisanFilter, setKisanFilter] = useState<number | undefined>()
   const [range, setRange] = useState<[string, string] | undefined>()
   const [open, setOpen] = useState(false)
+  useCreateHotkey(() => setOpen(true))
 
   const saudas = useQuery({ queryKey: ['sauda'], queryFn: () => window.api.sauda.list() })
 

@@ -118,8 +118,12 @@ const CODE_PREFIX: Record<AccountType, string> = {
   vyapari: 'V',
   staff: 'S',
   loading_contractor: 'LC',
+  bank: 'B',
   other: 'O'
 }
+
+/** The subgroup a 'bank' account is pinned to, so it always surfaces in the Money Book (seed.ts). */
+const CASH_AND_BANK = 'Cash and Bank'
 
 /** Build a human-facing account number: `<PREFIX>-<YY>-<serial>` (serial min 4 digits). */
 export function formatAccountCode(type: AccountType, year: number, serial: number): string {
@@ -143,6 +147,11 @@ function nextAccountSerial(type: AccountType): number {
 export function createAccount(input: AccountInput, year = new Date().getFullYear()): number {
   const sg = db().select().from(subgroup).where(eq(subgroup.id, input.subgroupId)).get()
   if (!sg) throw new Error(`Subgroup ${input.subgroupId} does not exist`)
+  // A bank account must live in 'Cash and Bank' — that subgroup is what the Money Book filters on,
+  // so misfiling one would silently leave it without a book. Enforce it beyond the UI lock.
+  if (input.type === 'bank' && sg.name !== CASH_AND_BANK) {
+    throw new Error(`A bank account must be in the '${CASH_AND_BANK}' subgroup`)
+  }
   if (input.personId) {
     const p = db().select().from(person).where(eq(person.id, input.personId)).get()
     if (!p) throw new Error(`Person ${input.personId} does not exist`)
@@ -156,7 +165,10 @@ export function createAccount(input: AccountInput, year = new Date().getFullYear
       type: input.type,
       subgroupId: input.subgroupId,
       personId: input.personId ?? null,
-      job: input.job ?? null
+      job: input.job ?? null,
+      bankAccountNumber: input.bankAccountNumber?.trim() || null,
+      bankIfsc: input.bankIfsc?.trim() || null,
+      bankBranch: input.bankBranch?.trim() || null
     })
     .returning({ id: account.id })
     .get()
@@ -309,6 +321,9 @@ export function getAccountDetail(accountId: number, yearId: number): AccountDeta
       villageCity: person.villageCity,
       state: person.state,
       phone: person.phone,
+      bankAccountNumber: account.bankAccountNumber,
+      bankIfsc: account.bankIfsc,
+      bankBranch: account.bankBranch,
       isDefaulter: account.isDefaulter,
       isSystem: account.isSystem
     })

@@ -7,7 +7,6 @@ import type {
 import type { BardanaDirection } from '../../shared/enums'
 import { createBardana, deleteBardana, getBardanaAccount, listBardana } from '../services/bardana'
 import {
-  getLoadingContractorYear,
   listLoadingContractorYears,
   listLoadingRegister,
   listSalaryRegister,
@@ -47,9 +46,6 @@ export function registerExpensesIpc(): void {
   })
   ipcMain.handle('expenses:loadingRegister', () => listLoadingRegister(requireSession().yearId))
   ipcMain.handle('expenses:loadingYears', () => listLoadingContractorYears(requireSession().yearId))
-  ipcMain.handle('expenses:loadingYear', (_e, accountId: number) =>
-    getLoadingContractorYear(accountId, requireSession().yearId)
-  )
   ipcMain.handle('expenses:setLoadingYear', (_e, input: LoadingContractorYearInput) => {
     const s = requireSession()
     return setLoadingContractorYear(s.yearId, input, s.userId)

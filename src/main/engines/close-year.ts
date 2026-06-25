@@ -169,7 +169,8 @@ function buildExceptions(
       accountId: c.partyAccountId,
       accountName: c.partyName,
       amountPaise: c.amountPaise,
-      detail: `Cheque ${c.no} (${c.direction}) still pending — not yet cleared into the bank.`
+      chequeNo: c.no,
+      chequeDirection: c.direction
     })
   }
 
@@ -179,8 +180,7 @@ function buildExceptions(
         kind: 'credit_balance',
         accountId: c.accountId,
         accountName: c.name,
-        amountPaise: -c.balancePaise,
-        detail: `${c.name} carries a credit balance (the cold owes them) — carried forward as a Cr opening.`
+        amountPaise: -c.balancePaise
       })
     }
   }
@@ -189,12 +189,12 @@ function buildExceptions(
     exceptions.push({
       kind: 'leftover_stock',
       amountPaise: undefined,
-      detail: `${leftoverPackets} packet(s) of current stock remain — the new year starts empty (leftover disposed).`
+      packets: leftoverPackets
     })
   }
 
   if (!getTrialBalance(yearId).balanced) {
-    exceptions.push({ kind: 'unbalanced', detail: 'Trial balance does not net to zero — investigate before closing.' })
+    exceptions.push({ kind: 'unbalanced' })
   }
 
   return exceptions

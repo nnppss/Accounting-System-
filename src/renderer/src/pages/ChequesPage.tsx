@@ -13,7 +13,6 @@ import {
   Select,
   Space,
   Table,
-  Tag,
   Typography
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -22,12 +21,15 @@ import dayjs from 'dayjs'
 import type { ChequeRow } from '@shared/contracts'
 import type { ChequeDirection, ChequeStatus } from '@shared/enums'
 import { formatINR, toPaise } from '../lib/format'
+import { SeverityTag, severityRowClass, type Severity } from '../components/Highlight'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { useCreateHotkey } from '../lib/useHotkeys'
 
-const STATUS_COLOR: Record<ChequeStatus, string> = {
-  pending: 'gold',
-  cleared: 'green',
-  bounced: 'red'
+// A pending cheque is money in limbo (warning); a bounce is a problem (danger); cleared is settled.
+const STATUS_SEVERITY: Record<ChequeStatus, Severity> = {
+  pending: 'warning',
+  cleared: 'success',
+  bounced: 'danger'
 }
 
 export default function ChequesPage(): JSX.Element {
@@ -36,6 +38,7 @@ export default function ChequesPage(): JSX.Element {
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
   const [open, setOpen] = useState(false)
+  useCreateHotkey(() => setOpen(true))
 
   // ---- filters ----
   const [fDirection, setFDirection] = useState<'all' | ChequeDirection>('all')
@@ -131,7 +134,11 @@ export default function ChequesPage(): JSX.Element {
       title: t('cheques.status'),
       dataIndex: 'status',
       width: 100,
-      render: (s: ChequeStatus) => <Tag color={STATUS_COLOR[s]}>{t(`cheques.st.${s}`)}</Tag>
+      render: (s: ChequeStatus) => (
+        <SeverityTag severity={STATUS_SEVERITY[s]} icon={s !== 'cleared'}>
+          {t(`cheques.st.${s}`)}
+        </SeverityTag>
+      )
     },
     {
       title: t('common.actions'),
@@ -235,6 +242,13 @@ export default function ChequesPage(): JSX.Element {
         columns={columns}
         dataSource={rows}
         pagination={{ pageSize: 15 }}
+        rowClassName={(row) =>
+          row.status === 'bounced'
+            ? severityRowClass('danger')
+            : row.status === 'pending'
+              ? severityRowClass('warning')
+              : ''
+        }
       />
 
       <Modal

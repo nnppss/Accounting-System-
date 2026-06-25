@@ -5,8 +5,10 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { AccountType } from '@shared/enums'
 import type { BillSubject } from '@shared/contracts'
-import { balanceLabel, formatINR } from '../lib/format'
+import { formatINR } from '../lib/format'
+import { BalanceAmount } from '../components/Highlight'
 import { useBillsView, type BillMode } from '../store/billsView'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 /**
  * Bills & Salaries index (software.md §3.11) — one row per person (grouping roles) or standalone
@@ -38,6 +40,7 @@ export default function BillsPage(): JSX.Element {
   }, [subjects.data, search, mode])
 
   const open = (s: BillSubject): void => navigate(`/bills/${s.primaryAccountId}`)
+  const { containerRef, rowClassName } = useTableKeyNav(rows, open)
 
   const valueColumn =
     mode === 'salary'
@@ -51,7 +54,7 @@ export default function BillsPage(): JSX.Element {
           title: t('bills.net'),
           dataIndex: 'netPaise',
           align: 'right' as const,
-          render: (v: number) => balanceLabel(v)
+          render: (v: number) => <BalanceAmount paise={v} />
         }
 
   const columns = [
@@ -101,15 +104,18 @@ export default function BillsPage(): JSX.Element {
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
-      <Table
-        rowKey="subjectKey"
-        size="small"
-        loading={subjects.isLoading}
-        columns={columns}
-        dataSource={rows}
-        pagination={{ pageSize: 20 }}
-        onRow={(r) => ({ onClick: () => open(r), style: { cursor: 'pointer' } })}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="subjectKey"
+          size="small"
+          loading={subjects.isLoading}
+          columns={columns}
+          dataSource={rows}
+          pagination={{ pageSize: 20 }}
+          rowClassName={rowClassName}
+          onRow={(r) => ({ onClick: () => open(r), style: { cursor: 'pointer' } })}
+        />
+      </div>
     </div>
   )
 }
