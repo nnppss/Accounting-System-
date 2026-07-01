@@ -22,6 +22,7 @@ import type { CloseException, CloseSummary } from '@shared/contracts'
 import { useSession } from '../store/session'
 import { formatINR } from '../lib/format'
 import { SeverityTag } from '../components/Highlight'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
 
 /**
  * The English sentence beside each exception is built here (not in the backend engine) so it runs
@@ -221,6 +222,7 @@ function PasswordGate({
 }): JSX.Element {
   const { t } = useTranslation()
   const [form] = Form.useForm()
+  const formNav = useFormKeyNav({ onAccept: () => form.submit() })
   return (
     <Modal
       open
@@ -232,11 +234,13 @@ function PasswordGate({
       onOk={() => form.submit()}
     >
       <Typography.Paragraph>{confirmText}</Typography.Paragraph>
+      <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
       <Form form={form} onFinish={(v) => onConfirm(v.password)}>
         <Form.Item name="password" rules={[{ required: true }]} style={{ marginBottom: 0 }}>
           <Input.Password placeholder={t('close.passwordPlaceholder')} autoFocus />
         </Form.Item>
       </Form>
+      </div>
     </Modal>
   )
 }

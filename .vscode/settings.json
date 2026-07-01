@@ -1,0 +1,26 @@
+{
+  // Use the workspace TypeScript version so editor and build agree.
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  // Keep build output, deps and local databases out of search and the file tree.
+  "search.exclude": {
+    "**/node_modules": true,
+    "out": true,
+    "release": true,
+    "dist": true,
+    "**/*.tsbuildinfo": true,
+    "package-lock.json": true
+  },
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "**/*.tsbuildinfo": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "out/**": true,
+    "release/**": true
+  },
+
+  "files.eol": "\n"
+}

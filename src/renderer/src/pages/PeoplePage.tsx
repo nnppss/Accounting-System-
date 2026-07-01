@@ -4,6 +4,7 @@ import { DeleteOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { PersonRow } from '@shared/contracts'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 /**
  * People (person master) management. Persons are a permanent, reusable identity list — one human can
@@ -30,6 +31,8 @@ export default function PeoplePage(): JSX.Element {
     clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(() => setSearch(v), 250)
   }
+
+  const { containerRef, rowClassName } = useTableKeyNav(persons.data, () => {})
 
   const remove = useMutation({
     mutationFn: (id: number) => window.api.persons.delete(id),
@@ -98,6 +101,7 @@ export default function PeoplePage(): JSX.Element {
           onChange={(e) => onSearch(e.target.value)}
           onSearch={(v) => onSearch(v)}
         />
+        <div ref={containerRef} style={{ width: '100%' }}>
         <Table
           rowKey="id"
           size="small"
@@ -105,6 +109,7 @@ export default function PeoplePage(): JSX.Element {
           dataSource={persons.data ?? []}
           loading={persons.isFetching}
           pagination={{ pageSize: 20, showSizeChanger: false }}
+          rowClassName={rowClassName}
           locale={{
             emptyText: term ? (
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noResults')} />
@@ -113,6 +118,7 @@ export default function PeoplePage(): JSX.Element {
             )
           }}
         />
+        </div>
       </Space>
     </div>
   )

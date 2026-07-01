@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { BillLoanLine, BillSection, LedgerLine } from '@shared/contracts'
-import { formatINR } from '../lib/format'
+import { formatDate, formatINR } from '../lib/format'
 import { BalanceAmount, BalanceSentence } from '../components/Highlight'
 import { usePrinter } from '../lib/usePrinter'
 
@@ -91,7 +91,7 @@ function SectionCard({
   const { t } = useTranslation()
 
   const ledgerCols = [
-    { title: t('common.date'), dataIndex: 'date', width: 100 },
+    { title: t('common.date'), dataIndex: 'date', width: 100, render: (v: string) => formatDate(v) },
     {
       title: t('vouchers.type'),
       key: 'v',
@@ -123,7 +123,7 @@ function SectionCard({
   ]
 
   const loanCols = [
-    { title: t('common.date'), dataIndex: 'date', width: 100 },
+    { title: t('common.date'), dataIndex: 'date', width: 100, render: (v: string) => formatDate(v) },
     {
       title: t('loans.category'),
       dataIndex: 'category',

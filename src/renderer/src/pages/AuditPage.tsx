@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { AuditAction, AuditFilter, AuditLogRow } from '@shared/contracts'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 const ACTION_COLORS: Record<AuditAction, string> = {
   create: 'green',
@@ -54,11 +55,17 @@ function AuditDetail({ row }: { row: AuditLogRow }): JSX.Element {
 export default function AuditPage(): JSX.Element {
   const { t } = useTranslation()
   const [filter, setFilter] = useState<AuditFilter>({ limit: 500 })
+  // Enter toggles the before/after detail of the highlighted row.
+  const [expandedKeys, setExpandedKeys] = useState<number[]>([])
 
   const facets = useQuery({ queryKey: ['audit-facets'], queryFn: () => window.api.audit.facets() })
   const log = useQuery({ queryKey: ['audit', filter], queryFn: () => window.api.audit.list(filter) })
 
   const patch = (p: Partial<AuditFilter>): void => setFilter((f) => ({ ...f, ...p }))
+
+  const { containerRef, rowClassName } = useTableKeyNav(log.data, (r) =>
+    setExpandedKeys((k) => (k.includes(r.id) ? k.filter((x) => x !== r.id) : [...k, r.id]))
+  )
 
   const accountantOptions = (facets.data?.accountants ?? []).map((a) => ({ value: a, label: a }))
   const entityOptions = (facets.data?.entities ?? []).map((e) => ({
@@ -77,7 +84,7 @@ export default function AuditPage(): JSX.Element {
       title: t('audit.when'),
       dataIndex: 'ts',
       width: 175,
-      render: (ts: number) => dayjs(ts).format('DD MMM YYYY, HH:mm')
+      render: (ts: number) => dayjs(ts).format('DD/MM/YYYY, HH:mm')
     },
     {
       title: t('audit.accountant'),
@@ -160,6 +167,7 @@ export default function AuditPage(): JSX.Element {
         </Space>
       </Card>
 
+      <div ref={containerRef}>
       <Table
         rowKey="id"
         size="small"
@@ -167,11 +175,15 @@ export default function AuditPage(): JSX.Element {
         columns={columns}
         dataSource={log.data ?? []}
         pagination={{ pageSize: 20, showSizeChanger: false }}
+        rowClassName={rowClassName}
         expandable={{
           expandedRowRender: (r: AuditLogRow) => <AuditDetail row={r} />,
-          rowExpandable: (r: AuditLogRow) => r.before != null || r.after != null
+          rowExpandable: (r: AuditLogRow) => r.before != null || r.after != null,
+          expandedRowKeys: expandedKeys,
+          onExpandedRowsChange: (keys) => setExpandedKeys(keys as number[])
         }}
       />
+      </div>
     </div>
   )
 }

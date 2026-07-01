@@ -3,7 +3,7 @@ import { Drawer, Select, Space, Table, Typography } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { MoneyBookMonth } from '@shared/contracts'
-import { formatINR, MONTH_NAMES } from '../lib/format'
+import { formatDate, formatINR, MONTH_NAMES } from '../lib/format'
 import { SeverityText } from '../components/Highlight'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
 
@@ -78,7 +78,7 @@ export default function MoneyBookPage(): JSX.Element {
   ]
 
   const detailColumns = [
-    { title: t('common.date'), dataIndex: 'date', width: 110 },
+    { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
     { title: t('vouchers.no'), dataIndex: 'voucherNo', width: 60 },
     { title: t('moneyBook.counterparty'), dataIndex: 'counterparty' },
     { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? '—' },

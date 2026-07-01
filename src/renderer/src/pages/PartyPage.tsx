@@ -23,6 +23,8 @@ import { ACCOUNT_TYPES, LOAN_CATEGORIES, type AccountType } from '@shared/enums'
 import type { NumericFilter, NumericOp, PartyCriteria, PartyRow } from '@shared/contracts'
 import { balanceLabel, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { BalanceAmount } from '../components/Highlight'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 type NumField = { op?: NumericOp; value?: number; value2?: number } | undefined
 
@@ -131,11 +133,15 @@ export default function PartyPage(): JSX.Element {
   const [criteria, setCriteria] = useState<PartyCriteria>({})
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
+  const filterNav = useFormKeyNav({ onAccept: () => form.submit() })
 
   const result = useQuery({
     queryKey: ['party', criteria],
     queryFn: () => window.api.party.search(criteria)
   })
+  const { containerRef, rowClassName } = useTableKeyNav(result.data?.rows, (r) =>
+    navigate(`/bills/${r.accountId}`, { state: { fromNav: '/party' } })
+  )
   const presets = useQuery({ queryKey: ['party', 'presets'], queryFn: () => window.api.party.savedFilters() })
 
   const savePreset = useMutation({
@@ -232,6 +238,7 @@ export default function PartyPage(): JSX.Element {
       </Typography.Title>
 
       <Card style={{ marginBottom: 16 }}>
+        <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
         <Form
           form={form}
           layout="vertical"
@@ -321,6 +328,7 @@ export default function PartyPage(): JSX.Element {
             )}
           </Space>
         </Form>
+        </div>
       </Card>
 
       <Space style={{ marginBottom: 8 }}>
@@ -335,14 +343,17 @@ export default function PartyPage(): JSX.Element {
         )}
       </Space>
 
-      <Table
-        rowKey="accountId"
-        size="small"
-        loading={result.isLoading}
-        columns={columns}
-        dataSource={result.data?.rows ?? []}
-        pagination={{ pageSize: 20 }}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="accountId"
+          size="small"
+          loading={result.isLoading}
+          columns={columns}
+          dataSource={result.data?.rows ?? []}
+          pagination={{ pageSize: 20 }}
+          rowClassName={rowClassName}
+        />
+      </div>
 
       <Modal
         title={t('party.savePreset')}
@@ -353,6 +364,7 @@ export default function PartyPage(): JSX.Element {
         okText={t('common.save')}
       >
         <Input
+          autoFocus
           placeholder={t('party.presetName')}
           value={saveName}
           onChange={(e) => setSaveName(e.target.value)}

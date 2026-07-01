@@ -29,6 +29,7 @@ import { useAccountsFilter, type AccountFilters } from '../store/accountsFilter'
 import { useSession } from '../store/session'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
 
 /** Debounce a value so we don't fire a query on every keystroke. */
 function useDebounced<T>(value: T, ms: number): T {
@@ -60,8 +61,17 @@ export default function AccountsPage(): JSX.Element {
   const year = useSession((s) => s.session?.year)
 
   // Filters live in a store so they survive opening an account and returning (see store comment).
-  const { type, filters, includeSystem, setType, setFilters, setIncludeSystem, reset } =
-    useAccountsFilter()
+  const {
+    type,
+    filters,
+    defaultersOnly,
+    includeSystem,
+    setType,
+    setFilters,
+    setDefaultersOnly,
+    setIncludeSystem,
+    reset
+  } = useAccountsFilter()
   const [newOpen, setNewOpen] = useState(false)
   useCreateHotkey(() => setNewOpen(true))
   const [personOpen, setPersonOpen] = useState(false)
@@ -80,6 +90,7 @@ export default function AccountsPage(): JSX.Element {
   // A party-narrowing filter is anything except the system toggle.
   const partyFilterActive = Boolean(
     type ||
+      defaultersOnly ||
       dFilters.name.trim() ||
       dFilters.villageCity.trim() ||
       dFilters.state.trim() ||
@@ -91,13 +102,15 @@ export default function AccountsPage(): JSX.Element {
 
   const [accountForm] = Form.useForm()
   const [personForm] = Form.useForm()
+  const accountNav = useFormKeyNav({ open: newOpen, onAccept: () => accountForm.submit() })
+  const personNav = useFormKeyNav({ open: personOpen, onAccept: () => personForm.submit() })
 
   const invalidate = (): void => {
     queryClient.invalidateQueries({ queryKey: ['accounts'] })
   }
 
   const accounts = useQuery({
-    queryKey: ['accounts', type, dFilters, includeSystem],
+    queryKey: ['accounts', type, dFilters, defaultersOnly, includeSystem],
     queryFn: () =>
       window.api.accounts.list({
         type,
@@ -105,6 +118,7 @@ export default function AccountsPage(): JSX.Element {
         villageCity: dFilters.villageCity.trim() || undefined,
         state: dFilters.state.trim() || undefined,
         phone: dFilters.phone.trim() || undefined,
+        defaultersOnly: defaultersOnly || undefined,
         // With a party filter active the toggle is additive; on its own it shows just the heads.
         includeSystem: includeSystem && partyFilterActive,
         systemOnly: includeSystem && !partyFilterActive
@@ -309,6 +323,13 @@ export default function AccountsPage(): JSX.Element {
             />
           </Labeled>
           <Checkbox
+            checked={defaultersOnly}
+            onChange={(e) => setDefaultersOnly(e.target.checked)}
+            style={{ marginBottom: 6 }}
+          >
+            {t('accounts.defaultersOnly')}
+          </Checkbox>
+          <Checkbox
             checked={includeSystem}
             onChange={(e) => setIncludeSystem(e.target.checked)}
             style={{ marginBottom: 6 }}
@@ -358,6 +379,7 @@ export default function AccountsPage(): JSX.Element {
         confirmLoading={createAccount.isPending}
         okText={t('common.create')}
       >
+        <div ref={accountNav.containerRef} onKeyDownCapture={accountNav.onKeyDownCapture}>
         <Form
           form={accountForm}
           layout="vertical"
@@ -468,6 +490,7 @@ export default function AccountsPage(): JSX.Element {
             </Form.Item>
           </Space>
         </Form>
+        </div>
       </Modal>
 
       {/* New person */}
@@ -479,6 +502,7 @@ export default function AccountsPage(): JSX.Element {
         confirmLoading={createPerson.isPending}
         okText={t('common.create')}
       >
+        <div ref={personNav.containerRef} onKeyDownCapture={personNav.onKeyDownCapture}>
         <Form form={personForm} layout="vertical" onFinish={(v) => createPerson.mutate(v)}>
           <Form.Item name="name" label={t('accounts.name')} rules={[{ required: true }]}>
             <Input />
@@ -496,6 +520,7 @@ export default function AccountsPage(): JSX.Element {
             <Input />
           </Form.Item>
         </Form>
+        </div>
       </Modal>
     </div>
   )

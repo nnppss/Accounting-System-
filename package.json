@@ -5,6 +5,10 @@
   "main": "./out/main/index.js",
   "author": "Paritosh Cold",
   "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -13,7 +17,8 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "package": "electron-vite build && electron-builder"
+    "package": "electron-vite build && electron-builder",
+    "app:mac": "electron-vite build && electron-builder --mac dir && rm -rf '/Applications/Paritosh Cold.app' && cp -R 'release/mac-arm64/Paritosh Cold.app' /Applications/ && xattr -cr '/Applications/Paritosh Cold.app' && rm -rf 'release/mac-arm64' && echo '\\n✅ Updated /Applications/Paritosh Cold.app'"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",

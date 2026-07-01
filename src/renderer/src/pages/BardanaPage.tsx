@@ -22,9 +22,11 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { BardanaRow } from '@shared/contracts'
 import type { BardanaDirection, PaymentMode } from '@shared/enums'
-import { formatINR, toPaise } from '../lib/format'
+import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 /** How a deal was settled, derived from amount vs paid. */
 type SettleMode = 'full' | 'partial' | 'credit'
@@ -43,6 +45,7 @@ export default function BardanaPage(): JSX.Element {
   const [form] = Form.useForm()
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
+  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
   const mode = Form.useWatch('mode', form) as PaymentMode | undefined
   const rate = Form.useWatch('rate', form) as number | undefined
   const qty = Form.useWatch('qty', form) as number | undefined
@@ -116,9 +119,11 @@ export default function BardanaPage(): JSX.Element {
     })
   }, [list.data, fDirection, fMode, fPay, fParty, range])
 
+  const { containerRef, rowClassName } = useTableKeyNav(rows, () => {})
+
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60, render: (id: number) => `#${id}` },
-    { title: t('common.date'), dataIndex: 'date', width: 110 },
+    { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
     {
       title: t('bardana.direction'),
       dataIndex: 'direction',
@@ -269,9 +274,9 @@ export default function BardanaPage(): JSX.Element {
           ]}
         />
         <DatePicker.RangePicker
-          format="YYYY-MM-DD"
+          format={DATE_FORMAT}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
-          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+          onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
         {filtersActive && (
           <Button type="link" onClick={clearFilters}>
@@ -280,14 +285,17 @@ export default function BardanaPage(): JSX.Element {
         )}
       </Space>
 
-      <Table
-        rowKey="id"
-        size="small"
-        loading={list.isLoading}
-        columns={columns}
-        dataSource={rows}
-        pagination={{ pageSize: 15 }}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={list.isLoading}
+          columns={columns}
+          dataSource={rows}
+          pagination={{ pageSize: 15 }}
+          rowClassName={rowClassName}
+        />
+      </div>
 
       <Modal
         title={t('bardana.new')}
@@ -298,6 +306,7 @@ export default function BardanaPage(): JSX.Element {
         okText={t('common.create')}
         width={560}
       >
+        <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form
           form={form}
           layout="vertical"
@@ -332,7 +341,7 @@ export default function BardanaPage(): JSX.Element {
             </Col>
             <Col span={12}>
               <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-                <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+                <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
@@ -424,6 +433,7 @@ export default function BardanaPage(): JSX.Element {
             </Row>
           )}
         </Form>
+        </div>
       </Modal>
     </div>
   )

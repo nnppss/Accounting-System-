@@ -1,15 +1,21 @@
 import { Button, Space, Table, Tag, Typography } from 'antd'
 import { PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TrialBalanceRow } from '@shared/contracts'
 import { formatINR } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 export default function TrialBalancePage(): JSX.Element {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const print = usePrinter()
   const tb = useQuery({ queryKey: ['trialBalance'], queryFn: () => window.api.ledger.trialBalance() })
+  const { containerRef, rowClassName } = useTableKeyNav(tb.data?.rows, (r) =>
+    navigate(`/accounts/${r.accountId}`, { state: { fromNav: '/trial-balance' } })
+  )
 
   const columns = [
     { title: t('trialBalance.account'), dataIndex: 'accountName' },
@@ -50,6 +56,7 @@ export default function TrialBalancePage(): JSX.Element {
           {t('common.print')}
         </Button>
       </Space>
+      <div ref={containerRef}>
       <Table
         rowKey="accountId"
         size="small"
@@ -57,6 +64,11 @@ export default function TrialBalancePage(): JSX.Element {
         columns={columns}
         dataSource={tb.data?.rows ?? []}
         pagination={false}
+        rowClassName={rowClassName}
+        onRow={(r) => ({
+          onClick: () => navigate(`/accounts/${r.accountId}`, { state: { fromNav: '/trial-balance' } }),
+          style: { cursor: 'pointer' }
+        })}
         summary={() => (
           <Table.Summary.Row>
             <Table.Summary.Cell index={0} colSpan={2} align="right">
@@ -71,6 +83,7 @@ export default function TrialBalancePage(): JSX.Element {
           </Table.Summary.Row>
         )}
       />
+      </div>
     </div>
   )
 }

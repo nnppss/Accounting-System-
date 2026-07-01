@@ -10,7 +10,15 @@ extraResources:
   - from: drizzle
     to: drizzle
 npmRebuild: true
+mac:
+  icon: resources/icon.png
+  category: public.app-category.finance
+  identity: null
+  target:
+    - dmg
+    - dir
 win:
+  icon: resources/icon.png
   target: nsis
   artifactName: ${productName}-${version}-setup.${ext}
 nsis:

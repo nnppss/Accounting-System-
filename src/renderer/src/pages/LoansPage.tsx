@@ -22,11 +22,12 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { Bill, LoanRow } from '@shared/contracts'
 import type { LoanCategory, LoanEventType, LoanMode, LoanNature } from '@shared/enums'
-import { formatINR, toPaise } from '../lib/format'
+import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
 import { SeverityText, interestSeverity, severityRowClass } from '../components/Highlight'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
 
 const CATEGORY_TYPE: Record<LoanCategory, 'kisan' | 'vyapari' | null> = {
   kisan: 'kisan',
@@ -45,6 +46,7 @@ export default function LoansPage(): JSX.Element {
   const [detailLoan, setDetailLoan] = useState<LoanRow | null>(null)
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
+  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
 
   const [accountFilter, setAccountFilter] = useState<number | undefined>()
   const [categoryFilter, setCategoryFilter] = useState<'all' | LoanCategory>('all')
@@ -93,7 +95,7 @@ export default function LoansPage(): JSX.Element {
     .map((b) => ({ value: b.id, label: b.name }))
 
   const columns = [
-    { title: t('common.date'), dataIndex: 'date', width: 110 },
+    { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
     { title: t('loans.party'), dataIndex: 'accountName' },
     {
       title: t('loans.category'),
@@ -215,9 +217,9 @@ export default function LoansPage(): JSX.Element {
           ]}
         />
         <DatePicker.RangePicker
-          format="YYYY-MM-DD"
+          format={DATE_FORMAT}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
-          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+          onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
         {(accountFilter || categoryFilter !== 'all' || natureFilter !== 'all' || range) && (
           <Button
@@ -261,6 +263,7 @@ export default function LoansPage(): JSX.Element {
         okText={t('common.create')}
         width={640}
       >
+        <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form
           form={form}
           layout="vertical"
@@ -282,7 +285,7 @@ export default function LoansPage(): JSX.Element {
         >
           <Space size="large" align="start" wrap>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-              <DatePicker format="YYYY-MM-DD" />
+              <DatePicker format={DATE_FORMAT} />
             </Form.Item>
             <Form.Item name="category" label={t('loans.category')} rules={[{ required: true }]}>
               <Select
@@ -344,6 +347,7 @@ export default function LoansPage(): JSX.Element {
             <Input.TextArea rows={2} />
           </Form.Item>
         </Form>
+        </div>
       </Modal>
 
       <LoanDetailDrawer
@@ -465,7 +469,7 @@ function LoanDetailDrawer({
           <Space>
             <Typography.Text type="secondary">{t('loans.asOf')}:</Typography.Text>
             <DatePicker
-              format="YYYY-MM-DD"
+              format={DATE_FORMAT}
               allowClear={false}
               value={dayjs(asOf)}
               onChange={(dt) => dt && setAsOf(dt.format('YYYY-MM-DD'))}
@@ -486,7 +490,7 @@ function LoanDetailDrawer({
                       <Tag color={c.nature === 'direct' ? 'blue' : 'orange'} style={{ margin: 0 }}>
                         {t(`loans.nature.${c.nature}`)}
                       </Tag>
-                      <Typography.Text type="secondary">{c.date}</Typography.Text>
+                      <Typography.Text type="secondary">{formatDate(c.date)}</Typography.Text>
                     </Space>
                   ),
                   children: (
@@ -563,7 +567,7 @@ function LoanDetailDrawer({
                 title={t('loans.thisLoanTitle')}
                 items={[
                   { key: 'nature', label: t('loans.nature'), children: t(`loans.nature.${d.nature}`) },
-                  { key: 'date', label: t('loans.dateTaken'), children: d.date },
+                  { key: 'date', label: t('loans.dateTaken'), children: formatDate(d.date) },
                   {
                     key: 'rate',
                     label: t('loans.rate'),
@@ -599,7 +603,7 @@ function LoanDetailDrawer({
                         <Typography.Text>
                           {t(`loans.event.${e.type}`)} — <strong>{formatINR(e.amountPaise)}</strong>
                         </Typography.Text>
-                        <Typography.Text type="secondary">{e.date}</Typography.Text>
+                        <Typography.Text type="secondary">{formatDate(e.date)}</Typography.Text>
                       </Space>
                     )
                   }))}
@@ -627,6 +631,7 @@ function PayModal({
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const [form] = Form.useForm()
+  const formNav = useFormKeyNav({ onAccept: () => form.submit() })
   const mode = Form.useWatch('mode', form) as LoanMode | undefined
 
   const pay = useMutation({
@@ -657,12 +662,13 @@ function PayModal({
       <Typography.Paragraph type="secondary">
         {t('loans.outstanding')}: <strong>{formatINR(loan.outstandingPaise)}</strong>
       </Typography.Paragraph>
+      <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
       <Form form={form} layout="vertical" initialValues={{ date: dayjs(), mode: 'cash' }} onFinish={(v) => pay.mutate(v)}>
         <Form.Item name="amount" label={t('common.amount')} rules={[{ required: true }]}>
           <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-          <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+          <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item name="mode" label={t('loans.mode')} rules={[{ required: true }]}>
           <Select
@@ -675,6 +681,7 @@ function PayModal({
           </Form.Item>
         )}
       </Form>
+      </div>
     </Modal>
   )
 }

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Bill / बिल — Satya Pal Singh</title><style>
+  :root {
+    --maroon: #7a3b2e;
+    --maroon-soft: #f0e6e1;
+    --ink: #1f1d1b;
+    --ink-soft: #3a3632;
+    --muted: #8a8279;
+    --line: #cfc8bf;
+    --line-soft: #ddd6cc;
+    --soft: #f5f1ea;
+    --beige: #e8e2d9;
+    --beige-2: #efeae2;
+    --amber: #8a5a2b;
+    --amber-soft: #f3e7d4;
+    --green: #2f6b3f;
+    --green-soft: #e7f0e7;
+    --red: #9c3a2f;
+  }
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans', 'Noto Sans Devanagari', Arial, sans-serif;
+    color: var(--ink); margin: 0; padding: 0; font-size: 12px; line-height: 1.45;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; }
+
+  /* ---- letterhead ---- */
+  .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+    border-bottom: 2px solid var(--maroon); padding-bottom: 12px; margin-bottom: 18px; }
+  .brand h1 { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: 700;
+    color: var(--maroon); font-size: 24px; margin: 0; line-height: 1; }
+  .brand h1 .hi { font-family: 'Noto Sans Devanagari', Arial, sans-serif; font-style: normal; margin-left: 10px; }
+  .brand .sub { color: var(--muted); font-size: 11px; margin-top: 5px; }
+  .doc { text-align: right; }
+  .doc .kind { display: inline-block; background: var(--maroon); color: #fff; font-weight: 700;
+    font-size: 12px; padding: 3px 12px; border-radius: 4px; letter-spacing: 0.3px; }
+  .doc .ref { color: var(--muted); font-size: 11px; margin-top: 5px; }
+
+  /* ---- titles ---- */
+  h2 { font-size: 15px; margin: 18px 0 8px; }
+
+  /* ---- meta grid ---- */
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 28px; margin: 0 0 14px;
+    background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; }
+  .meta div { padding: 2px 0; }
+  .meta .k { color: var(--muted); }
+  .meta .v { font-weight: 600; }
+
+  /* ---- summary cards ---- */
+  .cards { display: flex; gap: 10px; margin: 0 0 16px; flex-wrap: wrap; }
+  .card { flex: 1 1 0; min-width: 130px; border: 1px solid var(--line); border-radius: 6px;
+    padding: 9px 12px; background: #fff; }
+  .card .lab { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .card .val { font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .card.accent { background: var(--maroon-soft); border-color: #e0cfc7; }
+  .card.accent .val { color: var(--maroon); }
+  .card.amber { background: var(--amber-soft); border-color: #e6d3b8; }
+  .card.amber .val { color: var(--amber); }
+  .card.green { background: var(--green-soft); border-color: #c4ddc4; }
+  .card.green .val { color: var(--green); }
+
+  /* ---- tables ---- */
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; }
+  thead { display: table-header-group; }
+  th, td { padding: 6px 9px; text-align: left; vertical-align: top; border: 1px solid var(--line); }
+  th { background: var(--beige); color: var(--ink-soft); font-weight: 700; font-size: 10.5px;
+    letter-spacing: 0.3px; }
+  th .hi { display: block; font-weight: 500; }
+  th.num { text-align: right; }
+  tbody tr { break-inside: avoid; }
+  tbody tr:nth-child(even) td { background: rgba(0, 0, 0, 0.012); }
+  tfoot td { font-weight: 700; background: var(--beige); font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); font-style: italic; padding: 10px 2px; }
+
+  /* ---- pills & chips ---- */
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-weight: 700; font-size: 11px;
+    white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .pill-dr { background: var(--maroon-soft); color: var(--maroon); }
+  .pill-cr { background: var(--amber-soft); color: var(--amber); }
+  .pill-zero { background: var(--beige-2); color: var(--muted); }
+  .tag { display: inline-block; padding: 0 7px; border-radius: 4px; font-size: 9.5px; font-weight: 600;
+    margin-left: 6px; background: var(--beige-2); color: var(--ink-soft); vertical-align: middle; }
+  .tag-rent { background: #e3eeec; color: #3a6b63; }
+  .tag-loan { background: var(--amber-soft); color: var(--amber); }
+  .tag-interest { background: #efe6f0; color: #7a4a7a; }
+  .tag-trade { background: var(--green-soft); color: var(--green); }
+  .tag-opening { background: var(--beige-2); color: var(--muted); }
+
+  /* ---- closing / net ---- */
+  .closing { display: flex; justify-content: space-between; align-items: center; margin-top: 12px;
+    padding: 12px 16px; background: var(--soft); border: 1px solid var(--line); border-radius: 6px; }
+  .closing .lab { font-size: 13px; font-weight: 700; }
+  .plain { font-size: 11px; color: var(--ink-soft); margin-top: 6px; }
+
+  .status-ok { color: var(--green); font-weight: 700; }
+  .status-bad { color: var(--red); font-weight: 700; }
+
+  .foot { margin-top: 28px; padding-top: 8px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 9.5px; text-align: center; }
+
+  /* ---- letterhead row ---- */
+  .b-letter { display: grid; grid-template-columns: auto 1fr auto; gap: 22px; align-items: center;
+    border-bottom: 2px solid var(--maroon); padding-bottom: 14px; }
+  .lh-mark { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: 700;
+    color: var(--maroon); font-size: 38px; line-height: 0.95; }
+  .lh-info { border-left: 2px solid var(--line); padding-left: 16px; font-size: 11px; color: var(--ink-soft); }
+  .lh-info .co { font-weight: 700; font-size: 13px; color: var(--ink); margin-bottom: 3px; }
+  .lh-info div { margin: 1px 0; }
+  .lh-right { text-align: right; }
+  .lh-right .b-hi { font-family: 'Noto Sans Devanagari', Arial, sans-serif; font-weight: 700; color: var(--maroon);
+    font-size: 26px; line-height: 1; }
+  .lh-right .as-of { font-size: 11px; color: var(--ink-soft); margin-top: 9px; }
+  .lh-right .accounts { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  /* ---- bill-to + balance summary band ---- */
+  .b-billrow { display: grid; grid-template-columns: 1fr auto; gap: 22px; align-items: start; margin: 16px 0 18px; }
+  .billto { display: flex; align-items: stretch; }
+  .billto-tab { background: var(--beige); color: var(--ink-soft); font-weight: 700; font-size: 11px;
+    letter-spacing: 1.5px; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center;
+    padding: 10px 5px; border-radius: 4px; }
+  .billto-body { padding-left: 14px; }
+  .billto-body .name { font-size: 18px; font-weight: 800; margin-bottom: 5px; }
+  .billto-body div { font-size: 12px; color: var(--ink-soft); margin: 2px 0; }
+
+  .b-summary { width: 320px; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .b-summary .bs-title { background: var(--beige); text-align: center; font-weight: 700; font-size: 12px;
+    padding: 6px; color: var(--ink-soft); }
+  .b-summary .bs-body { background: var(--beige-2); text-align: center; padding: 11px 14px; }
+  .bs-net-lab { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: var(--ink-soft); text-transform: uppercase; }
+  .bs-amount { font-size: 26px; font-weight: 800; margin: 4px 0 8px; }
+  .bs-note { font-size: 11px; color: var(--ink-soft); line-height: 1.4; }
+  .bs-foot { font-size: 11px; color: var(--ink-soft); margin-top: 8px; padding-top: 7px;
+    border-top: 1px solid var(--line); font-weight: 600; }
+
+  .sec-bar { display: flex; align-items: center; gap: 8px; margin: 16px 0 6px; padding-bottom: 5px;
+    border-bottom: 1px solid var(--line-soft); font-size: 12px; }
+  .sec-bar .role { font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px; }
+  .sec-bar .net { margin-left: auto; font-weight: 700; }
+  .bhada-note { font-size: 11px; color: var(--muted); margin: -8px 0 12px; }
+  .mini-h { background: var(--beige); text-align: center; font-weight: 700; font-size: 11.5px; color: var(--ink-soft);
+    padding: 5px; border: 1px solid var(--line); border-bottom: none; margin-top: 14px; }
+  .particulars .nl { display: block; font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+</style></head>
+<body>
+  <header class="b-letter">
+    <div class="lh-mark">Paritosh<br>Cold</div>
+    <div class="lh-info">
+      <div class="co">Paritosh Cold</div>
+      <div>Shunai Road, Village: Agra</div>
+      <div>Phone / फ़ोन : +91 9412258426</div>
+      <div>Email / ईमेल : paritoshcold@gmail.com</div>
+    </div>
+    <div class="lh-right">
+      <div class="b-hi">परितोष कोल्ड</div>
+      <div class="as-of">Summary as of / तिथि तक शेष 2026-06-28</div>
+      <div class="accounts">Accounts / खाते: 3</div>
+    </div>
+  </header>
+  <section class="b-billrow">
+    <div class="billto">
+      <div class="billto-tab">BILL TO</div>
+      <div class="billto-body">
+        <div class="name">Satya Pal Singh</div>
+        <div>Son of / पिता Krishna Pal Singh</div><div>Phone / फ़ोन : 9412258426</div><div>City / शहर : Agra</div>
+      </div>
+    </div>
+    <div class="b-summary">
+      <div class="bs-title">Balance Summary / शेष सारांश</div>
+      <div class="bs-body">
+        <div class="bs-net-lab">Combined net / कुल शेष</div>
+        <div class="bs-amount">₹2,349.86 Dr</div>
+        <div class="bs-note">Satya Pal Singh owes the cold ₹2,349.86. / Satya Pal Singh को कोल्ड को ₹2,349.86 देने हैं।</div>
+        <div class="bs-foot">Total Dr / कुल नामे: ₹2,349.86 &nbsp;·&nbsp; Total Cr / कुल जमा: ₹0.00</div>
+      </div>
+    </div>
+  </section>
+  <div class="sec-bar">
+    <span class="role">kisan</span>
+    <strong>SP Singh</strong>
+    <span class="muted">Farmer</span>
+    <span class="net">₹2,349.86 Dr</span>
+  </div>
+  <table><thead><tr>
+      <th>Date <span class="hi">दिनांक</span></th>
+      <th>Voucher <span class="hi">वाउचर</span></th>
+      <th>Particulars <span class="hi">विवरण</span></th>
+      <th class="num">Dr <span class="hi">नामे</span></th>
+      <th class="num">Cr <span class="hi">जमा</span></th>
+      <th class="num">Balance <span class="hi">शेष</span></th>
+    </tr></thead>
+    <tbody><tr>
+        <td>2026-01-01</td>
+        <td>#49</td>
+        <td class="particulars">Opening balance<span class="tag tag-opening">Opening / प्रारंभिक</span></td>
+        <td class="num">₹4,000.00</td>
+        <td class="num"></td>
+        <td class="num">₹4,000.00 Dr</td>
+      </tr><tr>
+        <td>2026-06-23</td>
+        <td>#1</td>
+        <td class="particulars">Loan repayment — loan #28<span class="tag tag-loan">Loan / ऋण</span></td>
+        <td class="num"></td>
+        <td class="num">₹2,000.00</td>
+        <td class="num">₹2,344.00 Dr</td>
+      </tr></tbody>
+    <tfoot><tr>
+      <td colspan="3" class="num">Total / कुल</td>
+      <td class="num">₹4,000.00</td>
+      <td class="num">₹2,000.00</td>
+      <td class="num">₹2,344.00 Dr</td>
+    </tr></tfoot>
+  </table>
+  
+  <div class="mini-h">Loans / ऋण</div>
+  <table>
+    <thead><tr>
+      <th>Date <span class="hi">दिनांक</span></th>
+      <th>Type <span class="hi">प्रकार</span></th>
+      <th class="num">Posted base <span class="hi">पोस्ट मूल</span></th>
+      <th class="num">Un-posted interest <span class="hi">अनपोस्ट ब्याज</span></th>
+      <th class="num">Live outstanding <span class="hi">वर्तमान बकाया</span></th>
+    </tr></thead>
+    <tbody><tr>
+        <td>2026-01-01</td>
+        <td>kisan loan <span class="muted">· indirect</span></td>
+        <td class="num">₹2,344.00</td>
+        <td class="num">₹5.86</td>
+        <td class="num">₹2,349.86</td>
+      </tr></tbody>
+  </table>
+  
+  <div class="sec-bar">
+    <span class="role">vyapari</span>
+    <strong>Satya Pal Singh</strong>
+    <span class="muted">Sundry Creditors</span>
+    <span class="net">₹0.00</span>
+  </div>
+  <table><thead><tr>
+      <th>Date <span class="hi">दिनांक</span></th>
+      <th>Voucher <span class="hi">वाउचर</span></th>
+      <th>Particulars <span class="hi">विवरण</span></th>
+      <th class="num">Dr <span class="hi">नामे</span></th>
+      <th class="num">Cr <span class="hi">जमा</span></th>
+      <th class="num">Balance <span class="hi">शेष</span></th>
+    </tr></thead>
+    <tbody><tr><td colspan="6" class="empty">No ledger entries / कोई प्रविष्टि नहीं</td></tr></tbody>
+  </table>
+  
+  
+  
+  <div class="sec-bar">
+    <span class="role">staff</span>
+    <strong>Satya Pal Singh</strong>
+    <span class="muted">Direct Expense</span>
+    <span class="net">₹0.00</span>
+  </div>
+  <table><thead><tr>
+      <th>Date <span class="hi">दिनांक</span></th>
+      <th>Voucher <span class="hi">वाउचर</span></th>
+      <th>Particulars <span class="hi">विवरण</span></th>
+      <th class="num">Dr <span class="hi">नामे</span></th>
+      <th class="num">Cr <span class="hi">जमा</span></th>
+      <th class="num">Balance <span class="hi">शेष</span></th>
+    </tr></thead>
+    <tbody><tr><td colspan="6" class="empty">No ledger entries / कोई प्रविष्टि नहीं</td></tr></tbody>
+  </table>
+  
+  
+  
+  
+  <div class="foot">Computer-generated document / कंप्यूटर-जनित दस्तावेज़ — Paritosh Cold</div>
+</body>
+</html>

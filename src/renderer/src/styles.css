@@ -45,6 +45,52 @@ body {
   background: #c5ead9;
 }
 
+/* Keyboard focus emphasis on form controls, so the Tally-style cursor position is
+   always obvious as Enter walks field-to-field. */
+.ant-input:focus,
+.ant-input-focused,
+.ant-input-affix-wrapper-focused,
+.ant-input-number-focused,
+.ant-picker-focused,
+.ant-select-focused .ant-select-selector {
+  box-shadow: 0 0 0 2px rgba(0, 128, 128, 0.18) !important;
+}
+
+/* Top section nav: tame AntD's default horizontal-menu chrome. AntD animates a bottom-border
+   `::after` on hover and gives the submenu title a rounded hover box that gets sliced by the
+   nav's borderBottom. Kill both, then add back one clean teal underline for the active group. */
+#pc-top-nav.ant-menu-horizontal > .ant-menu-item::after,
+#pc-top-nav.ant-menu-horizontal > .ant-menu-submenu::after {
+  display: none;
+}
+#pc-top-nav.ant-menu-horizontal > .ant-menu-item,
+#pc-top-nav.ant-menu-horizontal > .ant-menu-submenu .ant-menu-submenu-title {
+  border-radius: 0;
+}
+#pc-top-nav.ant-menu-horizontal > .ant-menu-item:hover,
+#pc-top-nav.ant-menu-horizontal > .ant-menu-item-active,
+#pc-top-nav.ant-menu-horizontal > .ant-menu-submenu:hover .ant-menu-submenu-title,
+#pc-top-nav.ant-menu-horizontal > .ant-menu-submenu-active .ant-menu-submenu-title,
+#pc-top-nav.ant-menu-horizontal > .ant-menu-submenu-open .ant-menu-submenu-title {
+  background: transparent;
+  color: #008080;
+}
+#pc-top-nav.ant-menu-horizontal > .ant-menu-item-selected,
+#pc-top-nav.ant-menu-horizontal > .ant-menu-submenu-selected .ant-menu-submenu-title {
+  color: #008080;
+  box-shadow: inset 0 -2px 0 0 #008080;
+}
+
+/* Keyboard focus on the top section nav (reached by pressing Esc): mark the group the arrow keys
+   are on with a teal underline — same language as the "current section" underline, no box. */
+#pc-top-nav .ant-menu-item:focus,
+#pc-top-nav .ant-menu-item:focus-visible,
+#pc-top-nav .ant-menu-submenu-title:focus,
+#pc-top-nav .ant-menu-submenu-title:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -2px 0 0 #008080;
+}
+
 /* Slim, muted scrollbars to match the design system. */
 ::-webkit-scrollbar {
   width: 8px;

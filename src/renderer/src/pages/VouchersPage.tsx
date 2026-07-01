@@ -21,8 +21,10 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { VoucherListRow } from '@shared/contracts'
 import type { VoucherType } from '@shared/enums'
-import { formatINR, toPaise } from '../lib/format'
+import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 type Mode = 'receipt' | 'payment' | 'contra' | 'journal'
 
@@ -33,6 +35,7 @@ export default function VouchersPage(): JSX.Element {
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<Mode>('receipt')
   const [form] = Form.useForm()
+  const formNav = useFormKeyNav({ onAccept: () => form.submit() })
 
   const parties = useQuery({ queryKey: ['accounts', 'parties'], queryFn: () => window.api.accounts.list({}) })
   const allAccounts = useQuery({
@@ -102,6 +105,10 @@ export default function VouchersPage(): JSX.Element {
     onError
   })
 
+  const { containerRef, rowClassName } = useTableKeyNav(vouchers.data, (r) =>
+    print(() => window.api.print.voucher(r.id))
+  )
+
   const columns = [
     { title: t('vouchers.no'), dataIndex: 'no', width: 70 },
     {
@@ -115,7 +122,7 @@ export default function VouchersPage(): JSX.Element {
         </Space>
       )
     },
-    { title: t('common.date'), dataIndex: 'date', width: 110 },
+    { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
     { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? '—' },
     {
       title: t('common.total'),
@@ -161,6 +168,7 @@ export default function VouchersPage(): JSX.Element {
           style={{ marginBottom: 16 }}
         />
 
+        <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form
           form={form}
           layout="vertical"
@@ -169,7 +177,7 @@ export default function VouchersPage(): JSX.Element {
         >
           <Space size="large" style={{ display: 'flex' }} align="start" wrap>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-              <DatePicker format="YYYY-MM-DD" />
+              <DatePicker format={DATE_FORMAT} />
             </Form.Item>
             {mode !== 'journal' && (
               <Form.Item name="amount" label={t('common.amount')} rules={[{ required: true }]}>
@@ -223,7 +231,7 @@ export default function VouchersPage(): JSX.Element {
               {(fields, { add, remove }, { errors }) => (
                 <>
                   {fields.map((field) => (
-                    <Space key={field.key} align="baseline" style={{ display: 'flex' }}>
+                    <Space key={field.key} align="baseline" style={{ display: 'flex' }} data-pc-row>
                       <Form.Item
                         name={[field.name, 'accountId']}
                         rules={[{ required: true }]}
@@ -248,7 +256,7 @@ export default function VouchersPage(): JSX.Element {
                     </Space>
                   ))}
                   <Form.Item>
-                    <Button type="dashed" onClick={() => add()} block>
+                    <Button type="dashed" onClick={() => add()} block data-pc-additem>
                       + {t('vouchers.addLine')}
                     </Button>
                     <Form.ErrorList errors={errors} />
@@ -265,18 +273,22 @@ export default function VouchersPage(): JSX.Element {
             {t('common.posted')}
           </Button>
         </Form>
+        </div>
       </Card>
 
       <Divider />
       <Typography.Title level={4}>{t('vouchers.recent')}</Typography.Title>
-      <Table
-        rowKey="id"
-        size="small"
-        loading={vouchers.isLoading}
-        columns={columns}
-        dataSource={vouchers.data ?? []}
-        pagination={{ pageSize: 15 }}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={vouchers.isLoading}
+          columns={columns}
+          dataSource={vouchers.data ?? []}
+          pagination={{ pageSize: 15 }}
+          rowClassName={rowClassName}
+        />
+      </div>
     </div>
   )
 }

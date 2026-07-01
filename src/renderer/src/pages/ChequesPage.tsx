@@ -20,10 +20,12 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { ChequeRow } from '@shared/contracts'
 import type { ChequeDirection, ChequeStatus } from '@shared/enums'
-import { formatINR, toPaise } from '../lib/format'
+import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
 import { SeverityTag, severityRowClass, type Severity } from '../components/Highlight'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 // A pending cheque is money in limbo (warning); a bounce is a problem (danger); cleared is settled.
 const STATUS_SEVERITY: Record<ChequeStatus, Severity> = {
@@ -39,6 +41,7 @@ export default function ChequesPage(): JSX.Element {
   const [form] = Form.useForm()
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
+  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
 
   // ---- filters ----
   const [fDirection, setFDirection] = useState<'all' | ChequeDirection>('all')
@@ -112,6 +115,8 @@ export default function ChequesPage(): JSX.Element {
     })
   }, [cheques.data, fDirection, fStatus, fParty, fBank, fNo, range])
 
+  const { containerRef, rowClassName: keyNavRowClass } = useTableKeyNav(rows, () => {})
+
   const columns = [
     { title: t('cheques.no'), dataIndex: 'no', width: 110 },
     {
@@ -129,7 +134,7 @@ export default function ChequesPage(): JSX.Element {
       width: 140,
       render: (v: number) => formatINR(v)
     },
-    { title: t('cheques.clearanceDate'), dataIndex: 'clearanceDate', width: 130, render: (d: string | null) => d ?? '—' },
+    { title: t('cheques.clearanceDate'), dataIndex: 'clearanceDate', width: 130, render: (d: string | null) => (d ? formatDate(d) : '—') },
     {
       title: t('cheques.status'),
       dataIndex: 'status',
@@ -224,9 +229,9 @@ export default function ChequesPage(): JSX.Element {
           onChange={(e) => setFNo(e.target.value)}
         />
         <DatePicker.RangePicker
-          format="YYYY-MM-DD"
+          format={DATE_FORMAT}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
-          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+          onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
         {filtersActive && (
           <Button type="link" onClick={clearFilters}>
@@ -235,21 +240,28 @@ export default function ChequesPage(): JSX.Element {
         )}
       </Space>
 
-      <Table
-        rowKey="id"
-        size="small"
-        loading={cheques.isLoading}
-        columns={columns}
-        dataSource={rows}
-        pagination={{ pageSize: 15 }}
-        rowClassName={(row) =>
-          row.status === 'bounced'
-            ? severityRowClass('danger')
-            : row.status === 'pending'
-              ? severityRowClass('warning')
-              : ''
-        }
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={cheques.isLoading}
+          columns={columns}
+          dataSource={rows}
+          pagination={{ pageSize: 15 }}
+          rowClassName={(row, i) =>
+            [
+              row.status === 'bounced'
+                ? severityRowClass('danger')
+                : row.status === 'pending'
+                  ? severityRowClass('warning')
+                  : '',
+              keyNavRowClass(row, i)
+            ]
+              .filter(Boolean)
+              .join(' ')
+          }
+        />
+      </div>
 
       <Modal
         title={t('cheques.new')}
@@ -260,6 +272,7 @@ export default function ChequesPage(): JSX.Element {
         okText={t('common.create')}
         width={560}
       >
+        <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form
           form={form}
           layout="vertical"
@@ -326,16 +339,17 @@ export default function ChequesPage(): JSX.Element {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="date" label={t('common.date')}>
-                <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+                <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="clearanceDate" label={t('cheques.clearanceDate')}>
-                <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+                <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
         </Form>
+        </div>
       </Modal>
     </div>
   )

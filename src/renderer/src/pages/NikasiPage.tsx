@@ -22,10 +22,12 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DeliveryTarget } from '@shared/enums'
 import type { NikasiListRow } from '@shared/contracts'
-import { formatINR, paiseToRupees, toPaise } from '../lib/format'
+import { DATE_FORMAT, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 export default function NikasiPage(): JSX.Element {
   const { t } = useTranslation()
@@ -35,6 +37,7 @@ export default function NikasiPage(): JSX.Element {
   const [form] = Form.useForm()
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
+  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
   const [detailId, setDetailId] = useState<number | null>(null)
   const deliveredToType = Form.useWatch('deliveredToType', form) as DeliveryTarget | undefined
   const deliveredToAccountId = Form.useWatch('deliveredToAccountId', form) as number | undefined
@@ -59,6 +62,8 @@ export default function NikasiPage(): JSX.Element {
       return true
     })
   }, [nikasis.data, accountFilter, typeFilter, range])
+
+  const { containerRef, rowClassName } = useTableKeyNav(rows, (r) => setDetailId(r.id))
 
   const create = useMutation({
     mutationFn: (input: Parameters<typeof window.api.nikasi.create>[0]) =>
@@ -141,7 +146,7 @@ export default function NikasiPage(): JSX.Element {
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 60, render: (id: number) => `#${id}` },
     { title: t('nikasi.billNo'), dataIndex: 'billNo', width: 90 },
-    { title: t('common.date'), dataIndex: 'date', width: 110 },
+    { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
     {
       title: t('nikasi.deliveredTo'),
       dataIndex: 'deliveredToName',
@@ -217,9 +222,9 @@ export default function NikasiPage(): JSX.Element {
           ]}
         />
         <DatePicker.RangePicker
-          format="YYYY-MM-DD"
+          format={DATE_FORMAT}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
-          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+          onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
         {(accountFilter || typeFilter !== 'all' || range) && (
           <Button
@@ -235,14 +240,18 @@ export default function NikasiPage(): JSX.Element {
         )}
       </Space>
 
-      <Table
-        rowKey="id"
-        size="small"
-        loading={nikasis.isLoading}
-        columns={columns}
-        dataSource={rows}
-        pagination={{ pageSize: 15 }}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={nikasis.isLoading}
+          columns={columns}
+          dataSource={rows}
+          pagination={{ pageSize: 15 }}
+          rowClassName={rowClassName}
+          onRow={(r) => ({ onClick: () => setDetailId(r.id), style: { cursor: 'pointer' } })}
+        />
+      </div>
 
       <Modal
         title={t('nikasi.new')}
@@ -253,6 +262,7 @@ export default function NikasiPage(): JSX.Element {
         okText={t('common.create')}
         width={920}
       >
+        <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form
           form={form}
           layout="vertical"
@@ -262,7 +272,7 @@ export default function NikasiPage(): JSX.Element {
         >
           <Space size="large" align="start" wrap>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-              <DatePicker format="YYYY-MM-DD" />
+              <DatePicker format={DATE_FORMAT} />
             </Form.Item>
             <Form.Item name="deliveredToType" label={t('nikasi.deliveredTo')}>
               <Segmented
@@ -298,7 +308,7 @@ export default function NikasiPage(): JSX.Element {
             {(fields, { add, remove }) => (
               <div>
                 {fields.map((field) => (
-                  <Space key={field.key} align="baseline" wrap>
+                  <Space key={field.key} align="baseline" wrap data-pc-row>
                     <Form.Item name={[field.name, 'fromKisanAccountId']} rules={[{ required: true }]}>
                       <AccountSearchSelect
                         type="kisan"
@@ -333,13 +343,20 @@ export default function NikasiPage(): JSX.Element {
                     {fields.length > 1 && <DeleteOutlined onClick={() => remove(field.name)} />}
                   </Space>
                 ))}
-                <Button type="dashed" onClick={() => add()} block style={{ marginBottom: 12 }}>
+                <Button
+                  type="dashed"
+                  onClick={() => add()}
+                  block
+                  style={{ marginBottom: 12 }}
+                  data-pc-additem
+                >
                   + {t('nikasi.addLine')}
                 </Button>
               </div>
             )}
           </Form.List>
         </Form>
+        </div>
       </Modal>
 
       <Drawer
@@ -361,7 +378,7 @@ export default function NikasiPage(): JSX.Element {
         {detail.data && (
           <>
             <Descriptions size="small" column={2} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label={t('common.date')}>{detail.data.date}</Descriptions.Item>
+              <Descriptions.Item label={t('common.date')}>{formatDate(detail.data.date)}</Descriptions.Item>
               <Descriptions.Item label={t('nikasi.deliveredTo')}>
                 {detail.data.deliveredToName} ({t(`delivery.${detail.data.deliveredToType}`)})
               </Descriptions.Item>

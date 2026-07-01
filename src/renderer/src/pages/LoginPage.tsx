@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from '../i18n'
 import { useSession } from '../store/session'
 import { toPaise } from '../lib/format'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
 
 export default function LoginPage(): JSX.Element {
   const { t } = useTranslation()
@@ -22,6 +23,7 @@ export default function LoginPage(): JSX.Element {
   const setSession = useSession((s) => s.setSession)
   const [loginForm] = Form.useForm()
   const [showNewYear, setShowNewYear] = useState(false)
+  const loginNav = useFormKeyNav({ onAccept: () => loginForm.submit() })
 
   const loginMut = useMutation({
     mutationFn: (v: { year: number; username: string; password: string; accountant: string }) =>
@@ -73,6 +75,7 @@ export default function LoginPage(): JSX.Element {
         </Space>
         <Typography.Paragraph type="secondary">{t('app.tagline')}</Typography.Paragraph>
 
+        <div ref={loginNav.containerRef} onKeyDownCapture={loginNav.onKeyDownCapture}>
         <Form
           form={loginForm}
           layout="vertical"
@@ -95,6 +98,7 @@ export default function LoginPage(): JSX.Element {
             {t('login.submit')}
           </Button>
         </Form>
+        </div>
 
         <Divider style={{ margin: '16px 0' }} />
         {showNewYear ? (

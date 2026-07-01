@@ -12,9 +12,11 @@ export const EMPTY_FILTERS: AccountFilters = { name: '', villageCity: '', state:
 interface AccountsFilterState {
   type: AccountType | undefined
   filters: AccountFilters
+  defaultersOnly: boolean
   includeSystem: boolean
   setType: (t: AccountType | undefined) => void
   setFilters: (f: AccountFilters) => void
+  setDefaultersOnly: (v: boolean) => void
   setIncludeSystem: (v: boolean) => void
   reset: () => void
 }
@@ -22,9 +24,12 @@ interface AccountsFilterState {
 export const useAccountsFilter = create<AccountsFilterState>((set) => ({
   type: undefined,
   filters: EMPTY_FILTERS,
+  defaultersOnly: false,
   includeSystem: false,
   setType: (type) => set({ type }),
   setFilters: (filters) => set({ filters }),
+  setDefaultersOnly: (defaultersOnly) => set({ defaultersOnly }),
   setIncludeSystem: (includeSystem) => set({ includeSystem }),
-  reset: () => set({ type: undefined, filters: EMPTY_FILTERS, includeSystem: false })
+  reset: () =>
+    set({ type: undefined, filters: EMPTY_FILTERS, defaultersOnly: false, includeSystem: false })
 }))

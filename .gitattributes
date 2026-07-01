@@ -1,0 +1,16 @@
+# Normalize line endings: LF in the repo, on every platform.
+# Important because dev happens on macOS and release builds run on Windows.
+* text=eol=lf
+
+# Binary assets — never touch these.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.icns binary
+*.db   binary
+
+# Keep these out of GitHub language stats / diffs by default.
+package-lock.json linguist-generated=true
+drizzle/**.sql    linguist-generated=true

@@ -1,7 +1,25 @@
 import type { TFunction } from 'i18next'
+import dayjs from 'dayjs'
 import { formatINR, rupeesToPaise } from '@shared/money'
 
 export { formatINR, rupeesToPaise, paiseToRupees } from '@shared/money'
+
+/**
+ * The one display format for dates across the whole app: DD/MM/YYYY.
+ * Use this for antd `DatePicker`/`RangePicker` `format` props. Stored/serialized dates stay ISO
+ * (`YYYY-MM-DD`) — this only governs what the user sees.
+ */
+export const DATE_FORMAT = 'DD/MM/YYYY'
+
+/**
+ * Format a stored date for display as DD/MM/YYYY. Accepts an ISO string (`YYYY-MM-DD`), an epoch-ms
+ * timestamp, or a dayjs-parseable value. Empty/invalid input is returned/blanked safely.
+ */
+export function formatDate(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return ''
+  const d = dayjs(value)
+  return d.isValid() ? d.format(DATE_FORMAT) : String(value)
+}
 
 /** A signed ledger balance shown the accountant's way: amount + Dr/Cr suffix. */
 export function balanceLabel(paise: number): string {

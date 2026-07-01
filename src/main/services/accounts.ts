@@ -206,6 +206,7 @@ export function listAccounts(yearId: number, filter: AccountListFilter = {}): Ac
   if (filter.villageCity) conds.push(like(person.villageCity, `%${filter.villageCity.trim()}%`))
   if (filter.state) conds.push(like(person.state, `%${filter.state.trim()}%`))
   if (filter.phone) conds.push(like(person.phone, `%${filter.phone.trim()}%`))
+  if (filter.defaultersOnly) conds.push(eq(account.isDefaulter, true))
 
   if (filter.systemOnly) {
     conds.push(eq(account.isSystem, true))

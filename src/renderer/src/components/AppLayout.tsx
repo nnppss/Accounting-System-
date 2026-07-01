@@ -32,6 +32,7 @@ import {
   KeyOutlined,
   LockOutlined,
   LogoutOutlined,
+  QuestionCircleOutlined,
   SettingOutlined,
   ShoppingOutlined,
   TeamOutlined,
@@ -68,6 +69,7 @@ import StorePage from '../pages/StorePage'
 import HomePage from '../pages/HomePage'
 import { palette } from '../theme'
 import { useGlobalHotkeys } from '../lib/useHotkeys'
+import ShortcutsHelp from './ShortcutsHelp'
 
 const { Header, Content } = Layout
 
@@ -309,6 +311,12 @@ export default function AppLayout(): JSX.Element {
         </Space>
 
         <Space size="middle" align="center">
+          <Button
+            size="small"
+            icon={<QuestionCircleOutlined />}
+            title={t('shortcuts.tooltip')}
+            onClick={() => window.dispatchEvent(new Event('hotkey:help'))}
+          />
           <Button size="small" icon={<GlobalOutlined />} onClick={toggleLang}>
             {t('lang.toggle')}
           </Button>
@@ -352,6 +360,7 @@ export default function AppLayout(): JSX.Element {
         }}
       >
         <Menu
+          id="pc-top-nav"
           mode="horizontal"
           selectedKeys={[selectedKey]}
           items={items}
@@ -404,6 +413,7 @@ export default function AppLayout(): JSX.Element {
         onClose={() => setPwOpen(false)}
         onChanged={() => session && setSession({ ...session, mustChangePassword: false })}
       />
+      <ShortcutsHelp />
     </Layout>
   )
 }

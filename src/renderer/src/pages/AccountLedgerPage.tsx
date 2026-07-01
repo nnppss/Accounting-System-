@@ -27,11 +27,12 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DrCr } from '@shared/enums'
 import type { AccountIdentityInput, LedgerLine } from '@shared/contracts'
-import { formatINR, toPaise } from '../lib/format'
+import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
 import { BalanceAmount, BalanceSentence, SeverityTag } from '../components/Highlight'
 import { usePrinter } from '../lib/usePrinter'
 import { useAccountsFilter } from '../store/accountsFilter'
 import { useSession } from '../store/session'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
 
 /**
  * One identity field as "Label: value". Sits in a flex-wrap row so the whole strip reflows to as
@@ -69,6 +70,8 @@ export default function AccountLedgerPage(): JSX.Element {
   const [openingForm] = Form.useForm()
   const [deleteForm] = Form.useForm()
   const [editForm] = Form.useForm()
+  const openingNav = useFormKeyNav({ open: openingOpen, onAccept: () => openingForm.submit() })
+  const editNav = useFormKeyNav({ open: editOpen, onAccept: () => editForm.submit() })
 
   const detail = useQuery({
     queryKey: ['account', accountId],
@@ -170,7 +173,7 @@ export default function AccountLedgerPage(): JSX.Element {
   })
 
   const columns = [
-    { title: t('common.date'), dataIndex: 'date', width: 110 },
+    { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
     {
       title: t('vouchers.type'),
       key: 'voucher',
@@ -335,6 +338,7 @@ export default function AccountLedgerPage(): JSX.Element {
         confirmLoading={setOpening.isPending}
         okText={t('common.save')}
       >
+        <div ref={openingNav.containerRef} onKeyDownCapture={openingNav.onKeyDownCapture}>
         <Form
           form={openingForm}
           layout="vertical"
@@ -353,9 +357,10 @@ export default function AccountLedgerPage(): JSX.Element {
             </Radio.Group>
           </Form.Item>
           <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
+            <DatePicker style={{ width: '100%' }} format={DATE_FORMAT} />
           </Form.Item>
         </Form>
+        </div>
       </Modal>
 
       {/* Delete account — confirmation + password gate */}
@@ -399,6 +404,7 @@ export default function AccountLedgerPage(): JSX.Element {
         <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
           {t('accounts.typeSubgroupLocked')}
         </Typography.Paragraph>
+        <div ref={editNav.containerRef} onKeyDownCapture={editNav.onKeyDownCapture}>
         <Form
           form={editForm}
           layout="vertical"
@@ -417,6 +423,7 @@ export default function AccountLedgerPage(): JSX.Element {
             <Input />
           </Form.Item>
         </Form>
+        </div>
       </Modal>
     </div>
   )

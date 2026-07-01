@@ -19,9 +19,11 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { ExpenseRow, LoadingContractorYearRow } from '@shared/contracts'
 import type { AccountType, PaymentMode } from '@shared/enums'
-import { formatINR, toPaise } from '../lib/format'
+import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 /** Salary and loading payments share one register; `kind` tags which expense head a row hit. */
 type ExpenseKind = 'salary' | 'loading'
@@ -90,9 +92,11 @@ export default function ExpensesPage(): JSX.Element {
     setNarration('')
   }
 
+  const { containerRef, rowClassName } = useTableKeyNav(rows, () => {})
+
   const columns = [
     { title: t('vouchers.no'), dataIndex: 'voucherNo', width: 70 },
-    { title: t('common.date'), dataIndex: 'date', width: 120 },
+    { title: t('common.date'), dataIndex: 'date', width: 120, render: (v: string) => formatDate(v) },
     {
       title: t('expenses.type'),
       dataIndex: 'kind',
@@ -142,9 +146,9 @@ export default function ExpensesPage(): JSX.Element {
           onChange={(v) => setPartyFilter(v)}
         />
         <DatePicker.RangePicker
-          format="YYYY-MM-DD"
+          format={DATE_FORMAT}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
-          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+          onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
         <InputNumber
           min={0}
@@ -178,6 +182,7 @@ export default function ExpensesPage(): JSX.Element {
         )}
       </Space>
 
+      <div ref={containerRef}>
       <Table
         rowKey="voucherId"
         size="small"
@@ -185,6 +190,7 @@ export default function ExpensesPage(): JSX.Element {
         columns={columns}
         dataSource={rows}
         pagination={{ pageSize: 15 }}
+        rowClassName={rowClassName}
         summary={(data) => {
           const total = data.reduce((s, r) => s + r.amountPaise, 0)
           return (
@@ -199,6 +205,7 @@ export default function ExpensesPage(): JSX.Element {
           )
         }}
       />
+      </div>
 
       <NewExpenseModal open={open} onClose={() => setOpen(false)} />
       <ContractorChargesDrawer open={chargesOpen} onClose={() => setChargesOpen(false)} />
@@ -212,6 +219,7 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
   const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
+  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
   const kind = (Form.useWatch('kind', form) as ExpenseKind | undefined) ?? 'salary'
   const mode = Form.useWatch('mode', form) as PaymentMode | undefined
 
@@ -256,6 +264,7 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
       confirmLoading={pay.isPending}
       okText={t('expenses.pay')}
     >
+      <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
       <Form
         form={form}
         layout="vertical"
@@ -290,7 +299,7 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
           <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-          <DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} />
+          <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item name="mode" label={t('loans.mode')} rules={[{ required: true }]}>
           <Select
@@ -306,6 +315,7 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
           <Input placeholder={t('common.narration')} />
         </Form.Item>
       </Form>
+      </div>
     </Modal>
   )
 }
@@ -390,6 +400,7 @@ function ChargesModal({
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const [form] = Form.useForm()
+  const formNav = useFormKeyNav({ onAccept: () => form.submit() })
   const save = useMutation({
     mutationFn: (input: Parameters<typeof window.api.expenses.setLoadingYear>[0]) =>
       window.api.expenses.setLoadingYear(input),
@@ -408,6 +419,7 @@ function ChargesModal({
       confirmLoading={save.isPending}
       okText={t('common.save')}
     >
+      <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
       <Form
         form={form}
         layout="vertical"
@@ -440,6 +452,7 @@ function ChargesModal({
           <InputNumber min={0} style={{ width: '100%' }} />
         </Form.Item>
       </Form>
+      </div>
     </Modal>
   )
 }

@@ -120,6 +120,8 @@ export interface AccountListFilter {
   villageCity?: string
   state?: string
   phone?: string
+  /** Narrow the list to accounts flagged as defaulters. */
+  defaultersOnly?: boolean
   /** Additive: include the cold's own system heads alongside party accounts. */
   includeSystem?: boolean
   /** Return ONLY the cold's own system heads — used by the Accounts page "Show system accounts"

@@ -65,7 +65,42 @@ export function useGlobalHotkeys(toggleLang: () => void): void {
         return
       }
 
+      // F1 → keyboard shortcuts help (works from anywhere, even mid-form)
+      if (e.key === 'F1') {
+        e.preventDefault()
+        window.dispatchEvent(new Event('hotkey:help'))
+        return
+      }
+
       if (isInputFocused() || isModalOpen()) return
+
+      // ? (Shift + /) → keyboard shortcuts help (only when not typing)
+      if (e.key === '?') {
+        e.preventDefault()
+        window.dispatchEvent(new Event('hotkey:help'))
+        return
+      }
+
+      // Esc → jump focus up to the top section nav (Home / Accounts / Stock / …). From there the
+      // arrow keys move between groups and Enter opens one. A second Esc drops back to the page.
+      // (Open modals/drawers and focused inputs are handled above, so this only fires on a page.)
+      if (e.key === 'Escape') {
+        const nav = document.getElementById('pc-top-nav')
+        if (!nav) return
+        if (nav.contains(document.activeElement)) {
+          e.preventDefault()
+          ;(document.activeElement as HTMLElement | null)?.blur()
+          return
+        }
+        const target = nav.querySelector<HTMLElement>(
+          '.ant-menu-item-selected, .ant-menu-submenu-selected .ant-menu-submenu-title, [role="menuitem"]'
+        )
+        if (target) {
+          e.preventDefault()
+          target.focus()
+          return
+        }
+      }
 
       // Ctrl/Cmd + N → create new (context-aware)
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
@@ -87,5 +122,17 @@ export function useCreateHotkey(open: () => void): void {
     const handler = (): void => ref.current()
     window.addEventListener('hotkey:create', handler)
     return () => window.removeEventListener('hotkey:create', handler)
+  }, [])
+}
+
+/** Fires when the user asks for the shortcuts help (F1 or `?`). */
+export function useHelpHotkey(open: () => void): void {
+  const ref = useRef(open)
+  ref.current = open
+
+  useEffect(() => {
+    const handler = (): void => ref.current()
+    window.addEventListener('hotkey:help', handler)
+    return () => window.removeEventListener('hotkey:help', handler)
   }, [])
 }

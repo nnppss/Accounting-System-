@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, Drawer, Segmented, Space, Statistic, Table, Typography } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { MapType } from '@shared/contracts'
+import { palette } from '../theme'
 
 export default function MapsPage(): JSX.Element {
   const { t } = useTranslation()
   const [type, setType] = useState<MapType>('current')
   const [cell, setCell] = useState<{ room: number; floor: number } | null>(null)
+  // Keyboard cursor over the grid (Tally-style: arrows move, Enter opens the rack drawer).
+  const [active, setActive] = useState<{ room: number; floor: number }>({ room: 1, floor: 1 })
 
   const map = useQuery({ queryKey: ['maps', type], queryFn: () => window.api.maps.get(type) })
   const racks = useQuery({
@@ -21,6 +24,44 @@ export default function MapsPage(): JSX.Element {
 
   const rooms = map.data?.rooms ?? 0
   const floors = map.data?.floors ?? 0
+
+  // Arrow keys move the cursor across the grid; Enter opens the highlighted cell's racks.
+  const activeRef = useRef(active)
+  activeRef.current = active
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if (cell !== null) return // drawer open — let it handle keys
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+      if (el?.closest('#pc-top-nav')) return // top nav focused — its arrows drive the menu
+      if (rooms === 0 || floors === 0) return
+      const a = activeRef.current
+      switch (e.key) {
+        case 'ArrowRight':
+          e.preventDefault()
+          setActive({ ...a, room: Math.min(a.room + 1, rooms) })
+          break
+        case 'ArrowLeft':
+          e.preventDefault()
+          setActive({ ...a, room: Math.max(a.room - 1, 1) })
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          setActive({ ...a, floor: Math.min(a.floor + 1, floors) })
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          setActive({ ...a, floor: Math.max(a.floor - 1, 1) })
+          break
+        case 'Enter':
+          e.preventDefault()
+          setCell({ room: a.room, floor: a.floor })
+          break
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [cell, rooms, floors])
 
   const cellStyle: React.CSSProperties = {
     border: '1px solid #f0f0f0',
@@ -68,15 +109,21 @@ export default function MapsPage(): JSX.Element {
                 <td style={headStyle}>{floor}</td>
                 {Array.from({ length: rooms }, (_, i) => i + 1).map((room) => {
                   const p = packetsAt(room, floor)
+                  const isActive = active.room === room && active.floor === floor
                   return (
                     <td
                       key={room}
                       style={{
                         ...cellStyle,
-                        background: p > 0 ? '#e6f4ff' : undefined,
-                        color: p > 0 ? '#0958d9' : '#bfbfbf'
+                        background: isActive ? palette.primaryFixed : p > 0 ? '#e6f4ff' : undefined,
+                        color: p > 0 ? '#0958d9' : '#bfbfbf',
+                        outline: isActive ? `2px solid ${palette.primary}` : undefined,
+                        outlineOffset: -2
                       }}
-                      onClick={() => setCell({ room, floor })}
+                      onClick={() => {
+                        setActive({ room, floor })
+                        setCell({ room, floor })
+                      }}
                     >
                       {p || '·'}
                     </td>

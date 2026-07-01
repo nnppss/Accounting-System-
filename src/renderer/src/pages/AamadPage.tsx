@@ -17,9 +17,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { AamadListRow } from '@shared/contracts'
+import { DATE_FORMAT, formatDate } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useSession } from '../store/session'
 import { useCreateHotkey } from '../lib/useHotkeys'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 export default function AamadPage(): JSX.Element {
   const { t } = useTranslation()
@@ -31,6 +34,7 @@ export default function AamadPage(): JSX.Element {
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
   const [form] = Form.useForm()
+  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
 
   const aamads = useQuery({
     queryKey: ['aamad', kisanFilter, range],
@@ -87,10 +91,13 @@ export default function AamadPage(): JSX.Element {
     })
   }
 
+  const rows = (aamads.data?.rows ?? []) as AamadListRow[]
+  const { containerRef, rowClassName } = useTableKeyNav(rows, () => {})
+
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 70, render: (id: number) => `#${id}` },
     { title: t('aamad.no'), dataIndex: 'no', width: 120 },
-    { title: t('common.date'), dataIndex: 'date', width: 120 },
+    { title: t('common.date'), dataIndex: 'date', width: 120, render: (v: string) => formatDate(v) },
     { title: t('aamad.kisan'), dataIndex: 'kisanName' },
     {
       title: t('aamad.totalPackets'),
@@ -140,21 +147,24 @@ export default function AamadPage(): JSX.Element {
           onChange={(v) => setKisanFilter(v)}
         />
         <DatePicker.RangePicker
-          format="YYYY-MM-DD"
-          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+          format={DATE_FORMAT}
+          onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
         <Statistic title={t('aamad.count')} value={aamads.data?.count ?? 0} />
         <Statistic title={t('aamad.totalPackets')} value={aamads.data?.totalPackets ?? 0} />
       </Space>
 
-      <Table
-        rowKey="id"
-        size="small"
-        loading={aamads.isLoading}
-        columns={columns}
-        dataSource={(aamads.data?.rows ?? []) as AamadListRow[]}
-        pagination={{ pageSize: 20 }}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={aamads.isLoading}
+          columns={columns}
+          dataSource={rows}
+          pagination={{ pageSize: 20 }}
+          rowClassName={rowClassName}
+        />
+      </div>
 
       <Modal
         title={t('aamad.new')}
@@ -165,6 +175,7 @@ export default function AamadPage(): JSX.Element {
         okText={t('common.create')}
         width={640}
       >
+        <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form
           form={form}
           layout="vertical"
@@ -186,7 +197,7 @@ export default function AamadPage(): JSX.Element {
               />
             </Form.Item>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-              <DatePicker format="YYYY-MM-DD" />
+              <DatePicker format={DATE_FORMAT} />
             </Form.Item>
             <Form.Item name="kisanAccountId" label={t('aamad.kisan')} rules={[{ required: true }]}>
               <AccountSearchSelect type="kisan" placeholder={t('aamad.kisan')} style={{ width: 220 }} />
@@ -198,7 +209,7 @@ export default function AamadPage(): JSX.Element {
             {(fields, { add, remove }) => (
               <div style={{ marginTop: 8 }}>
                 {fields.map((field) => (
-                  <Space key={field.key} align="baseline">
+                  <Space key={field.key} align="baseline" data-pc-row>
                     <Form.Item name={[field.name, 'room']} rules={[{ required: true }]}>
                       <InputNumber min={1} placeholder={t('aamad.room')} style={{ width: 90 }} />
                     </Form.Item>
@@ -214,7 +225,7 @@ export default function AamadPage(): JSX.Element {
                     {fields.length > 1 && <DeleteOutlined onClick={() => remove(field.name)} />}
                   </Space>
                 ))}
-                <Button type="dashed" onClick={() => add()} block>
+                <Button type="dashed" onClick={() => add()} block data-pc-additem>
                   + {t('aamad.addLine')}
                 </Button>
               </div>
@@ -232,6 +243,7 @@ export default function AamadPage(): JSX.Element {
             }}
           </Form.Item>
         </Form>
+        </div>
       </Modal>
     </div>
   )

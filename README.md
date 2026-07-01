@@ -3,7 +3,37 @@
 Personal, offline, single-user accounting software for Paritosh Cold Storage.
 Local-first desktop app: **Electron + React + TypeScript + SQLite (better-sqlite3 + Drizzle)**.
 
-See [docs/software.md](docs/software.md) for what it does, [docs/architecture.md](docs/architecture.md) for how it's built, and [docs/BUILD.md](docs/BUILD.md) for the full build & run recipe.
+See [docs/software.md](docs/software.md) for what it does, [docs/architecture.md](docs/architecture.md) for how it's built, and [docs/BUILD.md](docs/BUILD.md) for the full build & run recipe. New here? Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Repository layout
+
+```
+src/
+  main/                 Electron main process (Node side)
+    data/               SQLite + Drizzle: schema, db client, seed
+    services/           domain logic (aamad, nikasi, sauda, accounts, …)
+    engines/            calculation engines (interest, bhada, cheque-clearing, close-year)
+    ipc/                typed IPC handlers exposed to the renderer
+    printing/           print job + receipt/voucher templates
+    auth/ audit/        login/session and the audit-log writer
+    integration/        cross-module integration tests
+  preload/              context-bridge API surface (the only main↔renderer bridge)
+  renderer/src/         React UI
+    pages/              one screen per route
+    components/         shared UI building blocks
+    lib/                hooks & helpers (hotkeys, formatting, printer, key-nav)
+    store/              Zustand stores (session, filters, views)
+    locales/            en/hi i18n strings
+  shared/               code used by both sides: contracts, enums, money helpers
+
+drizzle/                generated SQL migrations (do not hand-edit)
+docs/                   architecture, build and phase-history notes
+scripts/                one-off dev / seed / verification scripts
+resources/              app icon and packaged build resources
+```
+
+Path aliases: `@shared/*` (everywhere) and `@renderer/*` (UI only). Tests are
+colocated as `*.test.ts`; broader integration tests live in `src/main/integration/`.
 
 ## Develop (macOS)
 

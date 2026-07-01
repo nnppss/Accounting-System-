@@ -16,6 +16,11 @@ function isModalOpen(): boolean {
   return false
 }
 
+/** When focus is on the top section nav, let its arrow keys drive the menu, not the table. */
+function isNavFocused(): boolean {
+  return !!document.activeElement?.closest('#pc-top-nav')
+}
+
 export function useTableKeyNav<T>(
   data: T[] | undefined,
   onActivate: (record: T, index: number) => void
@@ -36,18 +41,39 @@ export function useTableKeyNav<T>(
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
-      if (isInputFocused() || isModalOpen()) return
+      if (isInputFocused() || isModalOpen() || isNavFocused()) return
       const items = dataRef.current
       if (!items || items.length === 0) return
 
+      const last = items.length - 1
+      // Jump roughly one screenful at a time for PageUp/PageDown.
+      const PAGE = 10
+
       switch (e.key) {
         case 'ArrowDown':
+          // First press (nothing selected) lands on the top row.
           e.preventDefault()
-          setActiveIndex((prev) => Math.min(prev + 1, items.length - 1))
+          setActiveIndex((prev) => Math.min(prev + 1, last))
           break
         case 'ArrowUp':
           e.preventDefault()
-          setActiveIndex((prev) => Math.max(prev - 1, 0))
+          setActiveIndex((prev) => (prev < 0 ? last : Math.max(prev - 1, 0)))
+          break
+        case 'Home':
+          e.preventDefault()
+          setActiveIndex(0)
+          break
+        case 'End':
+          e.preventDefault()
+          setActiveIndex(last)
+          break
+        case 'PageDown':
+          e.preventDefault()
+          setActiveIndex((prev) => Math.min((prev < 0 ? 0 : prev) + PAGE, last))
+          break
+        case 'PageUp':
+          e.preventDefault()
+          setActiveIndex((prev) => Math.max((prev < 0 ? 0 : prev) - PAGE, 0))
           break
         case 'Escape':
           setActiveIndex(-1)
@@ -61,7 +87,7 @@ export function useTableKeyNav<T>(
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
-      if (isInputFocused() || isModalOpen()) return
+      if (isInputFocused() || isModalOpen() || isNavFocused()) return
       if (e.key !== 'Enter') return
       const items = dataRef.current
       if (!items || activeIndex < 0 || activeIndex >= items.length) return

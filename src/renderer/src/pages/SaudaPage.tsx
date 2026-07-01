@@ -15,9 +15,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { SaudaListRow } from '@shared/contracts'
-import { formatINR, toPaise } from '../lib/format'
+import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
+import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 
 export default function SaudaPage(): JSX.Element {
   const { t } = useTranslation()
@@ -30,6 +32,7 @@ export default function SaudaPage(): JSX.Element {
   const [range, setRange] = useState<[string, string] | undefined>()
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
+  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
 
   const saudas = useQuery({ queryKey: ['sauda'], queryFn: () => window.api.sauda.list() })
 
@@ -42,6 +45,8 @@ export default function SaudaPage(): JSX.Element {
       return true
     })
   }, [saudas.data, vyapariFilter, kisanFilter, range])
+
+  const { containerRef, rowClassName } = useTableKeyNav(rows, () => {})
 
   const create = useMutation({
     mutationFn: (input: Parameters<typeof window.api.sauda.create>[0]) =>
@@ -81,7 +86,7 @@ export default function SaudaPage(): JSX.Element {
 
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 70, render: (id: number) => `#${id}` },
-    { title: t('common.date'), dataIndex: 'date', width: 120 },
+    { title: t('common.date'), dataIndex: 'date', width: 120, render: (v: string) => formatDate(v) },
     { title: t('sauda.vyapari'), dataIndex: 'vyapariName' },
     { title: t('sauda.kisan'), dataIndex: 'kisanName' },
     { title: t('sauda.packets'), dataIndex: 'packets', align: 'right' as const, width: 110 },
@@ -142,8 +147,8 @@ export default function SaudaPage(): JSX.Element {
           onChange={(v) => setKisanFilter(v)}
         />
         <DatePicker.RangePicker
-          format="YYYY-MM-DD"
-          onChange={(_d, s) => setRange(s[0] && s[1] ? [s[0], s[1]] : undefined)}
+          format={DATE_FORMAT}
+          onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
         {(vyapariFilter || kisanFilter || range) && (
           <Button
@@ -159,14 +164,17 @@ export default function SaudaPage(): JSX.Element {
         )}
       </Space>
 
-      <Table
-        rowKey="id"
-        size="small"
-        loading={saudas.isLoading}
-        columns={columns}
-        dataSource={rows}
-        pagination={{ pageSize: 20 }}
-      />
+      <div ref={containerRef}>
+        <Table
+          rowKey="id"
+          size="small"
+          loading={saudas.isLoading}
+          columns={columns}
+          dataSource={rows}
+          pagination={{ pageSize: 20 }}
+          rowClassName={rowClassName}
+        />
+      </div>
 
       <Modal
         title={t('sauda.new')}
@@ -176,9 +184,10 @@ export default function SaudaPage(): JSX.Element {
         confirmLoading={create.isPending}
         okText={t('common.create')}
       >
+        <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form form={form} layout="vertical" initialValues={{ date: dayjs() }} onFinish={onFinish}>
           <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-            <DatePicker format="YYYY-MM-DD" />
+            <DatePicker format={DATE_FORMAT} />
           </Form.Item>
           <Form.Item
             name="vyapariAccountId"
@@ -203,6 +212,7 @@ export default function SaudaPage(): JSX.Element {
             />
           </Form.Item>
         </Form>
+        </div>
       </Modal>
     </div>
   )
