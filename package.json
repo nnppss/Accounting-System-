@@ -17,7 +17,7 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "package": "electron-vite build && electron-builder",
+    "package": "electron-vite build && electron-builder --publish never",
     "app:mac": "electron-vite build && electron-builder --mac dir && rm -rf '/Applications/Paritosh Cold.app' && cp -R 'release/mac-arm64/Paritosh Cold.app' /Applications/ && xattr -cr '/Applications/Paritosh Cold.app' && rm -rf 'release/mac-arm64' && echo '\\n✅ Updated /Applications/Paritosh Cold.app'"
   },
   "dependencies": {
