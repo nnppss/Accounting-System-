@@ -3,32 +3,7 @@ import { Modal, Typography } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useHelpHotkey } from '../lib/useHotkeys'
 import { palette } from '../theme'
-
-/** A single keycap chip. */
-function Kbd({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <kbd
-      style={{
-        display: 'inline-block',
-        minWidth: 22,
-        padding: '1px 7px',
-        margin: '0 2px',
-        textAlign: 'center',
-        fontFamily: 'inherit',
-        fontSize: 12,
-        fontWeight: 600,
-        lineHeight: '18px',
-        color: palette.onSurfaceVariant,
-        background: palette.surfaceContainerLowest,
-        border: `1px solid ${palette.outlineVariant}`,
-        borderBottomWidth: 2,
-        borderRadius: 6
-      }}
-    >
-      {children}
-    </kbd>
-  )
-}
+import { Kbd } from './Kbd'
 
 interface Row {
   keys: ReactNode

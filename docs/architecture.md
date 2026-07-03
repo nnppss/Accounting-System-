@@ -115,7 +115,7 @@ All tables in `src/main/data/schema.ts`. Conventions: money as **integer paise**
 - `subgroup` (name, nature) — the **9 fixed groups** (seeded).
 - `financial_year` (year, status `open|closed`, **rent_rate_paise**).
 - `opening_balance` (account, year, amount_paise, dr_cr) — carried forward, bilateral.
-- `loading_contractor_year` (loading/unloading charge_paise, labourer counts) — per contractor per year.
+- `loading_contractor_year` (loading_amount_paise?, unloading_amount_paise?) — the lump sums a contractor quotes for the year, loading and unloading recorded separately (either may be NULL = not decided yet; labourer counts / per-labour rates are his business, not tracked).
 
 **Ledger core**
 - `voucher` (year, **no**, type, date, narration, accountant_user_id, source_module, source_id, is_auto, **voided_at/voided_reason**).
@@ -203,7 +203,7 @@ Reusable UI: `AccountSearchSelect` (type-ahead party picker, with an optional `s
 - **Audit** — `writeAudit` logs every create/edit/void with **before/after JSON + the session accountant name + time**; surfaced on the Audit page (filters + facets). No hard deletes — void/reverse only.
 - **Account numbers** — human-facing codes (`K-26-0001`) assigned from `account_series`; `backfillAccountCodes()` on startup numbers any pre-existing accounts.
 - **Printing** — HTML templates (`printing/templates.ts`) rendered to PDF via Electron `printToPDF`: gate pass, bill, voucher, ledger, trial balance.
-- **Backups** — *planned, not yet wired:* timestamped copies of the `.db` on open/close + the pre-close snapshot (the close's logical rollback plan exists today; file-level backups don't). Can point at OneDrive/Drive for off-machine safety.
+- **Backups** — `backup/backup.ts` (Electron-free, unit-tested) + `backup/index.ts` (paths + live DB handle). The folder is chosen on **first launch** (gate in `App.tsx` before login; default `Documents/Paritosh Cold Backups`, stored in `settings.json` beside the DB so it survives a restore) and changeable from the Backup page (`/backup`, Alt+D). `runBackup` checkpoints the WAL then copies the `.db` as `paritosh-YYYYMMDD-HHMMSS-<reason>.db`; taken on app open, on quit (`before-quit`), **before a year-end close** (strict — the close aborts if it fails) and on demand. Newest 30 open/quit copies kept, others forever. Pointing the folder at OneDrive/Drive gives off-machine safety.
 - **AI (later)** — an Anthropic-SDK service in main answering questions by **tool-calling the existing read-only query services** (the Party filters become its tools) → exact answers, never posts. A vector DB is unnecessary; if semantic search is ever wanted, `sqlite-vec` lives in the same file. **Not built.**
 
 ---
@@ -231,4 +231,4 @@ Reusable UI: `AccountSearchSelect` (type-ahead party picker, with an optional `s
 7. **Phase 6** — Year-end Close + printing/PDF.
 8. **Post-phase hardening** — per-session accountant identity + audit trail; Accounts Master (search, account page, identity edit, account numbers); deletes + audit coverage for physical-stock docs + searchable account pickers; People management page + type-ahead person picker; year-end close fix (carry cash/bank, don't loan/flag banks); aamad gate-serial numbering; bardana partial/on-credit settlement; loan composition breakdown; list filters across Nikasi / Cheques / Expenses / Sauda; **Bills & Salaries** (Bill/Salary toggle + salary register); **Material-3 UI theme makeover**.
 
-**Still open:** automated file backups, the optional AI chatbot. (See the memory note *Open Items / Gaps* and the `history/phase*.md` build journals.)
+**Still open:** the optional AI chatbot. (See the memory note *Open Items / Gaps* and the `history/phase*.md` build journals.)

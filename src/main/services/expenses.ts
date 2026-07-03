@@ -131,7 +131,7 @@ export function listLoadingRegister(yearId: number): ExpenseRow[] {
   return listRegister(yearId, 'loading')
 }
 
-/** The per-year charges/labourer counts for a loading contractor (creates a default row if absent). */
+/** The quoted yearly loading/unloading amounts for a contractor (null = not decided yet). */
 export function getLoadingContractorYear(
   accountId: number,
   yearId: number
@@ -145,49 +145,42 @@ export function getLoadingContractorYear(
   return {
     accountId,
     accountName: acct?.name ?? `#${accountId}`,
-    loadingChargePaise: row?.loadingChargePaise ?? 0,
-    unloadingChargePaise: row?.unloadingChargePaise ?? 0,
-    labourersLoading: row?.labourersLoading ?? 0,
-    labourersUnloading: row?.labourersUnloading ?? 0
+    loadingAmountPaise: row?.loadingAmountPaise ?? null,
+    unloadingAmountPaise: row?.unloadingAmountPaise ?? null
   }
 }
 
-/** Upsert a loading contractor's per-year charges/labourer counts. */
+/** Upsert a loading contractor's quoted yearly amounts — either side may stay undecided (null). */
 export function setLoadingContractorYear(
   yearId: number,
   input: LoadingContractorYearInput,
   userId?: number
 ): void {
-  for (const v of [input.loadingChargePaise, input.unloadingChargePaise]) {
-    if (!Number.isInteger(v) || v < 0) throw new Error('Charges must be non-negative whole paise')
-  }
-  for (const v of [input.labourersLoading, input.labourersUnloading]) {
-    if (!Number.isInteger(v) || v < 0) throw new Error('Labourer counts must be non-negative integers')
+  for (const v of [input.loadingAmountPaise, input.unloadingAmountPaise]) {
+    if (v !== null && (!Number.isInteger(v) || v < 0)) {
+      throw new Error('Amounts must be non-negative whole paise')
+    }
   }
   db()
     .insert(loadingContractorYear)
     .values({
       accountId: input.accountId,
       yearId,
-      loadingChargePaise: input.loadingChargePaise,
-      unloadingChargePaise: input.unloadingChargePaise,
-      labourersLoading: input.labourersLoading,
-      labourersUnloading: input.labourersUnloading
+      loadingAmountPaise: input.loadingAmountPaise,
+      unloadingAmountPaise: input.unloadingAmountPaise
     })
     .onConflictDoUpdate({
       target: [loadingContractorYear.accountId, loadingContractorYear.yearId],
       set: {
-        loadingChargePaise: input.loadingChargePaise,
-        unloadingChargePaise: input.unloadingChargePaise,
-        labourersLoading: input.labourersLoading,
-        labourersUnloading: input.labourersUnloading
+        loadingAmountPaise: input.loadingAmountPaise,
+        unloadingAmountPaise: input.unloadingAmountPaise
       }
     })
     .run()
   writeAudit({ userId, action: 'update', entity: 'loading_contractor_year', entityId: input.accountId, after: input })
 }
 
-/** All loading-contractor accounts with their per-year charges (one row each, defaulting to zero). */
+/** All loading-contractor accounts with their quoted yearly amounts (one row each). */
 export function listLoadingContractorYears(yearId: number): LoadingContractorYearRow[] {
   const contractors = db()
     .select({ id: account.id })

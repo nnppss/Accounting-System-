@@ -44,29 +44,28 @@ describe('Staff salaries (posting map: Salary | Expense | Cash/Bank)', () => {
   })
 })
 
-describe('Loading-contractor charges (year fields + payments)', () => {
-  it('upserts per-year charges and labourer counts', () => {
+describe('Loading-contractor charges (yearly quoted amounts + payments)', () => {
+  it('upserts the quoted amounts, allowing one side to stay undecided', () => {
     const contractor = makeAccount('Singh Loaders', 'loading_contractor', 'Direct Expense')
+    // Filling season: only the loading amount is settled so far.
     setLoadingContractorYear(yearId, {
       accountId: contractor,
-      loadingChargePaise: 500,
-      unloadingChargePaise: 400,
-      labourersLoading: 6,
-      labourersUnloading: 4
+      loadingAmountPaise: 50000000,
+      unloadingAmountPaise: null
     })
-    const row = getLoadingContractorYear(contractor, yearId)
-    expect(row.loadingChargePaise).toBe(500)
-    expect(row.labourersLoading).toBe(6)
+    let row = getLoadingContractorYear(contractor, yearId)
+    expect(row.loadingAmountPaise).toBe(50000000)
+    expect(row.unloadingAmountPaise).toBeNull()
 
-    // Re-saving replaces (no duplicate rows).
+    // Later in the year the unloading amount is agreed — re-saving replaces (no duplicate rows).
     setLoadingContractorYear(yearId, {
       accountId: contractor,
-      loadingChargePaise: 600,
-      unloadingChargePaise: 450,
-      labourersLoading: 8,
-      labourersUnloading: 5
+      loadingAmountPaise: 50000000,
+      unloadingAmountPaise: 40000000
     })
-    expect(getLoadingContractorYear(contractor, yearId).loadingChargePaise).toBe(600)
+    row = getLoadingContractorYear(contractor, yearId)
+    expect(row.loadingAmountPaise).toBe(50000000)
+    expect(row.unloadingAmountPaise).toBe(40000000)
     expect(listLoadingContractorYears(yearId)).toHaveLength(1)
   })
 

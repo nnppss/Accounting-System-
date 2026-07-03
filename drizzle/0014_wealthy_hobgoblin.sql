@@ -1,0 +1,1 @@
+ALTER TABLE `loading_contractor_year` DROP COLUMN `yearly_amount_paise`;

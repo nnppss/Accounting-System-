@@ -267,10 +267,10 @@ MONTH_END.forEach((d, i) => {
 did(`${salCount} salary payments across the year`)
 
 // ============================================================
-// 11) LOADING CONTRACTOR — per-year charges + unloading/loading payments
+// 11) LOADING CONTRACTOR — quoted yearly amounts + unloading/loading payments
 // ============================================================
 log('\n=== LOADING CONTRACTOR ===')
-setLoadingContractorYear(Y, { accountId: LOADER, loadingChargePaise: R(8), unloadingChargePaise: R(7), labourersLoading: 12, labourersUnloading: 15 }, U); did('Set Ramesh per-year charges/labourers')
+setLoadingContractorYear(Y, { accountId: LOADER, loadingAmountPaise: R(120000), unloadingAmountPaise: R(80000) }, U); did('Set Ramesh quoted amounts: loading ₹1,20,000 + unloading ₹80,000')
 payLoadingContractor(Y, { partyAccountId: LOADER, amountPaise: R(40000), date: '2025-02-28', mode: 'cash', narration: 'Unloading labour (filling)' }, U); did('Unloading ₹40,000 cash')
 payLoadingContractor(Y, { partyAccountId: LOADER, amountPaise: R(35000), date: '2025-03-15', mode: 'cash', narration: 'Unloading labour (filling)' }, U); did('Unloading ₹35,000 cash')
 payLoadingContractor(Y, { partyAccountId: LOADER, amountPaise: R(30000), date: '2025-05-15', mode: 'cash', narration: 'Loading labour (nikasi)' }, U); did('Loading ₹30,000 cash')

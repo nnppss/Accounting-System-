@@ -160,7 +160,11 @@ export const openingBalance = sqliteTable(
   (t) => ({ uniq: uniqueIndex('opening_balance_acct_year_idx').on(t.accountId, t.yearId) })
 )
 
-/** Per-year charges/labourer counts for a loading-contractor account. */
+/**
+ * The lump-sum yearly amounts a loading contractor quotes — loading and unloading recorded
+ * separately (they may be settled at different times of the year, or with different
+ * contractors). NULL = not decided yet, distinct from an agreed ₹0.
+ */
 export const loadingContractorYear = sqliteTable(
   'loading_contractor_year',
   {
@@ -171,10 +175,8 @@ export const loadingContractorYear = sqliteTable(
     yearId: integer('year_id')
       .notNull()
       .references(() => financialYear.id),
-    loadingChargePaise: integer('loading_charge_paise').notNull().default(0),
-    unloadingChargePaise: integer('unloading_charge_paise').notNull().default(0),
-    labourersLoading: integer('labourers_loading').notNull().default(0),
-    labourersUnloading: integer('labourers_unloading').notNull().default(0)
+    loadingAmountPaise: integer('loading_amount_paise'),
+    unloadingAmountPaise: integer('unloading_amount_paise')
   },
   (t) => ({ uniq: uniqueIndex('loading_contractor_year_idx').on(t.accountId, t.yearId) })
 )

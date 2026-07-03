@@ -681,13 +681,16 @@ export interface PayExpenseResult {
   voucherId: number
 }
 
-/** Per-year charges/labourer counts for a loading-contractor account (the `loading_contractor_year` row). */
+/**
+ * The lump-sum yearly amounts a loading contractor quotes (the `loading_contractor_year` row).
+ * Loading and unloading are recorded separately — often settled at different points of the year,
+ * sometimes with different contractors. `null` = not decided yet (distinct from an agreed ₹0).
+ * Labourer counts and per-labour rates are the contractor's business, not ours.
+ */
 export interface LoadingContractorYearInput {
   accountId: number
-  loadingChargePaise: number
-  unloadingChargePaise: number
-  labourersLoading: number
-  labourersUnloading: number
+  loadingAmountPaise: number | null
+  unloadingAmountPaise: number | null
 }
 
 export interface LoadingContractorYearRow extends LoadingContractorYearInput {
@@ -935,6 +938,27 @@ export interface YearCloseInfo {
 /** What a document a print request produced. `path` is null when the user cancelled the save dialog. */
 export interface PrintResult {
   path: string | null
+}
+
+// ============================ BACKUPS ============================
+
+/** Why a backup copy was taken — part of its file name, shown as a tag on the Backup page. */
+export type BackupReason = 'setup' | 'open' | 'quit' | 'pre-close' | 'manual'
+
+/** Backup configuration for the renderer: null `backupDir` means first-run setup hasn't run. */
+export interface BackupSettings {
+  backupDir: string | null
+  /** Suggested folder (Documents/Paritosh Cold Backups) prefilled on the setup screen. */
+  defaultDir: string
+}
+
+/** One timestamped copy in the backup folder, for the Backup page's table. */
+export interface BackupFileRow {
+  fileName: string
+  reason: BackupReason
+  sizeBytes: number
+  /** Epoch milliseconds. */
+  modifiedAt: number
 }
 
 // ============================ AUDIT TRAIL ============================

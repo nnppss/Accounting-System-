@@ -2,7 +2,7 @@
 
 A personal accounting software for **Paritosh Cold Storage** (a potato cold storage). Single user (the owner), runs on one Windows laptop, offline. It manages every rupee (Cr/Dr) between the cold storage and the parties it deals with, plus the physical stock of potato packets. The whole app is **bilingual — English and Hindi**, switchable live.
 
-This describes the software *as built* (all planned modules ship; automated file backups and the optional AI chatbot remain the only unbuilt items). See [architecture.md](architecture.md) for *how* it's built.
+This describes the software *as built* (all planned modules ship; the optional AI chatbot remains the only unbuilt item). See [architecture.md](architecture.md) for *how* it's built.
 
 ---
 
@@ -45,7 +45,7 @@ Creates and manages the accounts of every party and the cold's own books, and sh
 **Account types & fields** (common fields: Name, Son of, Village/City, State, Phone):
 - **Kisan**, **Vyapari** — the common fields.
 - **Staff** — common + **Job**; staff accounts track salaries.
-- **Loading Contractor** — common + **loading charge (year)**, **unloading charge (year)**, **labourers brought in during loading season**, **and during unloading season**.
+- **Loading Contractor** — common + the **quoted yearly amounts for loading and for unloading**, recorded separately (a lump sum each; either may be left blank until it is decided — e.g. only the loading amount is known during the filling season, or loading and unloading go to different contractors). How many labourers he brings or what he pays them is his business, not tracked.
 - **Bank** — one per real bank account (HDFC, Canara, Canara Current, …); fields **Account number**, **IFSC code**, **Branch** instead of the person fields. The **Subgroup is pinned to *Cash and Bank*** (locked at creation), so every bank automatically gets its own book in the Money Book.
 - **Other** — for the remaining non-person accounts (capital, rent income, suppliers, etc.); person fields left blank.
 - **Defaulter** — *not a type but a flag.* A Defaulter Kisan / Defaulter Vyapari **keeps their normal account and also appears in the Defaulters view**. Set **manually** (pre-existing defaulters at setup) or **automatically** at year-end.
@@ -131,7 +131,7 @@ The bags/sacks potatoes are filled into — bought and sold by the cold. **Indep
 ### 3.11 Expenses (Staff & Loading)
 The cold's own operating outflows.
 - **Salaries** — pay a staff member; the **salary register** lists payments.
-- **Loading/Unloading** — pay a loading contractor against their per-year loading/unloading charges and labourer counts (configurable per contractor per year); the **loading register** lists payments.
+- **Loading/Unloading** — pay a loading contractor against the **yearly amounts he quoted** (separate lump sums for loading and unloading, each editable per contractor per year and fillable as it gets decided); the **loading register** lists payments.
 - Both post Dr Expense / Cr Cash-or-Bank.
 
 ### 3.12 Accounting Engine — Vouchers & Ledger
@@ -196,5 +196,5 @@ It shows a **summary** (accounts carried forward, total dues, new defaulters, in
 - **Login asks: year · username · password · accountant.** The *year* sets the working accounting year; *username/password* authenticate; the *accountant* name is stamped on every entry (held in the session). On first run a default admin + the current year are created so there's no lockout.
 - **Audit trail** — every create / edit / void is logged with who and when; nothing is hard-deleted (only voided/reversed).
 - **Bilingual** — the entire UI switches live between English and Hindi.
-- **Backups (planned)** — the whole database is one file; the design copies it on open/close and snapshots before a year-end close. The close already records a logical rollback plan; **file-level automatic backups are not yet wired.**
+- **Backups** — the whole database is one file. On the very first launch (before login ever appears) the app asks **where backups should be kept** (default: `Documents/Paritosh Cold Backups`; changeable later from Admin → Backup). It then copies the `.db` there automatically on every app open and quit and **before a year-end close** (the close refuses to run if the snapshot can't be written — on top of its logical rollback plan). The newest 30 routine open/quit copies are kept; setup, manual and pre-close copies are kept forever. Admin → Backup also offers **Backup Now** and lists every copy. Restore is manual: close the app, copy a backup over the live `.db`.
 - **AI assistant (planned)** — a future chatbot will answer questions by querying the read-only views; it never posts. Not built.

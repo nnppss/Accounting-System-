@@ -33,6 +33,7 @@ import {
   LockOutlined,
   LogoutOutlined,
   QuestionCircleOutlined,
+  SaveOutlined,
   SettingOutlined,
   ShoppingOutlined,
   TeamOutlined,
@@ -66,10 +67,13 @@ import PartyPage from '../pages/PartyPage'
 import ClosePage from '../pages/ClosePage'
 import AuditPage from '../pages/AuditPage'
 import StorePage from '../pages/StorePage'
+import BackupPage from '../pages/BackupPage'
 import HomePage from '../pages/HomePage'
 import { palette } from '../theme'
 import { useGlobalHotkeys } from '../lib/useHotkeys'
 import ShortcutsHelp from './ShortcutsHelp'
+import ShortcutHintBar from './ShortcutHintBar'
+import AltNavOverlay from './AltNavOverlay'
 
 const { Header, Content } = Layout
 
@@ -231,6 +235,7 @@ export default function AppLayout(): JSX.Element {
       label: t('nav.group.admin'),
       children: [
         { key: '/store', icon: <SettingOutlined />, label: t('nav.store') },
+        { key: '/backup', icon: <SaveOutlined />, label: t('nav.backup') },
         { key: '/close', icon: <LockOutlined />, label: t('nav.close') },
         { key: '/audit', icon: <AuditOutlined />, label: t('nav.audit') }
       ]
@@ -406,8 +411,14 @@ export default function AppLayout(): JSX.Element {
             <Route path="/close" element={<ClosePage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/store" element={<StorePage />} />
+            <Route path="/backup" element={<BackupPage />} />
           </Routes>
         </Content>
+      {/* Footer hint bar; the section-jump panel rises out of it (Alt held, or its chip clicked). */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <AltNavOverlay />
+        <ShortcutHintBar />
+      </div>
       <ChangePasswordModal
         open={pwOpen}
         onClose={() => setPwOpen(false)}

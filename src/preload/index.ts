@@ -14,6 +14,8 @@ import type {
   AuditFacets,
   AuditFilter,
   AuditLogRow,
+  BackupFileRow,
+  BackupSettings,
   BardanaAccount,
   BardanaInput,
   BardanaRow,
@@ -224,6 +226,15 @@ const api = {
   audit: {
     list: (filter?: AuditFilter): Promise<AuditLogRow[]> => ipcRenderer.invoke('audit:list', filter),
     facets: (): Promise<AuditFacets> => ipcRenderer.invoke('audit:facets')
+  },
+  backup: {
+    settings: (): Promise<BackupSettings> => ipcRenderer.invoke('backup:settings'),
+    // Native folder picker; resolves null if the user cancels.
+    chooseDir: (): Promise<string | null> => ipcRenderer.invoke('backup:chooseDir'),
+    setDir: (dir: string): Promise<string> => ipcRenderer.invoke('backup:setDir', dir),
+    now: (): Promise<string | null> => ipcRenderer.invoke('backup:now'),
+    list: (): Promise<BackupFileRow[]> => ipcRenderer.invoke('backup:list'),
+    openFolder: (): Promise<void> => ipcRenderer.invoke('backup:openFolder')
   },
   close: {
     preview: (): Promise<ClosePreview> => ipcRenderer.invoke('close:preview'),

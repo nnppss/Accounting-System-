@@ -17,27 +17,33 @@ function isModalOpen(): boolean {
   return false
 }
 
-const NAV_MAP: Record<string, string> = {
-  h: '/home',
-  a: '/accounts',
-  p: '/people',
-  i: '/aamad',
-  m: '/maps',
-  n: '/nikasi',
-  s: '/sauda',
-  b: '/bardana',
-  e: '/expenses',
-  l: '/loans',
-  q: '/cheques',
-  k: '/money-book',
-  v: '/vouchers',
-  t: '/trial-balance',
-  r: '/bills',
-  f: '/party',
-  o: '/store',
-  y: '/close',
-  u: '/audit'
-}
+/** Alt+letter section jumps, in top-nav order. Also drives the Alt-held hint overlay. */
+export const NAV_HINTS: { key: string; route: string; labelKey: string }[] = [
+  { key: 'h', route: '/home', labelKey: 'nav.home' },
+  { key: 'a', route: '/accounts', labelKey: 'nav.accounts' },
+  { key: 'p', route: '/people', labelKey: 'nav.people' },
+  { key: 'i', route: '/aamad', labelKey: 'nav.aamad' },
+  { key: 'm', route: '/maps', labelKey: 'nav.maps' },
+  { key: 'n', route: '/nikasi', labelKey: 'nav.nikasi' },
+  { key: 's', route: '/sauda', labelKey: 'nav.sauda' },
+  { key: 'b', route: '/bardana', labelKey: 'nav.bardana' },
+  { key: 'e', route: '/expenses', labelKey: 'nav.expenses' },
+  { key: 'l', route: '/loans', labelKey: 'nav.loans' },
+  { key: 'q', route: '/cheques', labelKey: 'nav.cheques' },
+  { key: 'k', route: '/money-book', labelKey: 'nav.moneyBook' },
+  { key: 'v', route: '/vouchers', labelKey: 'nav.vouchers' },
+  { key: 't', route: '/trial-balance', labelKey: 'nav.trialBalance' },
+  { key: 'r', route: '/bills', labelKey: 'nav.bills' },
+  { key: 'f', route: '/party', labelKey: 'nav.party' },
+  { key: 'o', route: '/store', labelKey: 'nav.store' },
+  { key: 'd', route: '/backup', labelKey: 'nav.backup' },
+  { key: 'y', route: '/close', labelKey: 'nav.close' },
+  { key: 'u', route: '/audit', labelKey: 'nav.audit' }
+]
+
+const NAV_MAP: Record<string, string> = Object.fromEntries(
+  NAV_HINTS.map((h) => [h.key, h.route])
+)
 
 export function useGlobalHotkeys(toggleLang: () => void): void {
   const navigate = useNavigate()

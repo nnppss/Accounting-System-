@@ -320,7 +320,10 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
   )
 }
 
-/** The per-year loading-contractor charges (rates + labourer counts), edited per contractor. */
+/**
+ * The lump-sum yearly amounts each loading contractor quoted. Loading and unloading are
+ * independent — one may still be undecided (blank) and filled in later in the year.
+ */
 function ContractorChargesDrawer({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -335,19 +338,17 @@ function ContractorChargesDrawer({ open, onClose }: { open: boolean; onClose: ()
   const yearColumns = [
     { title: t('expenses.contractor'), dataIndex: 'accountName' },
     {
-      title: t('expenses.loadingCharge'),
-      dataIndex: 'loadingChargePaise',
+      title: t('expenses.loadingAmount'),
+      dataIndex: 'loadingAmountPaise',
       align: 'right' as const,
-      render: (v: number) => formatINR(v)
+      render: (v: number | null) => (v === null ? t('expenses.notDecided') : formatINR(v))
     },
     {
-      title: t('expenses.unloadingCharge'),
-      dataIndex: 'unloadingChargePaise',
+      title: t('expenses.unloadingAmount'),
+      dataIndex: 'unloadingAmountPaise',
       align: 'right' as const,
-      render: (v: number) => formatINR(v)
+      render: (v: number | null) => (v === null ? t('expenses.notDecided') : formatINR(v))
     },
-    { title: t('expenses.labourersLoading'), dataIndex: 'labourersLoading', align: 'right' as const, width: 100 },
-    { title: t('expenses.labourersUnloading'), dataIndex: 'labourersUnloading', align: 'right' as const, width: 100 },
     {
       title: t('common.actions'),
       key: 'actions',
@@ -424,32 +425,22 @@ function ChargesModal({
         form={form}
         layout="vertical"
         initialValues={{
-          loadingCharge: row.loadingChargePaise / 100,
-          unloadingCharge: row.unloadingChargePaise / 100,
-          labourersLoading: row.labourersLoading,
-          labourersUnloading: row.labourersUnloading
+          loadingAmount: row.loadingAmountPaise === null ? undefined : row.loadingAmountPaise / 100,
+          unloadingAmount: row.unloadingAmountPaise === null ? undefined : row.unloadingAmountPaise / 100
         }}
         onFinish={(v) =>
           save.mutate({
             accountId: row.accountId,
-            loadingChargePaise: toPaise(v.loadingCharge),
-            unloadingChargePaise: toPaise(v.unloadingCharge),
-            labourersLoading: v.labourersLoading ?? 0,
-            labourersUnloading: v.labourersUnloading ?? 0
+            loadingAmountPaise: v.loadingAmount == null ? null : toPaise(v.loadingAmount),
+            unloadingAmountPaise: v.unloadingAmount == null ? null : toPaise(v.unloadingAmount)
           })
         }
       >
-        <Form.Item name="loadingCharge" label={t('expenses.loadingCharge')} rules={[{ required: true }]}>
+        <Form.Item name="loadingAmount" label={t('expenses.loadingAmount')} extra={t('expenses.amountHint')}>
           <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
         </Form.Item>
-        <Form.Item name="unloadingCharge" label={t('expenses.unloadingCharge')} rules={[{ required: true }]}>
+        <Form.Item name="unloadingAmount" label={t('expenses.unloadingAmount')} extra={t('expenses.amountHint')}>
           <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item name="labourersLoading" label={t('expenses.labourersLoading')}>
-          <InputNumber min={0} style={{ width: '100%' }} />
-        </Form.Item>
-        <Form.Item name="labourersUnloading" label={t('expenses.labourersUnloading')}>
-          <InputNumber min={0} style={{ width: '100%' }} />
         </Form.Item>
       </Form>
       </div>

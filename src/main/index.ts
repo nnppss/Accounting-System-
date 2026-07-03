@@ -1,22 +1,12 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, dialog, shell } from 'electron'
 import { join } from 'path'
 import { ensureBootstrap } from './auth/auth'
+import { backupNow } from './backup'
 import { migrate, openDb } from './data/db'
 import { seedReferenceData } from './data/seed'
+import { dbPath, migrationsFolder } from './paths'
 import { backfillAccountCodes } from './services/accounts'
 import { registerIpc } from './ipc'
-
-/** The single SQLite file lives in Electron's per-user data dir. */
-function dbPath(): string {
-  return join(app.getPath('userData'), 'paritosh.db')
-}
-
-/** Generated migrations ship beside the app in prod (extraResources), at the repo root in dev. */
-function migrationsFolder(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'drizzle')
-    : join(app.getAppPath(), 'drizzle')
-}
 
 function initDb(): void {
   openDb(dbPath())
@@ -63,12 +53,35 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   initDb()
+
+  // Automatic on-open backup (software.md §5). A failure (folder deleted, drive unplugged) must
+  // not stop the accountant from working — warn loudly and carry on. No-op before first-run setup.
+  try {
+    backupNow('open')
+  } catch (e) {
+    dialog.showErrorBox(
+      'Backup failed',
+      `Could not copy the database to the backup folder:\n${(e as Error).message}\n\n` +
+        'The app will still open. Fix the backup folder from the Backup page.'
+    )
+  }
+
   registerIpc()
   createWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+// The matching on-quit backup. Errors only logged — a dialog here would trap the user in a
+// half-quit app; the on-open backup surfaces a broken folder the next time they start.
+app.on('before-quit', () => {
+  try {
+    backupNow('quit')
+  } catch (e) {
+    console.error('quit-time backup failed:', e)
+  }
 })
 
 app.on('window-all-closed', () => {

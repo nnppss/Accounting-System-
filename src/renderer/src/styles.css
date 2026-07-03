@@ -106,3 +106,15 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #90a4b3;
 }
+
+/* Section-jump panel rising from the footer hint bar. */
+@keyframes pc-rise {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
