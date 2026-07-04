@@ -1,6 +1,6 @@
 {
   "name": "paritosh-cold",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Paritosh Cold — cold storage accounting (Electron + React + SQLite)",
   "main": "./out/main/index.js",
   "author": "Paritosh Cold",

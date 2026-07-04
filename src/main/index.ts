@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, shell, Menu, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, shell, Menu } from 'electron'
 import { join } from 'path'
 import { ensureBootstrap } from './auth/auth'
 import { backupNow } from './backup'
@@ -16,65 +16,25 @@ function initDb(): void {
   backfillAccountCodes() // assign numbers to any accounts created before this feature
 }
 
-// Shipped-app menu. Removes Electron's default "View → Reload/Force Reload/Developer Tools"
-// (dev-only, confusing for the accountant) and the empty Help menu. Dev tools stay reachable
-// in a dev build so we can still debug. F5/Ctrl+R reload is kept in dev only for the same reason.
-function buildMenu(win: BrowserWindow): void {
+// The shipped app is a single-purpose SPA — its own Home/Accounts/Stock nav is the only menu the
+// accountant needs, so the OS menu bar is removed entirely in production. In dev we keep a minimal
+// menu purely so reload/devtools stay reachable. Clipboard shortcuts (Ctrl+C/V/X/A) still work in
+// text fields without a menu — Chromium handles them natively.
+function buildMenu(): void {
   const isDev = !!process.env['ELECTRON_RENDERER_URL']
-
-  const template: MenuItemConstructorOptions[] = [
-    { label: 'File', submenu: [{ role: 'quit', label: 'Exit' }] },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-        // ponytail: dev-only reload/devtools, hidden in the shipped build
-        ...(isDev
-          ? ([
-              { type: 'separator' },
-              { role: 'reload' },
-              { role: 'forceReload' },
-              { role: 'toggleDevTools' }
-            ] as MenuItemConstructorOptions[])
-          : [])
-      ]
-    },
-    { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'zoom' }] },
-    {
-      label: 'Help',
-      submenu: [
-        {
-          label: 'About Paritosh Cold',
-          click: () =>
-            dialog.showMessageBox(win, {
-              type: 'info',
-              title: 'About Paritosh Cold',
-              message: 'Paritosh Cold Storage',
-              detail: `Version ${app.getVersion()}\nTRAKPURA PAVABLI`,
-              buttons: ['OK']
-            })
-        }
-      ]
-    }
-  ]
-
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  if (!isDev) {
+    Menu.setApplicationMenu(null)
+    return
+  }
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { label: 'File', submenu: [{ role: 'quit', label: 'Exit' }] },
+      {
+        label: 'View',
+        submenu: [{ role: 'reload' }, { role: 'forceReload' }, { role: 'toggleDevTools' }]
+      }
+    ])
+  )
 }
 
 function createWindow(): void {
@@ -91,7 +51,7 @@ function createWindow(): void {
     }
   })
 
-  buildMenu(win)
+  buildMenu()
 
   win.on('ready-to-show', () => win.show())
 
