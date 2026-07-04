@@ -3,7 +3,11 @@ name: Build Windows
 on:
   push:
     branches: [main]
+    tags: ['v*'] # pushing a version tag (e.g. v1.0.0) publishes a downloadable Release
   workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the Release
 
 jobs:
   build:
@@ -17,7 +21,16 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run package
+
+      # Branch/dispatch builds: keep the installer as a plain CI artifact.
       - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/') == false
         with:
           name: paritosh-cold-windows-installer
           path: release/*.exe
+
+      # Tagged builds: publish a real GitHub Release with a one-click download.
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: release/*.exe
