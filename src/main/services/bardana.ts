@@ -74,7 +74,8 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
         qty: input.qty,
         amountPaise,
         paidPaise,
-        mode: input.mode,
+        // mode is meaningless when no cash moves (pure credit); default it so the NOT NULL holds.
+        mode: paidPaise > 0 ? input.mode : (input.mode ?? 'cash'),
         bankAccountId: paidPaise > 0 && input.mode === 'bank' ? (input.bankAccountId ?? null) : null
       })
       .returning({ id: bardana.id })
