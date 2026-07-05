@@ -8,6 +8,7 @@ import {
   getAccountDetail,
   listAccounts,
   listPersons,
+  listPersonFieldValues,
   listSubgroups,
   setDefaulter,
   setOpeningBalance,
@@ -72,6 +73,9 @@ export function registerAccountsIpc(): void {
   })
   ipcMain.handle('persons:create', (_e, input: PersonInput) => createPerson(input))
   ipcMain.handle('persons:list', (_e, search?: string) => listPersons(search))
+  ipcMain.handle('persons:fieldValues', (_e, field: 'villageCity' | 'state' | 'sonOf') =>
+    listPersonFieldValues(field)
+  )
   ipcMain.handle('persons:delete', (_e, personId: number) =>
     deletePerson(personId, requireSession().userId)
   )
