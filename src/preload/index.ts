@@ -113,6 +113,8 @@ const api = {
   persons: {
     create: (input: PersonInput): Promise<number> => ipcRenderer.invoke('persons:create', input),
     list: (search?: string): Promise<PersonRow[]> => ipcRenderer.invoke('persons:list', search),
+    fieldValues: (field: 'villageCity' | 'state' | 'sonOf'): Promise<string[]> =>
+      ipcRenderer.invoke('persons:fieldValues', field),
     delete: (personId: number): Promise<void> => ipcRenderer.invoke('persons:delete', personId)
   },
   vouchers: {

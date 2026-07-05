@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, isNotNull, like, ne, or, sql } from 'drizzle-orm'
 import { db } from '../data/db'
 import {
   aamad,
@@ -83,6 +83,25 @@ export function listPersons(search?: string): Array<typeof person.$inferSelect> 
       .all()
   }
   return q.orderBy(asc(person.name)).limit(50).all()
+}
+
+/** Distinct non-empty values already saved for a person field — powers type-ahead suggestions. */
+export function listPersonFieldValues(field: 'villageCity' | 'state' | 'sonOf'): string[] {
+  const col = person[field]
+  const rows = db()
+    .select({ v: col })
+    .from(person)
+    .where(and(isNotNull(col), ne(col, '')))
+    .orderBy(asc(col))
+    .all()
+  // Dedupe case-insensitively on the trimmed value ("Agra"/"agra "/"Agra" → one), keep first seen.
+  const seen = new Map<string, string>()
+  for (const { v } of rows) {
+    const val = (v as string).trim()
+    const key = val.toLowerCase()
+    if (val && !seen.has(key)) seen.set(key, val)
+  }
+  return [...seen.values()]
 }
 
 /**

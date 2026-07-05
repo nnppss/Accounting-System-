@@ -29,6 +29,7 @@ import type { DrCr } from '@shared/enums'
 import type { AccountIdentityInput, LedgerLine } from '@shared/contracts'
 import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
 import { BalanceAmount, BalanceSentence, SeverityTag } from '../components/Highlight'
+import { SuggestInput } from '../components/SuggestInput'
 import { usePrinter } from '../lib/usePrinter'
 import { useAccountsFilter } from '../store/accountsFilter'
 import { useSession } from '../store/session'
@@ -118,6 +119,7 @@ export default function AccountLedgerPage(): JSX.Element {
       message.success(t('accounts.identitySaved'))
       setEditOpen(false)
       invalidate()
+      queryClient.invalidateQueries({ queryKey: ['personFieldValues'] })
     },
     onError: (e: Error) => message.error(e.message)
   })
@@ -411,13 +413,13 @@ export default function AccountLedgerPage(): JSX.Element {
           onFinish={(v) => updateIdentity.mutate(v as AccountIdentityInput)}
         >
           <Form.Item name="sonOf" label="S/o">
-            <Input />
+            <SuggestInput field="sonOf" />
           </Form.Item>
           <Form.Item name="villageCity" label={t('accounts.village')}>
-            <Input />
+            <SuggestInput field="villageCity" />
           </Form.Item>
           <Form.Item name="state" label={t('accounts.state')}>
-            <Input />
+            <SuggestInput field="state" />
           </Form.Item>
           <Form.Item name="phone" label={t('accounts.phone')}>
             <Input />
