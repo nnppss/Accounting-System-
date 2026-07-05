@@ -25,6 +25,7 @@ import { ACCOUNT_TYPES, type AccountType, type DrCr } from '@shared/enums'
 import type { AccountInput, AccountListRow } from '@shared/contracts'
 import { toPaise } from '../lib/format'
 import { BalanceAmount, SeverityTag, severityRowClass } from '../components/Highlight'
+import { SuggestInput, titleCase } from '../components/SuggestInput'
 import { useAccountsFilter, type AccountFilters } from '../store/accountsFilter'
 import { useSession } from '../store/session'
 import { useCreateHotkey } from '../lib/useHotkeys'
@@ -166,6 +167,7 @@ export default function AccountsPage(): JSX.Element {
       setPersonOpen(false)
       personForm.resetFields()
       queryClient.invalidateQueries({ queryKey: ['persons'] })
+      queryClient.invalidateQueries({ queryKey: ['personFieldValues'] })
       const label = vars.sonOf ? `${vars.name} s/o ${vars.sonOf}` : vars.name
       setPinnedPersons((prev) => [{ value: id, label }, ...prev.filter((p) => p.value !== id)])
       accountForm.setFieldValue('personId', id)
@@ -504,17 +506,22 @@ export default function AccountsPage(): JSX.Element {
       >
         <div ref={personNav.containerRef} onKeyDownCapture={personNav.onKeyDownCapture}>
         <Form form={personForm} layout="vertical" onFinish={(v) => createPerson.mutate(v)}>
-          <Form.Item name="name" label={t('accounts.name')} rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t('accounts.name')}
+            rules={[{ required: true }]}
+            getValueFromEvent={(e) => titleCase(e.target.value)}
+          >
             <Input />
           </Form.Item>
           <Form.Item name="sonOf" label="S/o">
-            <Input />
+            <SuggestInput field="sonOf" />
           </Form.Item>
           <Form.Item name="villageCity" label={t('accounts.village')}>
-            <Input />
+            <SuggestInput field="villageCity" />
           </Form.Item>
           <Form.Item name="state" label={t('accounts.state')}>
-            <Input />
+            <SuggestInput field="state" />
           </Form.Item>
           <Form.Item name="phone" label={t('accounts.phone')}>
             <Input />
