@@ -45,8 +45,12 @@ export default function VouchersPage(): JSX.Element {
   const cashBanks = useQuery({ queryKey: ['cashbanks'], queryFn: () => window.api.moneybook.accounts() })
   const vouchers = useQuery({ queryKey: ['vouchers'], queryFn: () => window.api.vouchers.list() })
 
-  const partyOptions = (parties.data ?? []).map((a) => ({ value: a.id, label: a.name }))
-  const allOptions = (allAccounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))
+  // String labels (not nodes) so optionFilterProp="label" keeps matching — and the
+  // s/o suffix makes same-named parties both distinguishable and searchable by father.
+  const partyLabel = (a: { name: string; personSonOf: string | null }): string =>
+    a.personSonOf ? `${a.name} s/o ${a.personSonOf}` : a.name
+  const partyOptions = (parties.data ?? []).map((a) => ({ value: a.id, label: partyLabel(a) }))
+  const allOptions = (allAccounts.data ?? []).map((a) => ({ value: a.id, label: partyLabel(a) }))
   const cashOptions = (cashBanks.data ?? []).map((a) => ({ value: a.id, label: a.name }))
 
   const onPosted = (no: number): void => {
