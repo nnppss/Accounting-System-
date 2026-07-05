@@ -256,7 +256,12 @@ export default function AccountsPage(): JSX.Element {
       render: (ty: AccountType) => <Tag>{t(`accounts.type.${ty}`)}</Tag>
     },
     { title: t('accounts.subgroup'), dataIndex: 'subgroupName' },
-    { title: t('accounts.person'), dataIndex: 'personName', render: (p: string | null) => p ?? '—' },
+    {
+      title: t('accounts.person'),
+      dataIndex: 'personName',
+      render: (p: string | null, r: AccountListRow) =>
+        p ? (r.personSonOf ? `${p} s/o ${r.personSonOf}` : p) : '—'
+    },
     {
       title: t('common.balance'),
       dataIndex: 'balancePaise',

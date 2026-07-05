@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { BardanaRow } from '@shared/contracts'
 import type { BardanaDirection, PaymentMode } from '@shared/enums'
-import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -274,7 +274,7 @@ export default function BardanaPage(): JSX.Element {
           ]}
         />
         <DatePicker.RangePicker
-          format={DATE_FORMAT}
+          format={DATE_INPUT_FORMATS}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
           onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
@@ -341,7 +341,7 @@ export default function BardanaPage(): JSX.Element {
             </Col>
             <Col span={12}>
               <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-                <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
+                <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>

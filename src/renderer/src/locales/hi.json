@@ -145,6 +145,8 @@
   "accounts.typeSubgroupLocked": "प्रकार और सबग्रुप स्थायी हैं — खाता बनने के बाद इन्हें बदला नहीं जा सकता।",
   "accounts.markDefaulterTitle": "डिफ़ॉल्टर चिह्नित करें?",
   "accounts.markDefaulterConfirm": "\"{{name}}\" को डिफ़ॉल्टर चिह्नित करें? इससे खाता फ़्लैग होता है और वर्ष-अंत प्रक्रिया प्रभावित होती है। आप इसे बाद में हटा सकते हैं।",
+  "accounts.clearDefaulterTitle": "डिफ़ॉल्टर हटाएँ?",
+  "accounts.clearDefaulterConfirm": "\"{{name}}\" से डिफ़ॉल्टर फ़्लैग हटाएँ? यह खाता अब डिफ़ॉल्टर नहीं माना जाएगा, वर्ष-अंत में भी नहीं।",
   "accounts.deleteTitle": "खाता हटाएँ",
   "accounts.deleteConfirm": "क्या आप वाकई \"{{name}}\" को स्थायी रूप से हटाना चाहते हैं? यह पूर्ववत नहीं किया जा सकता। पुष्टि के लिए अपना पासवर्ड दर्ज करें।",
   "accounts.searchPlaceholder": "नाम, गाँव या फ़ोन से खोजें",

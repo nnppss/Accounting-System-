@@ -136,6 +136,8 @@ export interface AccountListRow {
   type: AccountType
   subgroupName: string
   personName: string | null
+  /** Father's name of the linked person — shown to tell same-named parties apart. */
+  personSonOf: string | null
   isDefaulter: boolean
   isSystem: boolean
   balancePaise: number
