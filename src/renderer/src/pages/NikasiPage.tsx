@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DeliveryTarget } from '@shared/enums'
 import type { NikasiListRow } from '@shared/contracts'
-import { DATE_FORMAT, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
@@ -222,7 +222,7 @@ export default function NikasiPage(): JSX.Element {
           ]}
         />
         <DatePicker.RangePicker
-          format={DATE_FORMAT}
+          format={DATE_INPUT_FORMATS}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
           onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
@@ -272,7 +272,7 @@ export default function NikasiPage(): JSX.Element {
         >
           <Space size="large" align="start" wrap>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-              <DatePicker format={DATE_FORMAT} />
+              <DatePicker format={DATE_INPUT_FORMATS} />
             </Form.Item>
             <Form.Item name="deliveredToType" label={t('nikasi.deliveredTo')}>
               <Segmented

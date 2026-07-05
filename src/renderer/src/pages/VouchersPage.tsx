@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { VoucherListRow } from '@shared/contracts'
 import type { VoucherType } from '@shared/enums'
-import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
@@ -177,7 +177,7 @@ export default function VouchersPage(): JSX.Element {
         >
           <Space size="large" style={{ display: 'flex' }} align="start" wrap>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-              <DatePicker format={DATE_FORMAT} />
+              <DatePicker format={DATE_INPUT_FORMATS} />
             </Form.Item>
             {mode !== 'journal' && (
               <Form.Item name="amount" label={t('common.amount')} rules={[{ required: true }]}>

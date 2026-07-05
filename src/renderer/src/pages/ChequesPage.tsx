@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { ChequeRow } from '@shared/contracts'
 import type { ChequeDirection, ChequeStatus } from '@shared/enums'
-import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import { SeverityTag, severityRowClass, type Severity } from '../components/Highlight'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
@@ -229,7 +229,7 @@ export default function ChequesPage(): JSX.Element {
           onChange={(e) => setFNo(e.target.value)}
         />
         <DatePicker.RangePicker
-          format={DATE_FORMAT}
+          format={DATE_INPUT_FORMATS}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
           onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
@@ -339,12 +339,12 @@ export default function ChequesPage(): JSX.Element {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="date" label={t('common.date')}>
-                <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
+                <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="clearanceDate" label={t('cheques.clearanceDate')}>
-                <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
+                <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>

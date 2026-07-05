@@ -27,7 +27,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DrCr } from '@shared/enums'
 import type { AccountIdentityInput, LedgerLine } from '@shared/contracts'
-import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import { BalanceAmount, BalanceSentence, SeverityTag } from '../components/Highlight'
 import { SuggestInput } from '../components/SuggestInput'
 import { usePrinter } from '../lib/usePrinter'
@@ -96,11 +96,17 @@ export default function AccountLedgerPage(): JSX.Element {
     onError: (e: Error) => message.error(e.message)
   })
 
-  // Marking a defaulter is a flag with consequences (year-end) — confirm first. Clearing is direct.
+  // The flag has year-end consequences either way — confirm both marking and clearing.
   const onToggleDefaulter = (): void => {
     if (!acct) return
     if (acct.isDefaulter) {
-      toggleDefaulter.mutate(false)
+      modal.confirm({
+        title: t('accounts.clearDefaulterTitle'),
+        content: t('accounts.clearDefaulterConfirm', { name: acct.name }),
+        okText: t('accounts.clearDefaulter'),
+        okButtonProps: { danger: true },
+        onOk: () => toggleDefaulter.mutate(false)
+      })
       return
     }
     modal.confirm({
@@ -359,7 +365,7 @@ export default function AccountLedgerPage(): JSX.Element {
             </Radio.Group>
           </Form.Item>
           <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} format={DATE_FORMAT} />
+            <DatePicker style={{ width: '100%' }} format={DATE_INPUT_FORMATS} />
           </Form.Item>
         </Form>
         </div>

@@ -241,6 +241,7 @@ export function listAccounts(yearId: number, filter: AccountListFilter = {}): Ac
       type: account.type,
       subgroupName: subgroup.name,
       personName: person.name,
+      personSonOf: person.sonOf,
       isDefaulter: account.isDefaulter,
       isSystem: account.isSystem
     })

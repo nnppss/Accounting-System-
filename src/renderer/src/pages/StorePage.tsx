@@ -13,7 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import { useSession } from '../store/session'
-import { DATE_FORMAT, formatINR } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatINR } from '../lib/format'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 
 export default function StorePage(): JSX.Element {
@@ -94,7 +94,7 @@ export default function StorePage(): JSX.Element {
           <div ref={accrueNav.containerRef} onKeyDownCapture={accrueNav.onKeyDownCapture}>
           <Form form={accrueForm} layout="inline" initialValues={{ date: dayjs() }} onFinish={(v) => accrueAll.mutate((v.date as dayjs.Dayjs).format('YYYY-MM-DD'))}>
             <Form.Item name="date" label={t('bhada.date')} rules={[{ required: true }]}>
-              <DatePicker format={DATE_FORMAT} />
+              <DatePicker format={DATE_INPUT_FORMATS} />
             </Form.Item>
             <Form.Item>
               <Button type="primary" htmlType="submit" loading={accrueAll.isPending}>
