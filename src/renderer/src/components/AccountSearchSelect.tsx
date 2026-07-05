@@ -75,7 +75,9 @@ export default function AccountSearchSelect({
   const options: Option[] = (query.data ?? []).map((a) => ({
     value: a.id,
     label: (
-      <span>
+      // whiteSpace overrides antd's single-line ellipsis so the full name + s/o
+      // always shows, wrapping to a second line when needed.
+      <span style={{ whiteSpace: 'normal' }}>
         {a.name}
         {a.personSonOf && (
           <Typography.Text type="secondary"> s/o {a.personSonOf}</Typography.Text>
@@ -95,6 +97,8 @@ export default function AccountSearchSelect({
     <Select
       showSearch
       filterOption={false}
+      // Let the dropdown be wider than the input, so long "name s/o father" labels fit.
+      popupMatchSelectWidth={false}
       value={value}
       searchValue={search}
       onSearch={onSearch}
