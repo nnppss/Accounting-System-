@@ -60,15 +60,3 @@ export function listCheques(yearId: number, status?: ChequeStatus): ChequeRow[] 
     clearanceDate: r.clearanceDate
   }))
 }
-
-/** Total still pending (not yet cleared/bounced), by direction. */
-export function pendingTotals(yearId: number): { receivedPaise: number; givenPaise: number } {
-  const cheques = listCheques(yearId, 'pending')
-  let receivedPaise = 0
-  let givenPaise = 0
-  for (const c of cheques) {
-    if (c.direction === 'received') receivedPaise += c.amountPaise
-    else givenPaise += c.amountPaise
-  }
-  return { receivedPaise, givenPaise }
-}

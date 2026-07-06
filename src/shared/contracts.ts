@@ -578,11 +578,6 @@ export interface CapitaliseResult {
   interestPaise: number
 }
 
-export interface CapitaliseAllResult {
-  loans: number
-  totalInterestPaise: number
-}
-
 // ============================ CHEQUES (Phase 3) ============================
 
 export interface ChequeInput {

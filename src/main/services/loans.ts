@@ -3,7 +3,6 @@ import { db } from '../data/db'
 import { account, cheque, financialYear, loan, loanEvent, voucher, voucherEntry, yearClose } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type {
-  CapitaliseAllResult,
   CreateLoanResult,
   LoanComposition,
   LoanDetail,
@@ -17,7 +16,7 @@ import type { EntryTag } from '../../shared/enums'
 import { writeAudit } from '../audit/audit'
 import { assertMoneyAccount } from './accounts'
 import { postCore } from './posting'
-import { accruedForPayment, capitaliseLoan, ensureCapitalisedBefore, outstandingAsOf } from '../engines/interest'
+import { accruedForPayment, ensureCapitalisedBefore, outstandingAsOf } from '../engines/interest'
 
 /**
  * Loans (Udhaar) — software.md §3.8, posting map architecture.md §6. The cold lends to
@@ -37,7 +36,6 @@ import { accruedForPayment, capitaliseLoan, ensureCapitalisedBefore, outstanding
  * party's ledger — so creating one posts no disbursement; only its later interest posts.
  */
 export type {
-  CapitaliseAllResult,
   CreateLoanResult,
   LoanComposition,
   LoanDetail,
@@ -257,21 +255,6 @@ export function recordPayment(
     )
     return { voucherId: res.voucherId, interestPaise, principalPaise: amountPaise - interestPaise }
   })
-}
-
-/** Capitalise every loan in the year at `onDate` (a 1 Jan) — the Close-Year step (Phase 6). */
-export function capitaliseAllLoans(yearId: number, onDate: string, userId?: number): CapitaliseAllResult {
-  const loans = db().select({ id: loan.id }).from(loan).where(eq(loan.yearId, yearId)).all()
-  let totalInterestPaise = 0
-  let count = 0
-  for (const l of loans) {
-    const r = capitaliseLoan(l.id, onDate, userId)
-    if (r) {
-      totalInterestPaise += r.interestPaise
-      count++
-    }
-  }
-  return { loans: count, totalInterestPaise }
 }
 
 function rowFrom(

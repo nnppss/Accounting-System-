@@ -9,6 +9,7 @@ import type {
   AamadSearchFilter
 } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
+import { currentStockAtRack } from './maps'
 import { assertLocationInBounds } from './store'
 
 /** Aamad (stock-in) — header + Room/Floor/Rack location lines. Physical only; posts nothing. */
@@ -92,6 +93,34 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
  * Editing keeps the same aamad id (and audit history) rather than delete + recreate, so a
  * wrong-kisan entry made in season rush can be corrected without renumbering.
  */
+/**
+ * Guard for update/delete: nikasi availability was checked against this aamad's stock when the
+ * gate passes were created, so shrinking, moving, or removing it must not leave any rack with
+ * less stock than has already been shipped out. Runs inside the caller's transaction AFTER the
+ * change is applied (same SQLite connection, so it sees the uncommitted state) — a violation
+ * throws and rolls the whole change back.
+ */
+function assertNothingOversold(
+  yearId: number,
+  kisanAccountId: number,
+  locations: Array<{ room: number; floor: number; rack: number }>,
+  what: string
+): void {
+  const seen = new Set<string>()
+  for (const l of locations) {
+    const k = `${l.room}:${l.floor}:${l.rack}`
+    if (seen.has(k)) continue
+    seen.add(k)
+    const left = currentStockAtRack(yearId, kisanAccountId, l.room, l.floor, l.rack)
+    if (left < 0) {
+      throw new Error(
+        `${what}: ${-left} of its packets at R${l.room}/F${l.floor}/Rack${l.rack} have already left ` +
+          `through nikasi — delete those gate passes first`
+      )
+    }
+  }
+}
+
 export function updateAamad(yearId: number, id: number, input: AamadInput, userId?: number): void {
   const before = db()
     .select()
@@ -117,6 +146,13 @@ export function updateAamad(yearId: number, id: number, input: AamadInput, userI
         .values({ aamadId: id, room: l.room, floor: l.floor, rack: l.rack, packets: l.packets })
         .run()
     }
+    // Only the racks the aamad previously occupied can lose stock in this change.
+    assertNothingOversold(
+      yearId,
+      before.kisanAccountId,
+      beforeLocations,
+      `Aamad ${before.no} cannot be changed`
+    )
     writeAudit(
       {
         userId,
@@ -133,8 +169,8 @@ export function updateAamad(yearId: number, id: number, input: AamadInput, userI
 
 /**
  * Delete an aamad (stock-in) along with its location lines. Aamad posts nothing, so there is no
- * voucher to reverse — but note that removing it lowers the stock the maps compute, so only delete
- * mistaken entries. Scoped to the year and done in one transaction; the change is audited.
+ * voucher to reverse. Refused if nikasi already shipped more from any of its racks than the rest
+ * of the stock covers. Scoped to the year and done in one transaction; the change is audited.
  */
 export function deleteAamad(yearId: number, id: number, userId?: number): void {
   db().transaction((tx) => {
@@ -144,8 +180,15 @@ export function deleteAamad(yearId: number, id: number, userId?: number): void {
       .where(and(eq(aamad.id, id), eq(aamad.yearId, yearId)))
       .get()
     if (!header) throw new Error(`Aamad ${id} not found`)
+    const locations = tx.select().from(aamadLocation).where(eq(aamadLocation.aamadId, id)).all()
     tx.delete(aamadLocation).where(eq(aamadLocation.aamadId, id)).run()
     tx.delete(aamad).where(eq(aamad.id, id)).run()
+    assertNothingOversold(
+      yearId,
+      header.kisanAccountId,
+      locations,
+      `Aamad ${header.no} cannot be deleted`
+    )
     writeAudit({ userId, action: 'delete', entity: 'aamad', entityId: id, before: header }, tx)
   })
 }

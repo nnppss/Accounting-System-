@@ -32,7 +32,7 @@ export function registerExpensesIpc(): void {
     return deleteBardana(s.yearId, id, s.userId)
   })
   ipcMain.handle('bardana:deliver', (_e, id: number) => {
-    const s = requireSession()
+    const s = requireOpenYear()
     return deliverBardana(s.yearId, id, s.userId)
   })
 

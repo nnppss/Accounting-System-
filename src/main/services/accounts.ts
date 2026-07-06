@@ -29,7 +29,7 @@ import type {
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import { writeAudit } from '../audit/audit'
 import { post, voidVoucher } from './posting'
-import { getAccountBalance, getAccountLedger, type LedgerLine } from './ledger'
+import { getAccountBalance } from './ledger'
 
 /** Account Manager service (software.md §2; phase1.md §5.4). DTOs come from the shared contract. */
 export type {
@@ -301,10 +301,6 @@ export function listAccounts(yearId: number, filter: AccountListFilter = {}): Ac
   const balanceByAccount = new Map(balances.map((b) => [b.accountId, b.net]))
 
   return accounts.map((a) => ({ ...a, balancePaise: balanceByAccount.get(a.id) ?? 0 }))
-}
-
-export function getAccountLedgerLines(accountId: number, yearId: number): LedgerLine[] {
-  return getAccountLedger(accountId, yearId)
 }
 
 /**

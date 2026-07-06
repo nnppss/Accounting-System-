@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { closeDb } from '../data/db'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
-import { createAamad, getAamad, listAamad, updateAamad } from './aamad'
+import { createAamad, deleteAamad, getAamad, listAamad, updateAamad } from './aamad'
+import { createNikasi } from './nikasi'
 
 let yearId: number
 let kisan: number
@@ -156,6 +157,45 @@ describe('Aamad (stock-in)', () => {
         locations: [{ room: 9, floor: 1, rack: 1, packets: 10 }]
       })
     ).toThrow(/Room 9 out of range/i)
+  })
+
+  it('refuses to delete or shrink an aamad whose stock already left through nikasi', () => {
+    const id = createAamad(yearId, {
+      serial: 6,
+      date: '2026-02-10',
+      kisanAccountId: kisan,
+      totalPackets: 100,
+      locations: [{ room: 1, floor: 1, rack: 1, packets: 100 }]
+    })
+    const vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
+    createNikasi(yearId, {
+      date: '2026-06-01',
+      deliveredToType: 'vyapari',
+      deliveredToAccountId: vyapari,
+      lines: [{ fromKisanAccountId: kisan, room: 1, floor: 1, rack: 1, packets: 60, ratePaise: 50000 }]
+    })
+
+    // 60 of the 100 packets are gone — the aamad can no longer vanish or shrink below 60.
+    expect(() => deleteAamad(yearId, id)).toThrow(/already left/i)
+    expect(() =>
+      updateAamad(yearId, id, {
+        serial: 6,
+        date: '2026-02-10',
+        kisanAccountId: kisan,
+        totalPackets: 50,
+        locations: [{ room: 1, floor: 1, rack: 1, packets: 50 }]
+      })
+    ).toThrow(/already left/i)
+
+    // Shrinking down to exactly what has shipped is still fine (stock reaches zero, not negative).
+    updateAamad(yearId, id, {
+      serial: 6,
+      date: '2026-02-10',
+      kisanAccountId: kisan,
+      totalPackets: 60,
+      locations: [{ room: 1, floor: 1, rack: 1, packets: 60 }]
+    })
+    expect(getAamad(id)!.assignedPackets).toBe(60)
   })
 
   it('searches by kisan with a count + total-packets summary', () => {

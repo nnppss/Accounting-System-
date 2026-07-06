@@ -31,7 +31,8 @@ export function registerAccountsIpc(): void {
   // Create the account and, if an opening balance was supplied (setup time), record it atomically
   // for the session's working year before returning the new id.
   ipcMain.handle('accounts:create', (_e, input: AccountInput) => {
-    const s = requireSession()
+    // An opening balance posts a voucher into the working year — closed years are read-only.
+    const s = input.opening ? requireOpenYear() : requireSession()
     const id = createAccount(input, s.year)
     if (input.opening) {
       setOpeningBalance(

@@ -156,7 +156,8 @@ export default function PartyPage(): JSX.Element {
   })
   const deletePreset = useMutation({
     mutationFn: (id: number) => window.api.party.deleteFilter(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['party', 'presets'] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['party', 'presets'] }),
+    onError: (e: Error) => message.error(e.message)
   })
 
   const loadPreset = (id: number): void => {
