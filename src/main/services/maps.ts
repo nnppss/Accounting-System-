@@ -1,7 +1,13 @@
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../data/db'
 import { aamad, aamadLocation, account, nikasi, nikasiLine } from '../data/schema'
-import type { MapCell, MapType, RackKisanStock, StockMap } from '../../shared/contracts'
+import type {
+  KisanStockLocation,
+  MapCell,
+  MapType,
+  RackKisanStock,
+  StockMap
+} from '../../shared/contracts'
 import { getStoreConfig } from './store'
 
 /**
@@ -124,6 +130,52 @@ export function getRackStock(
 
 const sortRack = (a: RackKisanStock, b: RackKisanStock): number =>
   a.rack - b.rack || a.kisanName.localeCompare(b.kisanName)
+
+/** Every rack where a kisan still has stock (Aamad − Nikasi > 0), for the Nikasi line picker. */
+export function kisanStockLocations(yearId: number, kisanAccountId: number): KisanStockLocation[] {
+  const totals = new Map<string, KisanStockLocation>()
+  const merge = (rows: KisanStockLocation[], sign: 1 | -1): void => {
+    for (const r of rows) {
+      const k = `${r.room}:${r.floor}:${r.rack}`
+      const cur = totals.get(k) ?? { room: r.room, floor: r.floor, rack: r.rack, packets: 0 }
+      cur.packets += sign * r.packets
+      totals.set(k, cur)
+    }
+  }
+  merge(
+    db()
+      .select({
+        room: aamadLocation.room,
+        floor: aamadLocation.floor,
+        rack: aamadLocation.rack,
+        packets: sql<number>`sum(${aamadLocation.packets})`
+      })
+      .from(aamadLocation)
+      .innerJoin(aamad, eq(aamadLocation.aamadId, aamad.id))
+      .where(and(eq(aamad.yearId, yearId), eq(aamad.kisanAccountId, kisanAccountId)))
+      .groupBy(aamadLocation.room, aamadLocation.floor, aamadLocation.rack)
+      .all(),
+    1
+  )
+  merge(
+    db()
+      .select({
+        room: nikasiLine.room,
+        floor: nikasiLine.floor,
+        rack: nikasiLine.rack,
+        packets: sql<number>`sum(${nikasiLine.packets})`
+      })
+      .from(nikasiLine)
+      .innerJoin(nikasi, eq(nikasiLine.nikasiId, nikasi.id))
+      .where(and(eq(nikasi.yearId, yearId), eq(nikasiLine.fromKisanAccountId, kisanAccountId)))
+      .groupBy(nikasiLine.room, nikasiLine.floor, nikasiLine.rack)
+      .all(),
+    -1
+  )
+  return [...totals.values()]
+    .filter((l) => l.packets > 0)
+    .sort((a, b) => a.room - b.room || a.floor - b.floor || a.rack - b.rack)
+}
 
 /** Packets still on hand for one kisan at one exact rack = his Aamad − Nikasi there. */
 export function currentStockAtRack(

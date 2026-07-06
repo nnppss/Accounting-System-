@@ -11,11 +11,13 @@ import {
   Modal,
   Popconfirm,
   Segmented,
+  Select,
   Space,
   Table,
   Tag,
   Typography
 } from 'antd'
+import type { FormInstance } from 'antd'
 import { DeleteOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +30,53 @@ import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+
+/**
+ * Per-line lot picker: lists every rack where the chosen kisan still has stock.
+ * Picking one fills Room/Floor/Rack and pre-fills Packets with the full lot;
+ * lower the packet count for a partial nikasi.
+ */
+function LotPicker({
+  form,
+  name,
+  kisanId: kisanOverride
+}: {
+  form: FormInstance
+  name: number
+  /** On a self-withdrawal the header kisan owns every line — no per-line kisan field. */
+  kisanId?: number
+}): JSX.Element {
+  const { t } = useTranslation()
+  const lineKisanId = Form.useWatch(['lines', name, 'fromKisanAccountId'], form) as
+    | number
+    | undefined
+  const kisanId = kisanOverride ?? lineKisanId
+  const locs = useQuery({
+    queryKey: ['kisanStock', kisanId],
+    queryFn: () => window.api.maps.kisanStock(kisanId!),
+    enabled: !!kisanId
+  })
+  return (
+    <Select
+      placeholder={t('nikasi.pickLot')}
+      style={{ width: 200 }}
+      disabled={!kisanId}
+      loading={locs.isFetching}
+      notFoundContent={t('nikasi.noStock')}
+      options={(locs.data ?? []).map((l) => ({
+        value: `${l.room}:${l.floor}:${l.rack}:${l.packets}`,
+        label: `R${l.room}/F${l.floor}/${l.rack} — ${l.packets} pkt`
+      }))}
+      onChange={(v: string) => {
+        const [room, floor, rack, packets] = v.split(':').map(Number)
+        form.setFieldValue(['lines', name, 'room'], room)
+        form.setFieldValue(['lines', name, 'floor'], floor)
+        form.setFieldValue(['lines', name, 'rack'], rack)
+        form.setFieldValue(['lines', name, 'packets'], packets)
+      }}
+    />
+  )
+}
 
 export default function NikasiPage(): JSX.Element {
   const { t } = useTranslation()
@@ -75,6 +124,7 @@ export default function NikasiPage(): JSX.Element {
       queryClient.invalidateQueries({ queryKey: ['nikasi'] })
       queryClient.invalidateQueries({ queryKey: ['maps'] })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['kisanStock'] })
     },
     onError: (e: Error) => message.error(e.message)
   })
@@ -86,6 +136,7 @@ export default function NikasiPage(): JSX.Element {
       queryClient.invalidateQueries({ queryKey: ['nikasi'] })
       queryClient.invalidateQueries({ queryKey: ['maps'] })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['kisanStock'] })
     },
     onError: (e: Error) => message.error(e.message)
   })
@@ -115,15 +166,17 @@ export default function NikasiPage(): JSX.Element {
     receivedBy?: string
     bhadaRecovered?: number
     lines: Array<{
-      fromKisanAccountId: number
+      fromKisanAccountId?: number
       room: number
       floor: number
       rack: number
       packets: number
       weightKg?: number
-      rate: number
+      rate?: number
     }>
   }): void => {
+    // Self-withdrawal: the kisan takes his own stock — no per-line kisan, no sale rate.
+    const isSelf = v.deliveredToType === 'kisan'
     create.mutate({
       date: v.date.format('YYYY-MM-DD'),
       deliveredToType: v.deliveredToType,
@@ -132,13 +185,13 @@ export default function NikasiPage(): JSX.Element {
       receivedBy: v.receivedBy,
       bhadaRecoveredPaise: toPaise(v.bhadaRecovered),
       lines: (v.lines ?? []).map((l) => ({
-        fromKisanAccountId: l.fromKisanAccountId,
+        fromKisanAccountId: isSelf ? v.deliveredToAccountId : l.fromKisanAccountId!,
         room: l.room,
         floor: l.floor,
         rack: l.rack,
         packets: l.packets,
         weightKg: l.weightKg,
-        ratePaise: toPaise(l.rate)
+        ratePaise: isSelf ? 0 : toPaise(l.rate)
       }))
     })
   }
@@ -309,13 +362,23 @@ export default function NikasiPage(): JSX.Element {
               <div>
                 {fields.map((field) => (
                   <Space key={field.key} align="baseline" wrap data-pc-row>
-                    <Form.Item name={[field.name, 'fromKisanAccountId']} rules={[{ required: true }]}>
-                      <AccountSearchSelect
-                        type="kisan"
-                        placeholder={t('nikasi.fromKisan')}
-                        style={{ width: 180 }}
-                      />
-                    </Form.Item>
+                    {deliveredToType !== 'kisan' && (
+                      <Form.Item
+                        name={[field.name, 'fromKisanAccountId']}
+                        rules={[{ required: true }]}
+                      >
+                        <AccountSearchSelect
+                          type="kisan"
+                          placeholder={t('nikasi.fromKisan')}
+                          style={{ width: 180 }}
+                        />
+                      </Form.Item>
+                    )}
+                    <LotPicker
+                      form={form}
+                      name={field.name}
+                      kisanId={deliveredToType === 'kisan' ? deliveredToAccountId : undefined}
+                    />
                     <Form.Item name={[field.name, 'room']} rules={[{ required: true }]}>
                       <InputNumber min={1} placeholder={t('aamad.room')} style={{ width: 80 }} />
                     </Form.Item>
@@ -331,15 +394,17 @@ export default function NikasiPage(): JSX.Element {
                     <Form.Item name={[field.name, 'weightKg']}>
                       <InputNumber min={0} placeholder={t('nikasi.weight')} style={{ width: 100 }} />
                     </Form.Item>
-                    <Form.Item name={[field.name, 'rate']} rules={[{ required: true }]}>
-                      <InputNumber
-                        min={0}
-                        precision={2}
-                        prefix="₹"
-                        placeholder={t('nikasi.rate')}
-                        style={{ width: 150 }}
-                      />
-                    </Form.Item>
+                    {deliveredToType !== 'kisan' && (
+                      <Form.Item name={[field.name, 'rate']} rules={[{ required: true }]}>
+                        <InputNumber
+                          min={0}
+                          precision={2}
+                          prefix="₹"
+                          placeholder={t('nikasi.rate')}
+                          style={{ width: 150 }}
+                        />
+                      </Form.Item>
+                    )}
                     {fields.length > 1 && <DeleteOutlined onClick={() => remove(field.name)} />}
                   </Space>
                 ))}
@@ -408,18 +473,23 @@ export default function NikasiPage(): JSX.Element {
                   render: (_: unknown, l) => `R${l.room}/F${l.floor}/${l.rack}`
                 },
                 { title: t('nikasi.packets'), dataIndex: 'packets', align: 'right' as const },
-                {
-                  title: t('nikasi.rate'),
-                  dataIndex: 'ratePaise',
-                  align: 'right' as const,
-                  render: (v: number) => formatINR(v)
-                },
-                {
-                  title: t('nikasi.amount'),
-                  dataIndex: 'amountPaise',
-                  align: 'right' as const,
-                  render: (v: number) => formatINR(v)
-                }
+                // Rate/amount only mean something on a vyapari sale.
+                ...(detail.data.deliveredToType === 'vyapari'
+                  ? [
+                      {
+                        title: t('nikasi.rate'),
+                        dataIndex: 'ratePaise',
+                        align: 'right' as const,
+                        render: (v: number) => formatINR(v)
+                      },
+                      {
+                        title: t('nikasi.amount'),
+                        dataIndex: 'amountPaise',
+                        align: 'right' as const,
+                        render: (v: number) => formatINR(v)
+                      }
+                    ]
+                  : [])
               ]}
             />
           </>
