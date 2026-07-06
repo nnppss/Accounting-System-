@@ -10,6 +10,7 @@ import {
   Space,
   Statistic,
   Table,
+  Tag,
   Typography
 } from 'antd'
 import { DeleteOutlined } from '@ant-design/icons'
@@ -32,9 +33,16 @@ export default function AamadPage(): JSX.Element {
   const [kisanFilter, setKisanFilter] = useState<number | undefined>()
   const [range, setRange] = useState<[string, string] | undefined>()
   const [open, setOpen] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
   useCreateHotkey(() => setOpen(true))
   const [form] = Form.useForm()
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+
+  const closeModal = (): void => {
+    setOpen(false)
+    setEditingId(null)
+    form.resetFields()
+  }
 
   const aamads = useQuery({
     queryKey: ['aamad', kisanFilter, range],
@@ -46,18 +54,44 @@ export default function AamadPage(): JSX.Element {
       })
   })
 
-  const create = useMutation({
-    mutationFn: (input: Parameters<typeof window.api.aamad.create>[0]) =>
-      window.api.aamad.create(input),
-    onSuccess: () => {
-      message.success(t('aamad.created'))
-      setOpen(false)
-      form.resetFields()
+  const save = useMutation({
+    mutationFn: async ({
+      id,
+      input
+    }: {
+      id: number | null
+      input: Parameters<typeof window.api.aamad.create>[0]
+    }): Promise<void> => {
+      if (id === null) await window.api.aamad.create(input)
+      else await window.api.aamad.update(id, input)
+    },
+    onSuccess: (_data, { id }) => {
+      message.success(t(id === null ? 'aamad.created' : 'aamad.updated'))
+      closeModal()
       queryClient.invalidateQueries({ queryKey: ['aamad'] })
       queryClient.invalidateQueries({ queryKey: ['maps'] })
     },
     onError: (e: Error) => message.error(e.message)
   })
+
+  const startEdit = async (id: number): Promise<void> => {
+    const d = await window.api.aamad.get(id)
+    if (!d) return
+    form.setFieldsValue({
+      serial: Number(d.no.slice(d.no.indexOf('-') + 1)),
+      date: dayjs(d.date),
+      kisanAccountId: d.kisanAccountId,
+      totalPackets: d.totalPackets,
+      locations: d.locations.map((l) => ({
+        room: l.room,
+        floor: l.floor,
+        rack: l.rack,
+        packets: l.packets
+      }))
+    })
+    setEditingId(id)
+    setOpen(true)
+  }
 
   const remove = useMutation({
     mutationFn: (id: number) => window.api.aamad.delete(id),
@@ -73,7 +107,8 @@ export default function AamadPage(): JSX.Element {
     serial: number
     date: dayjs.Dayjs
     kisanAccountId: number
-    locations: Array<{ room: number; floor: number; rack: number; packets: number }>
+    totalPackets: number
+    locations?: Array<{ room: number; floor: number; rack: number; packets: number }>
   }): void => {
     const locations = (v.locations ?? []).map((l) => ({
       room: l.room,
@@ -81,18 +116,20 @@ export default function AamadPage(): JSX.Element {
       rack: l.rack,
       packets: l.packets
     }))
-    const totalPackets = locations.reduce((s, l) => s + (l.packets || 0), 0)
-    create.mutate({
-      serial: v.serial,
-      date: v.date.format('YYYY-MM-DD'),
-      kisanAccountId: v.kisanAccountId,
-      totalPackets,
-      locations
+    save.mutate({
+      id: editingId,
+      input: {
+        serial: v.serial,
+        date: v.date.format('YYYY-MM-DD'),
+        kisanAccountId: v.kisanAccountId,
+        totalPackets: v.totalPackets,
+        locations
+      }
     })
   }
 
   const rows = (aamads.data?.rows ?? []) as AamadListRow[]
-  const { containerRef, rowClassName } = useTableKeyNav(rows, () => {})
+  const { containerRef, rowClassName } = useTableKeyNav(rows, (r) => startEdit(r.id))
 
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 70, render: (id: number) => `#${id}` },
@@ -106,22 +143,37 @@ export default function AamadPage(): JSX.Element {
       width: 140
     },
     {
+      title: t('aamad.unassigned'),
+      key: 'unassigned',
+      align: 'right' as const,
+      width: 130,
+      render: (_: unknown, r: AamadListRow) =>
+        r.assignedPackets < r.totalPackets ? (
+          <Tag color="orange">{r.totalPackets - r.assignedPackets}</Tag>
+        ) : null
+    },
+    {
       title: t('common.actions'),
       key: 'actions',
-      width: 100,
+      width: 140,
       align: 'center' as const,
       render: (_: unknown, r: AamadListRow) => (
-        <Popconfirm
-          title={t('aamad.deleteConfirm')}
-          okText={t('common.delete')}
-          okButtonProps={{ danger: true }}
-          cancelText={t('common.cancel')}
-          onConfirm={() => remove.mutate(r.id)}
-        >
-          <Button size="small" danger type="text">
-            {t('common.delete')}
+        <>
+          <Button size="small" type="text" onClick={() => startEdit(r.id)}>
+            {t('common.edit')}
           </Button>
-        </Popconfirm>
+          <Popconfirm
+            title={t('aamad.deleteConfirm')}
+            okText={t('common.delete')}
+            okButtonProps={{ danger: true }}
+            cancelText={t('common.cancel')}
+            onConfirm={() => remove.mutate(r.id)}
+          >
+            <Button size="small" danger type="text">
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
+        </>
       )
     }
   ]
@@ -167,19 +219,19 @@ export default function AamadPage(): JSX.Element {
       </div>
 
       <Modal
-        title={t('aamad.new')}
+        title={t(editingId === null ? 'aamad.new' : 'aamad.edit')}
         open={open}
-        onCancel={() => setOpen(false)}
+        onCancel={closeModal}
         onOk={() => form.submit()}
-        confirmLoading={create.isPending}
-        okText={t('common.create')}
+        confirmLoading={save.isPending}
+        okText={t(editingId === null ? 'common.create' : 'common.save')}
         width={640}
       >
         <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ date: dayjs(), locations: [{}] }}
+          initialValues={{ date: dayjs(), locations: [] }}
           onFinish={onFinish}
         >
           <Space size="large" wrap>
@@ -202,9 +254,19 @@ export default function AamadPage(): JSX.Element {
             <Form.Item name="kisanAccountId" label={t('aamad.kisan')} rules={[{ required: true }]}>
               <AccountSearchSelect type="kisan" placeholder={t('aamad.kisan')} style={{ width: 220 }} />
             </Form.Item>
+            <Form.Item
+              name="totalPackets"
+              label={t('aamad.totalPackets')}
+              tooltip={t('aamad.totalPacketsHint')}
+              rules={[{ required: true }]}
+            >
+              <InputNumber min={1} precision={0} style={{ width: 140 }} />
+            </Form.Item>
           </Space>
 
-          <Typography.Text type="secondary">{t('aamad.location')}</Typography.Text>
+          <Typography.Text type="secondary">
+            {t('aamad.location')} — {t('aamad.locationHint')}
+          </Typography.Text>
           <Form.List name="locations">
             {(fields, { add, remove }) => (
               <div style={{ marginTop: 8 }}>
@@ -219,10 +281,29 @@ export default function AamadPage(): JSX.Element {
                     <Form.Item name={[field.name, 'rack']} rules={[{ required: true }]}>
                       <InputNumber min={1} placeholder={t('aamad.rack')} style={{ width: 90 }} />
                     </Form.Item>
-                    <Form.Item name={[field.name, 'packets']} rules={[{ required: true }]}>
-                      <InputNumber min={1} placeholder={t('aamad.packets')} style={{ width: 110 }} />
+                    <Form.Item noStyle shouldUpdate>
+                      {({ getFieldValue }) => {
+                        // Empty packets box hints at what's still unplaced (total minus
+                        // the other lines), so the next number to type is right there.
+                        const total = (getFieldValue('totalPackets') as number) || 0
+                        const locs = (getFieldValue('locations') ?? []) as Array<{ packets?: number }>
+                        const others = locs.reduce(
+                          (s, l, i) => (i === field.name ? s : s + (l?.packets || 0)),
+                          0
+                        )
+                        const remaining = total - others
+                        return (
+                          <Form.Item name={[field.name, 'packets']} rules={[{ required: true }]}>
+                            <InputNumber
+                              min={1}
+                              placeholder={remaining > 0 ? String(remaining) : t('aamad.packets')}
+                              style={{ width: 110 }}
+                            />
+                          </Form.Item>
+                        )
+                      }}
                     </Form.Item>
-                    {fields.length > 1 && <DeleteOutlined onClick={() => remove(field.name)} />}
+                    <DeleteOutlined onClick={() => remove(field.name)} />
                   </Space>
                 ))}
                 <Button type="dashed" onClick={() => add()} block data-pc-additem>
@@ -233,11 +314,20 @@ export default function AamadPage(): JSX.Element {
           </Form.List>
           <Form.Item noStyle shouldUpdate>
             {({ getFieldValue }) => {
+              const total = (getFieldValue('totalPackets') as number) || 0
               const locs = (getFieldValue('locations') ?? []) as Array<{ packets?: number }>
-              const total = locs.reduce((s, l) => s + (l?.packets || 0), 0)
+              const assigned = locs.reduce((s, l) => s + (l?.packets || 0), 0)
+              const unassigned = total - assigned
               return (
                 <Typography.Paragraph style={{ marginTop: 8 }}>
-                  {t('aamad.totalPackets')}: <strong>{total}</strong>
+                  {t('aamad.assigned')}: <strong>{assigned}</strong>
+                  {unassigned !== 0 && (
+                    <Tag color={unassigned > 0 ? 'orange' : 'red'} style={{ marginLeft: 8 }}>
+                      {unassigned > 0
+                        ? `${unassigned} ${t('aamad.unassignedLower')}`
+                        : `${-unassigned} ${t('aamad.overTotal')}`}
+                    </Tag>
+                  )}
                 </Typography.Paragraph>
               )
             }}

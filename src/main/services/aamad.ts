@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, lte } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { db } from '../data/db'
 import { aamad, aamadLocation, account, financialYear } from '../data/schema'
 import type {
@@ -20,11 +20,18 @@ export type {
   AamadSearchFilter
 } from '../../shared/contracts'
 
-export function createAamad(yearId: number, input: AamadInput, userId?: number): number {
+/**
+ * Shared create/update checks. Locations are optional (at peak season the consignment is booked
+ * by total only and placed later) and may cover only part of the total — but never more.
+ * Returns the computed aamad no.
+ */
+function validateInput(yearId: number, input: AamadInput, excludeId?: number): string {
   if (!Number.isInteger(input.serial) || input.serial <= 0) {
     throw new Error('Aamad serial must be a positive whole number')
   }
-  if (input.locations.length === 0) throw new Error('Aamad needs at least one location line')
+  if (!Number.isInteger(input.totalPackets) || input.totalPackets <= 0) {
+    throw new Error('Total packets must be a positive whole number')
+  }
   const kisan = db().select().from(account).where(eq(account.id, input.kisanAccountId)).get()
   if (!kisan) throw new Error(`Kisan account ${input.kisanAccountId} not found`)
 
@@ -38,7 +45,9 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
     .from(aamad)
     .where(and(eq(aamad.yearId, yearId), eq(aamad.no, no)))
     .get()
-  if (clash) throw new Error(`Aamad ${no} already exists — serial ${input.serial} is used in ${fy.year}`)
+  if (clash && clash.id !== excludeId) {
+    throw new Error(`Aamad ${no} already exists — serial ${input.serial} is used in ${fy.year}`)
+  }
 
   let locSum = 0
   for (const l of input.locations) {
@@ -48,10 +57,14 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
     assertLocationInBounds(l.room, l.floor, l.rack)
     locSum += l.packets
   }
-  if (locSum !== input.totalPackets) {
-    throw new Error(`Location packets (${locSum}) must equal the total (${input.totalPackets})`)
+  if (locSum > input.totalPackets) {
+    throw new Error(`Location packets (${locSum}) exceed the total (${input.totalPackets})`)
   }
+  return no
+}
 
+export function createAamad(yearId: number, input: AamadInput, userId?: number): number {
+  const no = validateInput(yearId, input)
   return db().transaction((tx) => {
     const header = tx
       .insert(aamad)
@@ -71,6 +84,50 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
     }
     writeAudit({ userId, action: 'create', entity: 'aamad', entityId: header.id, after: input }, tx)
     return header.id
+  })
+}
+
+/**
+ * Edit an aamad in place — header fields and the full set of location lines are replaced.
+ * Editing keeps the same aamad id (and audit history) rather than delete + recreate, so a
+ * wrong-kisan entry made in season rush can be corrected without renumbering.
+ */
+export function updateAamad(yearId: number, id: number, input: AamadInput, userId?: number): void {
+  const before = db()
+    .select()
+    .from(aamad)
+    .where(and(eq(aamad.id, id), eq(aamad.yearId, yearId)))
+    .get()
+  if (!before) throw new Error(`Aamad ${id} not found`)
+  const no = validateInput(yearId, input, id)
+  db().transaction((tx) => {
+    const beforeLocations = tx.select().from(aamadLocation).where(eq(aamadLocation.aamadId, id)).all()
+    tx.update(aamad)
+      .set({
+        no,
+        date: input.date,
+        kisanAccountId: input.kisanAccountId,
+        totalPackets: input.totalPackets
+      })
+      .where(eq(aamad.id, id))
+      .run()
+    tx.delete(aamadLocation).where(eq(aamadLocation.aamadId, id)).run()
+    for (const l of input.locations) {
+      tx.insert(aamadLocation)
+        .values({ aamadId: id, room: l.room, floor: l.floor, rack: l.rack, packets: l.packets })
+        .run()
+    }
+    writeAudit(
+      {
+        userId,
+        action: 'update',
+        entity: 'aamad',
+        entityId: id,
+        before: { ...before, locations: beforeLocations },
+        after: input
+      },
+      tx
+    )
   })
 }
 
@@ -106,11 +163,14 @@ export function listAamad(yearId: number, filter: AamadSearchFilter = {}): Aamad
       date: aamad.date,
       kisanAccountId: aamad.kisanAccountId,
       kisanName: account.name,
-      totalPackets: aamad.totalPackets
+      totalPackets: aamad.totalPackets,
+      assignedPackets: sql<number>`coalesce(sum(${aamadLocation.packets}), 0)`
     })
     .from(aamad)
     .innerJoin(account, eq(aamad.kisanAccountId, account.id))
+    .leftJoin(aamadLocation, eq(aamadLocation.aamadId, aamad.id))
     .where(and(...conds))
+    .groupBy(aamad.id)
     .orderBy(desc(aamad.date), desc(aamad.id))
     .all()
 
@@ -148,5 +208,5 @@ export function getAamad(aamadId: number): AamadDetail | null {
     .where(eq(aamadLocation.aamadId, aamadId))
     .orderBy(asc(aamadLocation.room), asc(aamadLocation.floor), asc(aamadLocation.rack))
     .all()
-  return { ...header, locations }
+  return { ...header, assignedPackets: locations.reduce((s, l) => s + l.packets, 0), locations }
 }
