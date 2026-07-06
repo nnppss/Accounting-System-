@@ -493,9 +493,10 @@ export const loanEvent = sqliteTable(
  * The Bardana A/C stays a pure aggregate over the goods value (unaffected by how it was paid):
  * stock count = Σpurchased − Σissued (pieces), profit = Σsales − Σpurchases (paise).
  *
- * Posting map (architecture.md §6) — `cash` = paidPaise, `credit` = amountPaise − paidPaise:
- *   purchase  Dr Bardana Purchase (amount) / Cr Cash-Bank (cash) + Cr Party (credit, 'trade')
- *   issue     Dr Cash-Bank (cash) + Dr Party (credit, 'trade') / Cr Bardana Sales (amount)
+ * Posting map (architecture.md §6) — with a named party the FULL goods value routes through their
+ * ledger (deal documented there even when fully paid) and the paid portion posts back as a
+ * payment/receipt leg; without a party (fully paid) the Bardana head settles against Cash-Bank
+ * directly. See services/bardana.ts for the exact entries.
  * Voucher type: payment (purchase) / receipt (issue) when any cash moves, else journal (full credit).
  */
 export const bardana = sqliteTable(
@@ -514,6 +515,8 @@ export const bardana = sqliteTable(
     paidPaise: integer('paid_paise').notNull().default(0), // settled now in cash/bank; rest on party ledger
     mode: text('mode', { enum: PAYMENT_MODES }).notNull(),
     bankAccountId: integer('bank_account_id').references(() => account.id), // when mode = 'bank' and paid > 0
+    // Pre-booked issue: deal + voucher recorded now, bags handed over later — reserves stock.
+    prebooked: integer('prebooked', { mode: 'boolean' }).notNull().default(false),
     voucherId: integer('voucher_id').references(() => voucher.id),
     createdAt
   },

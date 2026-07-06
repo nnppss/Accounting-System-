@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { BardanaDirection, ChequeStatus, DrCr, VoucherType } from '../shared/enums'
 import type {
+  AamadDetail,
   AamadInput,
   AamadListResult,
   AamadSearchFilter,
@@ -33,6 +34,7 @@ import type {
   ExpensePaymentInput,
   ExpenseRow,
   JournalArg,
+  KisanStockLocation,
   LedgerLine,
   LoadingContractorYearInput,
   LoadingContractorYearRow,
@@ -140,8 +142,11 @@ const api = {
   },
   aamad: {
     create: (input: AamadInput): Promise<number> => ipcRenderer.invoke('aamad:create', input),
+    update: (id: number, input: AamadInput): Promise<void> =>
+      ipcRenderer.invoke('aamad:update', id, input),
     list: (filter?: AamadSearchFilter): Promise<AamadListResult> =>
       ipcRenderer.invoke('aamad:list', filter),
+    get: (id: number): Promise<AamadDetail | null> => ipcRenderer.invoke('aamad:get', id),
     delete: (id: number): Promise<void> => ipcRenderer.invoke('aamad:delete', id)
   },
   sauda: {
@@ -161,7 +166,9 @@ const api = {
   maps: {
     get: (type: MapType): Promise<StockMap> => ipcRenderer.invoke('maps:get', type),
     racks: (room: number, floor: number, type: MapType): Promise<RackKisanStock[]> =>
-      ipcRenderer.invoke('maps:racks', room, floor, type)
+      ipcRenderer.invoke('maps:racks', room, floor, type),
+    kisanStock: (kisanAccountId: number): Promise<KisanStockLocation[]> =>
+      ipcRenderer.invoke('maps:kisanStock', kisanAccountId)
   },
   bhada: {
     accrueAll: (date: string): Promise<AccrueAllResult> =>
@@ -198,7 +205,8 @@ const api = {
     list: (direction?: BardanaDirection): Promise<BardanaRow[]> =>
       ipcRenderer.invoke('bardana:list', direction),
     account: (): Promise<BardanaAccount> => ipcRenderer.invoke('bardana:account'),
-    delete: (id: number): Promise<void> => ipcRenderer.invoke('bardana:delete', id)
+    delete: (id: number): Promise<void> => ipcRenderer.invoke('bardana:delete', id),
+    deliver: (id: number): Promise<void> => ipcRenderer.invoke('bardana:deliver', id)
   },
   expenses: {
     paySalary: (input: ExpensePaymentInput): Promise<PayExpenseResult> =>
