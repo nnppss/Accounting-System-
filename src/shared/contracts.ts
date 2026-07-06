@@ -136,6 +136,8 @@ export interface AccountListRow {
   type: AccountType
   subgroupName: string
   personName: string | null
+  /** Father's name of the linked person — shown to tell same-named parties apart. */
+  personSonOf: string | null
   isDefaulter: boolean
   isSystem: boolean
   balancePaise: number
@@ -297,6 +299,7 @@ export interface AamadInput {
   date: string
   kisanAccountId: number
   totalPackets: number
+  /** Optional and may cover only part of the total — rooms/racks can be assigned later by editing. */
   locations: AamadLocationInput[]
 }
 
@@ -307,6 +310,8 @@ export interface AamadListRow {
   kisanAccountId: number
   kisanName: string
   totalPackets: number
+  /** Sum of location-line packets; < totalPackets means some packets are not yet placed. */
+  assignedPackets: number
 }
 
 export interface AamadSearchFilter {
@@ -414,6 +419,14 @@ export interface StockMap {
   floors: number
   cells: MapCell[]
   totalPackets: number
+}
+
+/** A rack where one kisan still has stock — offered when picking Nikasi lines. */
+export interface KisanStockLocation {
+  room: number
+  floor: number
+  rack: number
+  packets: number
 }
 
 /** Rack-level drill of one cell: packets per rack, broken down by kisan. */
@@ -618,6 +631,13 @@ export interface BardanaInput {
   paidPaise?: number
   mode: PaymentMode
   bankAccountId?: number // required when mode = 'bank' and paidPaise > 0
+  /**
+   * Pre-booking (issues only): the deal + payment are recorded now, but the bags are handed over
+   * later — e.g. a sale against stock we don't have yet. The qty stays reserved until delivered.
+   */
+  prebooked?: boolean
+  /** Free-text note appended to the voucher narration — e.g. "against advance of 01/07". */
+  remark?: string
 }
 
 export interface BardanaRow {
@@ -634,6 +654,8 @@ export interface BardanaRow {
   mode: PaymentMode
   bankAccountId: number | null
   bankName: string | null
+  /** True while a pre-booked issue is still awaiting delivery. */
+  prebooked: boolean
 }
 
 /** The Bardana A/C: two lists (purchases / issues) + totals + stock count + profit. */
@@ -642,8 +664,10 @@ export interface BardanaAccount {
   issues: BardanaRow[]
   totalPurchasesPaise: number
   totalSalesPaise: number
-  /** Pieces still on hand = Σ purchased − Σ issued. */
+  /** Pieces free to sell = Σ purchased − Σ issued (pre-booked issues count as already spoken for). */
   stockCount: number
+  /** Pieces sold but not yet handed over (pre-booked, awaiting delivery). Physically still on hand. */
+  reservedQty: number
   /** profit = total sales − total purchases (paise). */
   profitPaise: number
 }

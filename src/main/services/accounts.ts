@@ -220,7 +220,14 @@ export function listAccounts(yearId: number, filter: AccountListFilter = {}): Ac
   if (filter.type) conds.push(eq(account.type, filter.type))
   if (filter.name) {
     const term = `%${filter.name.trim()}%`
-    conds.push(or(like(account.name, term), like(person.name, term), like(account.code, term)))
+    conds.push(
+      or(
+        like(account.name, term),
+        like(person.name, term),
+        like(person.sonOf, term),
+        like(account.code, term)
+      )
+    )
   }
   if (filter.villageCity) conds.push(like(person.villageCity, `%${filter.villageCity.trim()}%`))
   if (filter.state) conds.push(like(person.state, `%${filter.state.trim()}%`))
@@ -241,6 +248,7 @@ export function listAccounts(yearId: number, filter: AccountListFilter = {}): Ac
       type: account.type,
       subgroupName: subgroup.name,
       personName: person.name,
+      personSonOf: person.sonOf,
       isDefaulter: account.isDefaulter,
       isSystem: account.isSystem
     })

@@ -3,9 +3,11 @@ import {
   App as AntApp,
   Button,
   Card,
+  Checkbox,
   Col,
   DatePicker,
   Form,
+  Input,
   InputNumber,
   Modal,
   Popconfirm,
@@ -22,7 +24,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { BardanaRow } from '@shared/contracts'
 import type { BardanaDirection, PaymentMode } from '@shared/enums'
-import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -47,6 +49,8 @@ export default function BardanaPage(): JSX.Element {
   useCreateHotkey(() => setOpen(true))
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
   const mode = Form.useWatch('mode', form) as PaymentMode | undefined
+  const direction = Form.useWatch('direction', form) as BardanaDirection | undefined
+  const prebooked = (Form.useWatch('prebooked', form) as boolean | undefined) ?? false
   const rate = Form.useWatch('rate', form) as number | undefined
   const qty = Form.useWatch('qty', form) as number | undefined
   const settlement = (Form.useWatch('settlement', form) as SettleMode | undefined) ?? 'full'
@@ -90,6 +94,15 @@ export default function BardanaPage(): JSX.Element {
     onError: (e: Error) => message.error(e.message)
   })
 
+  const deliver = useMutation({
+    mutationFn: (id: number) => window.api.bardana.deliver(id),
+    onSuccess: () => {
+      message.success(t('bardana.deliveredMsg'))
+      invalidate()
+    },
+    onError: (e: Error) => message.error(e.message)
+  })
+
   const bankOptions = (banks.data ?? []).filter((b) => b.name !== 'Cash').map((b) => ({ value: b.id, label: b.name }))
   const computedAmount = (rate ?? 0) > 0 && (qty ?? 0) > 0 ? toPaise(rate!) * qty! : 0
   // What's settled now and what's left, given the chosen settlement mode (drives the modal preview).
@@ -127,9 +140,12 @@ export default function BardanaPage(): JSX.Element {
     {
       title: t('bardana.direction'),
       dataIndex: 'direction',
-      width: 110,
-      render: (d: BardanaDirection) => (
-        <Tag color={d === 'issue' ? 'green' : 'blue'}>{t(`bardana.dir.${d}`)}</Tag>
+      width: 150,
+      render: (d: BardanaDirection, r: BardanaRow) => (
+        <>
+          <Tag color={d === 'issue' ? 'green' : 'blue'}>{t(`bardana.dir.${d}`)}</Tag>
+          {r.prebooked && <Tag color="purple">{t('bardana.prebooked')}</Tag>}
+        </>
       )
     },
     { title: t('bardana.party'), dataIndex: 'partyName', render: (n: string | null) => n ?? t('common.none') },
@@ -170,9 +186,22 @@ export default function BardanaPage(): JSX.Element {
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 100,
+      width: 160,
       align: 'center' as const,
       render: (_: unknown, r: BardanaRow) => (
+        <>
+        {r.prebooked && (
+          <Popconfirm
+            title={t('bardana.deliverConfirm', { qty: r.qty })}
+            okText={t('bardana.deliver')}
+            cancelText={t('common.cancel')}
+            onConfirm={() => deliver.mutate(r.id)}
+          >
+            <Button size="small" type="link">
+              {t('bardana.deliver')}
+            </Button>
+          </Popconfirm>
+        )}
         <Popconfirm
           title={t('bardana.deleteConfirm')}
           okText={t('common.delete')}
@@ -184,6 +213,7 @@ export default function BardanaPage(): JSX.Element {
             {t('common.delete')}
           </Button>
         </Popconfirm>
+        </>
       )
     }
   ]
@@ -205,6 +235,11 @@ export default function BardanaPage(): JSX.Element {
         <Col span={6}>
           <Card>
             <Statistic title={t('bardana.stockCount')} value={acct?.stockCount ?? 0} suffix={t('bardana.pcs')} />
+            {(acct?.reservedQty ?? 0) > 0 && (
+              <Typography.Text type="secondary">
+                {t('bardana.reservedNote', { qty: acct!.reservedQty })}
+              </Typography.Text>
+            )}
           </Card>
         </Col>
         <Col span={6}>
@@ -274,7 +309,7 @@ export default function BardanaPage(): JSX.Element {
           ]}
         />
         <DatePicker.RangePicker
-          format={DATE_FORMAT}
+          format={DATE_INPUT_FORMATS}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
           onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
@@ -324,7 +359,9 @@ export default function BardanaPage(): JSX.Element {
               qty: v.qty,
               paidPaise,
               mode: v.mode,
-              bankAccountId: settle !== 'credit' && v.mode === 'bank' ? v.bankAccountId : undefined
+              bankAccountId: settle !== 'credit' && v.mode === 'bank' ? v.bankAccountId : undefined,
+              prebooked: v.direction === 'issue' && !!v.prebooked,
+              remark: v.remark || undefined
             })
           }}
         >
@@ -341,16 +378,26 @@ export default function BardanaPage(): JSX.Element {
             </Col>
             <Col span={12}>
               <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-                <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
+                <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
 
+          {direction === 'issue' && (
+            <Form.Item name="prebooked" valuePropName="checked" style={{ marginBottom: 12 }}>
+              <Checkbox>{t('bardana.prebookLabel')}</Checkbox>
+            </Form.Item>
+          )}
+
           <Form.Item
             name="partyAccountId"
             label={t('bardana.party')}
-            // The party carries any unpaid balance, so it's mandatory unless paid in full.
-            rules={settlement !== 'full' ? [{ required: true, message: t('bardana.partyRequiredCredit') }] : []}
+            // The party carries any unpaid balance — and a pre-booking needs someone to deliver to.
+            rules={
+              settlement !== 'full' || prebooked
+                ? [{ required: true, message: t('bardana.partyRequiredCredit') }]
+                : []
+            }
           >
             <AccountSearchSelect showType allowClear placeholder={t('bardana.party')} style={{ width: '100%' }} />
           </Form.Item>
@@ -410,6 +457,10 @@ export default function BardanaPage(): JSX.Element {
               {t('bardana.outstanding')}: <strong>{formatINR(outstandingPaise)}</strong>
             </Typography.Paragraph>
           )}
+
+          <Form.Item name="remark" label={t('bardana.remark')}>
+            <Input maxLength={200} placeholder={t('bardana.remarkPlaceholder')} />
+          </Form.Item>
 
           {settlement !== 'credit' && (
             <Row gutter={16}>

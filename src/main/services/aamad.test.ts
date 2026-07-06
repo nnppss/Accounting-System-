@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { closeDb } from '../data/db'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
-import { createAamad, getAamad, listAamad } from './aamad'
+import { createAamad, getAamad, listAamad, updateAamad } from './aamad'
 
 let yearId: number
 let kisan: number
@@ -59,16 +59,91 @@ describe('Aamad (stock-in)', () => {
     ).toThrow(/serial must be a positive/i)
   })
 
-  it('rejects a location/total packet mismatch', () => {
+  it('allows no locations or a partial assignment, but never more than the total', () => {
+    // Peak season: booked by total only, placed later.
+    const bare = createAamad(yearId, {
+      serial: 2,
+      date: '2026-02-10',
+      kisanAccountId: kisan,
+      totalPackets: 200,
+      locations: []
+    })
+    expect(getAamad(bare)!.assignedPackets).toBe(0)
+
+    // Partially placed is fine too.
+    const partial = createAamad(yearId, {
+      serial: 3,
+      date: '2026-02-10',
+      kisanAccountId: kisan,
+      totalPackets: 100,
+      locations: [{ room: 1, floor: 1, rack: 1, packets: 90 }]
+    })
+    expect(getAamad(partial)!.assignedPackets).toBe(90)
+
     expect(() =>
       createAamad(yearId, {
-        serial: 2,
+        serial: 4,
         date: '2026-02-10',
         kisanAccountId: kisan,
         totalPackets: 100,
-        locations: [{ room: 1, floor: 1, rack: 1, packets: 90 }]
+        locations: [{ room: 1, floor: 1, rack: 1, packets: 110 }]
       })
-    ).toThrow(/must equal the total/i)
+    ).toThrow(/exceed the total/i)
+  })
+
+  it('updates an aamad in place — kisan, total, and location lines', () => {
+    const id = createAamad(yearId, {
+      serial: 5,
+      date: '2026-02-10',
+      kisanAccountId: kisan, // wrong kisan entered in season rush
+      totalPackets: 200,
+      locations: []
+    })
+    updateAamad(yearId, id, {
+      serial: 5,
+      date: '2026-02-10',
+      kisanAccountId: kisan2,
+      totalPackets: 200,
+      locations: [
+        { room: 1, floor: 2, rack: 3, packets: 50 },
+        { room: 1, floor: 2, rack: 4, packets: 150 }
+      ]
+    })
+    const d = getAamad(id)!
+    expect(d.no).toBe('2026-5')
+    expect(d.kisanName).toBe('Suresh Kisan')
+    expect(d.assignedPackets).toBe(200)
+    expect(d.locations).toHaveLength(2)
+  })
+
+  it('rejects an update whose serial clashes with another aamad', () => {
+    const mk = (serial: number): number =>
+      createAamad(yearId, {
+        serial,
+        date: '2026-02-10',
+        kisanAccountId: kisan,
+        totalPackets: 10,
+        locations: []
+      })
+    mk(8)
+    const id = mk(9)
+    // Keeping its own serial is fine; taking a used one is not.
+    updateAamad(yearId, id, {
+      serial: 9,
+      date: '2026-02-11',
+      kisanAccountId: kisan,
+      totalPackets: 10,
+      locations: []
+    })
+    expect(() =>
+      updateAamad(yearId, id, {
+        serial: 8,
+        date: '2026-02-11',
+        kisanAccountId: kisan,
+        totalPackets: 10,
+        locations: []
+      })
+    ).toThrow(/2026-8 already exists/i)
   })
 
   it('rejects a location outside the configured store (5×6×160)', () => {

@@ -68,7 +68,7 @@ export function accrueRent(
     yearId,
     type: 'journal',
     date,
-    narration: `Bhada — ${packets} packets @ ${yr.rentRatePaise} paise`,
+    narration: `Bhada (rent) — ${packets} packets @ ₹${yr.rentRatePaise / 100}/packet`,
     accountantUserId: userId,
     sourceModule: 'bhada',
     sourceId: kisanAccountId,

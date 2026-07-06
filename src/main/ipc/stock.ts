@@ -7,10 +7,10 @@ import type {
   SaudaInput,
   StoreConfig
 } from '../../shared/contracts'
-import { createAamad, deleteAamad, listAamad } from '../services/aamad'
+import { createAamad, deleteAamad, getAamad, listAamad, updateAamad } from '../services/aamad'
 import { createSauda, deleteSauda, latestRate, listSauda } from '../services/sauda'
 import { createNikasi, deleteNikasi, getNikasi, listNikasi } from '../services/nikasi'
-import { getMap, getRackStock } from '../services/maps'
+import { getMap, getRackStock, kisanStockLocations } from '../services/maps'
 import { getStoreConfig, setStoreConfig } from '../services/store'
 import { accrueAllRent } from '../engines/bhada'
 import { requireSession } from '../session'
@@ -28,9 +28,17 @@ export function registerStockIpc(): void {
     const s = requireSession()
     return createAamad(s.yearId, input, s.userId)
   })
+  ipcMain.handle('aamad:update', (_e, id: number, input: AamadInput) => {
+    const s = requireSession()
+    return updateAamad(s.yearId, id, input, s.userId)
+  })
   ipcMain.handle('aamad:list', (_e, filter?: AamadSearchFilter) =>
     listAamad(requireSession().yearId, filter)
   )
+  ipcMain.handle('aamad:get', (_e, id: number) => {
+    requireSession()
+    return getAamad(id)
+  })
   ipcMain.handle('aamad:delete', (_e, id: number) => {
     const s = requireSession()
     return deleteAamad(s.yearId, id, s.userId)
@@ -66,6 +74,9 @@ export function registerStockIpc(): void {
   ipcMain.handle('maps:get', (_e, type: MapType) => getMap(requireSession().yearId, type))
   ipcMain.handle('maps:racks', (_e, room: number, floor: number, type: MapType) =>
     getRackStock(requireSession().yearId, room, floor, type)
+  )
+  ipcMain.handle('maps:kisanStock', (_e, kisanAccountId: number) =>
+    kisanStockLocations(requireSession().yearId, kisanAccountId)
   )
 
   // Bhada

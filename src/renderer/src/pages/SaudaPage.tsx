@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { SaudaListRow } from '@shared/contracts'
-import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -147,7 +147,7 @@ export default function SaudaPage(): JSX.Element {
           onChange={(v) => setKisanFilter(v)}
         />
         <DatePicker.RangePicker
-          format={DATE_FORMAT}
+          format={DATE_INPUT_FORMATS}
           onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
         {(vyapariFilter || kisanFilter || range) && (
@@ -187,7 +187,7 @@ export default function SaudaPage(): JSX.Element {
         <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
         <Form form={form} layout="vertical" initialValues={{ date: dayjs() }} onFinish={onFinish}>
           <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-            <DatePicker format={DATE_FORMAT} />
+            <DatePicker format={DATE_INPUT_FORMATS} />
           </Form.Item>
           <Form.Item
             name="vyapariAccountId"

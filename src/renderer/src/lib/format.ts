@@ -12,6 +12,22 @@ export { formatINR, rupeesToPaise, paiseToRupees } from '@shared/money'
 export const DATE_FORMAT = 'DD/MM/YYYY'
 
 /**
+ * For DatePicker/RangePicker `format` props: displays DD/MM/YYYY, and additionally lets the user
+ * TYPE a date in any of these shapes (antd parses typed text against every entry). Calendar still
+ * works as before — typing and picking are both accepted.
+ */
+export const DATE_INPUT_FORMATS = [
+  DATE_FORMAT,
+  'D/M/YYYY',
+  'DD-MM-YYYY',
+  'D-M-YYYY',
+  'DD.MM.YYYY',
+  'DDMMYYYY',
+  'DD/MM/YY',
+  'D/M/YY'
+]
+
+/**
  * Format a stored date for display as DD/MM/YYYY. Accepts an ISO string (`YYYY-MM-DD`), an epoch-ms
  * timestamp, or a dayjs-parseable value. Empty/invalid input is returned/blanked safely.
  */

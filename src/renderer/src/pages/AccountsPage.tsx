@@ -258,6 +258,11 @@ export default function AccountsPage(): JSX.Element {
     { title: t('accounts.subgroup'), dataIndex: 'subgroupName' },
     { title: t('accounts.person'), dataIndex: 'personName', render: (p: string | null) => p ?? '—' },
     {
+      title: 'S/o',
+      dataIndex: 'personSonOf',
+      render: (s: string | null) => s ?? '—'
+    },
+    {
       title: t('common.balance'),
       dataIndex: 'balancePaise',
       align: 'right' as const,

@@ -3,7 +3,7 @@ import { closeDb } from '../data/db'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
 import { createAamad } from './aamad'
 import { createNikasi } from './nikasi'
-import { getMap, getRackStock } from './maps'
+import { getMap, getRackStock, kisanStockLocations } from './maps'
 
 let yearId: number
 let kisan: number
@@ -61,5 +61,31 @@ describe('Maps', () => {
     expect(racks[0].rack).toBe(1)
     expect(racks[0].kisanName).toBe('Ramesh Kisan')
     expect(racks[0].packets).toBe(60) // 100 − 40
+  })
+
+  it('lists a kisan’s remaining lots per rack, dropping emptied ones', () => {
+    createAamad(yearId, {
+      serial: 2,
+      date: '2026-02-11',
+      kisanAccountId: kisan,
+      totalPackets: 50,
+      locations: [{ room: 2, floor: 1, rack: 3, packets: 50 }]
+    })
+    // Empty the first rack entirely, take a partial from the second.
+    createNikasi(yearId, {
+      date: '2026-05-02',
+      deliveredToType: 'vyapari',
+      deliveredToAccountId: vyapari,
+      lines: [
+        { fromKisanAccountId: kisan, room: 1, floor: 1, rack: 1, packets: 100, ratePaise: 50000 },
+        { fromKisanAccountId: kisan, room: 2, floor: 1, rack: 3, packets: 20, ratePaise: 50000 }
+      ]
+    })
+    expect(kisanStockLocations(yearId, kisan)).toEqual([
+      { room: 2, floor: 1, rack: 3, packets: 30 }
+    ])
+    // Another kisan has no lots.
+    const other = makeAccount('Suresh Kisan', 'kisan', 'Farmer')
+    expect(kisanStockLocations(yearId, other)).toEqual([])
   })
 })

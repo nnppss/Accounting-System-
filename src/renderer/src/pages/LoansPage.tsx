@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { Bill, LoanRow } from '@shared/contracts'
 import type { LoanCategory, LoanEventType, LoanMode, LoanNature } from '@shared/enums'
-import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import { SeverityText, interestSeverity, severityRowClass } from '../components/Highlight'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
@@ -217,7 +217,7 @@ export default function LoansPage(): JSX.Element {
           ]}
         />
         <DatePicker.RangePicker
-          format={DATE_FORMAT}
+          format={DATE_INPUT_FORMATS}
           value={range ? [dayjs(range[0]), dayjs(range[1])] : null}
           onChange={(d) => setRange(d?.[0] && d?.[1] ? [d[0].format('YYYY-MM-DD'), d[1].format('YYYY-MM-DD')] : undefined)}
         />
@@ -285,7 +285,7 @@ export default function LoansPage(): JSX.Element {
         >
           <Space size="large" align="start" wrap>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-              <DatePicker format={DATE_FORMAT} />
+              <DatePicker format={DATE_INPUT_FORMATS} />
             </Form.Item>
             <Form.Item name="category" label={t('loans.category')} rules={[{ required: true }]}>
               <Select
@@ -469,7 +469,7 @@ function LoanDetailDrawer({
           <Space>
             <Typography.Text type="secondary">{t('loans.asOf')}:</Typography.Text>
             <DatePicker
-              format={DATE_FORMAT}
+              format={DATE_INPUT_FORMATS}
               allowClear={false}
               value={dayjs(asOf)}
               onChange={(dt) => dt && setAsOf(dt.format('YYYY-MM-DD'))}
@@ -668,7 +668,7 @@ function PayModal({
           <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-          <DatePicker format={DATE_FORMAT} style={{ width: '100%' }} />
+          <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item name="mode" label={t('loans.mode')} rules={[{ required: true }]}>
           <Select

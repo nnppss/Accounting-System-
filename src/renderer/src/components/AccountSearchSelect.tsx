@@ -70,15 +70,20 @@ export default function AccountSearchSelect({
     enabled: term.length > 0
   })
 
+  // Show s/o (father's name) whenever the linked person has one, so two parties
+  // with the same name (e.g. two "Abhishek Dhakrey") are distinguishable.
   const options: Option[] = (query.data ?? []).map((a) => ({
     value: a.id,
-    label: showType ? (
+    label: (
       <span>
-        {a.name}{' '}
-        <Typography.Text type="secondary">· {t(`accounts.type.${a.type}`)}</Typography.Text>
+        {a.name}
+        {a.personSonOf && (
+          <Typography.Text type="secondary"> s/o {a.personSonOf}</Typography.Text>
+        )}
+        {showType && (
+          <Typography.Text type="secondary"> · {t(`accounts.type.${a.type}`)}</Typography.Text>
+        )}
       </span>
-    ) : (
-      a.name
     )
   }))
   // Keep the current selection visible even when it's outside the latest results.
@@ -90,6 +95,11 @@ export default function AccountSearchSelect({
     <Select
       showSearch
       filterOption={false}
+      // Let the dropdown be wider than the input, so long "name s/o father" labels fit.
+      popupMatchSelectWidth={false}
+      // Wrap long labels in the dropdown only — the selected value in the closed box
+      // stays on one line (antd's default ellipsis) so it can't overflow the input.
+      optionRender={(opt) => <div style={{ whiteSpace: 'normal' }}>{opt.data.label}</div>}
       value={value}
       searchValue={search}
       onSearch={onSearch}

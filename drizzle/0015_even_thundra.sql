@@ -1,0 +1,1 @@
+ALTER TABLE `bardana` ADD `prebooked` integer DEFAULT false NOT NULL;

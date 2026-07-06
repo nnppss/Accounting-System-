@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { VoucherListRow } from '@shared/contracts'
 import type { VoucherType } from '@shared/enums'
-import { DATE_FORMAT, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
@@ -45,8 +45,12 @@ export default function VouchersPage(): JSX.Element {
   const cashBanks = useQuery({ queryKey: ['cashbanks'], queryFn: () => window.api.moneybook.accounts() })
   const vouchers = useQuery({ queryKey: ['vouchers'], queryFn: () => window.api.vouchers.list() })
 
-  const partyOptions = (parties.data ?? []).map((a) => ({ value: a.id, label: a.name }))
-  const allOptions = (allAccounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))
+  // String labels (not nodes) so optionFilterProp="label" keeps matching — and the
+  // s/o suffix makes same-named parties both distinguishable and searchable by father.
+  const partyLabel = (a: { name: string; personSonOf: string | null }): string =>
+    a.personSonOf ? `${a.name} s/o ${a.personSonOf}` : a.name
+  const partyOptions = (parties.data ?? []).map((a) => ({ value: a.id, label: partyLabel(a) }))
+  const allOptions = (allAccounts.data ?? []).map((a) => ({ value: a.id, label: partyLabel(a) }))
   const cashOptions = (cashBanks.data ?? []).map((a) => ({ value: a.id, label: a.name }))
 
   const onPosted = (no: number): void => {
@@ -177,7 +181,7 @@ export default function VouchersPage(): JSX.Element {
         >
           <Space size="large" style={{ display: 'flex' }} align="start" wrap>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
-              <DatePicker format={DATE_FORMAT} />
+              <DatePicker format={DATE_INPUT_FORMATS} />
             </Form.Item>
             {mode !== 'journal' && (
               <Form.Item name="amount" label={t('common.amount')} rules={[{ required: true }]}>
