@@ -125,6 +125,27 @@ const CODE_PREFIX: Record<AccountType, string> = {
 /** The subgroup a 'bank' account is pinned to, so it always surfaces in the Money Book (seed.ts). */
 const CASH_AND_BANK = 'Cash and Bank'
 
+/**
+ * Guard: `accountId` must be one of the cold's own money accounts (Cash or a bank in the
+ * 'Cash and Bank' subgroup). Every service that takes a bankAccountId calls this before posting,
+ * so bank money can never be routed through a party's ledger account — the Money Book and cash
+ * position only ever describe the cold's own money.
+ */
+export function assertMoneyAccount(accountId: number): void {
+  const row = db()
+    .select({ accountName: account.name, subgroupName: subgroup.name })
+    .from(account)
+    .innerJoin(subgroup, eq(account.subgroupId, subgroup.id))
+    .where(eq(account.id, accountId))
+    .get()
+  if (!row) throw new Error(`Account ${accountId} does not exist`)
+  if (row.subgroupName !== CASH_AND_BANK) {
+    throw new Error(
+      `"${row.accountName}" is not a '${CASH_AND_BANK}' account — money can only move through the cold's own cash/bank books`
+    )
+  }
+}
+
 /** Build a human-facing account number: `<PREFIX>-<YY>-<serial>` (serial min 4 digits). */
 export function formatAccountCode(type: AccountType, year: number, serial: number): string {
   const yy = String(year % 100).padStart(2, '0')
@@ -151,6 +172,11 @@ export function createAccount(input: AccountInput, year = new Date().getFullYear
   // so misfiling one would silently leave it without a book. Enforce it beyond the UI lock.
   if (input.type === 'bank' && sg.name !== CASH_AND_BANK) {
     throw new Error(`A bank account must be in the '${CASH_AND_BANK}' subgroup`)
+  }
+  // …and the converse: a party filed into 'Cash and Bank' would show up in the Money Book and
+  // every bank picker as if it were the cold's own money.
+  if (input.type !== 'bank' && sg.name === CASH_AND_BANK) {
+    throw new Error(`Only bank accounts may be in '${CASH_AND_BANK}' — it is reserved for the cold's own money`)
   }
   if (input.personId) {
     const p = db().select().from(person).where(eq(person.id, input.personId)).get()

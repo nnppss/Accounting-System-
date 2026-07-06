@@ -219,6 +219,12 @@ describe('Account Manager', () => {
     ).toThrow(/Cash and Bank/)
   })
 
+  it('refuses to file a non-bank party into Cash and Bank (would corrupt the Money Book)', () => {
+    expect(() =>
+      createAccount({ name: 'Sneaky Kisan', type: 'kisan', subgroupId: groupId('Cash and Bank') })
+    ).toThrow(/Cash and Bank/)
+  })
+
   it('finds an account by its code via the name filter', () => {
     const k1 = createAccount({ name: 'Ramesh', type: 'kisan', subgroupId: groupId('Farmer') }, 2026)
     expect(listAccounts(yearId, { name: 'K-26-0001' }).map((r) => r.id)).toContain(k1)

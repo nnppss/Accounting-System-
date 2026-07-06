@@ -51,7 +51,7 @@ describe('Bardana sub-ledger (software.md §3.7)', () => {
   })
 
   it('a bank-settled bardana hits the bank money book, not cash', () => {
-    const bank = makeAccount('HDFC Bank', 'other', 'Cash and Bank')
+    const bank = makeAccount('HDFC Bank', 'bank', 'Cash and Bank')
     createBardana(yearId, {
       direction: 'issue',
       date: '2026-04-01',

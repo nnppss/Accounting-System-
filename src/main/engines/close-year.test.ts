@@ -242,7 +242,7 @@ describe('getLoanComposition — what a carried indirect loan is made of', () =>
 describe('exceptions', () => {
   it('flags a pending cheque', () => {
     // A received cheque sits in clearing — it is a close-time exception until cleared.
-    const bank = makeAccount('HDFC Bank', 'other', 'Cash and Bank')
+    const bank = makeAccount('HDFC Bank', 'bank', 'Cash and Bank')
     recordCheque(yearId, {
       direction: 'received',
       partyAccountId: vyapari,
@@ -261,7 +261,7 @@ describe('cash & bank carry-forward (regression)', () => {
   // loan, no defaulter flag). Cash (a system account) must carry too. Earlier the close keyed off
   // the crude isSystem flag, dropping Cash and turning bank accounts into loans + defaulters.
   it('carries bank/cash balances but never loans or flags them', () => {
-    const bank = makeAccount('SBI Current A/c', 'other', 'Cash and Bank')
+    const bank = makeAccount('SBI Current A/c', 'bank', 'Cash and Bank')
     setOpeningBalance(bank, yearId, 5000000, 'dr', '2026-01-01') // ₹50,000 sitting in the bank
 
     closeYear(yearId)

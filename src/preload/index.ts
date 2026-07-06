@@ -176,10 +176,12 @@ const api = {
       loanId: number,
       amountPaise: number,
       date: string,
-      mode: 'cash' | 'bank',
-      bankAccountId?: number
+      mode: 'cash' | 'bank' | 'cheque',
+      bankAccountId?: number,
+      chequeNo?: string,
+      chequeBank?: string
     ): Promise<LoanPaymentResult> =>
-      ipcRenderer.invoke('loans:pay', loanId, amountPaise, date, mode, bankAccountId)
+      ipcRenderer.invoke('loans:pay', loanId, amountPaise, date, mode, bankAccountId, chequeNo, chequeBank)
   },
   cheques: {
     record: (input: ChequeInput): Promise<RecordChequeResult> =>

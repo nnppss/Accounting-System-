@@ -5,6 +5,7 @@ import { makeAccount, makeYear, setupDb } from '../test-utils'
 import { getAccountBalance, getTrialBalance } from '../services/ledger'
 import { getSummary } from '../services/moneybook'
 import { listCheques } from '../services/cheques'
+import { createLoan, getLoan, listLoans, recordPayment } from '../services/loans'
 import { bounceCheque, clearCheque, recordCheque } from './cheque-clearing'
 
 let yearId: number
@@ -18,7 +19,7 @@ beforeEach(() => {
   setupDb()
   yearId = makeYear(2026)
   vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
-  bank = makeAccount('HDFC Bank', 'other', 'Cash and Bank')
+  bank = makeAccount('HDFC Bank', 'bank', 'Cash and Bank')
   clearing = getSystemAccountId(SYSTEM_ACCOUNTS.CHEQUES_IN_CLEARING)
 })
 afterEach(() => closeDb())
@@ -77,6 +78,18 @@ describe('Cheque-clearing engine', () => {
     expect(getTrialBalance(yearId).balanced).toBe(true)
   })
 
+  it('refuses a bank account that is not one of the cold\'s own money accounts', () => {
+    expect(() =>
+      recordCheque(yearId, {
+        direction: 'received',
+        partyAccountId: vyapari,
+        bankAccountId: vyapari, // a party, not a Cash-and-Bank account
+        amountPaise: SUM,
+        no: 'C-X'
+      })
+    ).toThrow(/Cash and Bank/)
+  })
+
   it('refuses to clear or bounce a cheque that is not pending', () => {
     const { chequeId } = recordCheque(yearId, {
       direction: 'received',
@@ -88,5 +101,77 @@ describe('Cheque-clearing engine', () => {
     clearCheque(chequeId, '2026-02-10')
     expect(() => clearCheque(chequeId, '2026-02-11')).toThrow()
     expect(() => bounceCheque(chequeId, '2026-02-11')).toThrow()
+  })
+})
+
+describe('Loans disbursed/repaid by cheque', () => {
+  const chequeLoan = (): { loanId: number; chequeId: number } => {
+    const r = createLoan(yearId, {
+      category: 'vyapari',
+      accountId: vyapari,
+      date: '2026-02-01',
+      amountPaise: SUM,
+      mode: 'cheque',
+      bankAccountId: bank,
+      chequeNo: 'L-1',
+      nature: 'direct'
+    })
+    return { loanId: r.loanId, chequeId: r.chequeId! }
+  }
+
+  it('a cheque loan registers a pending given cheque and stays out of the bank book', () => {
+    chequeLoan()
+    const pending = listCheques(yearId, 'pending')
+    expect(pending).toHaveLength(1)
+    expect(pending[0].direction).toBe('given')
+    expect(getAccountBalance(vyapari, yearId)).toBe(SUM) // party owes the loan
+    expect(getAccountBalance(clearing, yearId)).toBe(-SUM) // committed, not yet out of the bank
+    expect(getSummary(bank, yearId).closingPaise).toBe(0)
+    expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+
+  it('clearing moves the money out of the bank and starts interest from the clearance date', () => {
+    const { loanId, chequeId } = chequeLoan()
+    clearCheque(chequeId, '2026-03-01')
+    expect(getSummary(bank, yearId).closingPaise).toBe(-SUM)
+    expect(getAccountBalance(clearing, yearId)).toBe(0)
+    const d = getLoan(loanId)!
+    expect(d.interestStartDate).toBe('2026-03-01')
+    // No interest before clearance; a month later exactly 1.5% has accrued.
+    expect(getLoan(loanId, '2026-03-01')!.outstandingPaise).toBe(SUM)
+    expect(getLoan(loanId, '2026-04-01')!.outstandingPaise).toBe(SUM + SUM * 0.015)
+  })
+
+  it('a bounced disbursement cheque undoes the loan entirely', () => {
+    const { chequeId } = chequeLoan()
+    bounceCheque(chequeId, '2026-02-15')
+    expect(listLoans(yearId)).toHaveLength(0) // the loan never happened
+    expect(getAccountBalance(vyapari, yearId)).toBe(0)
+    expect(getAccountBalance(clearing, yearId)).toBe(0)
+    expect(getSummary(bank, yearId).closingPaise).toBe(0)
+    expect(listCheques(yearId, 'bounced')).toHaveLength(1)
+    expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+
+  it('a repayment by cheque is a pending received cheque; bouncing it restores the debt', () => {
+    const { loanId } = createLoan(yearId, {
+      category: 'vyapari',
+      accountId: vyapari,
+      date: '2026-02-01',
+      amountPaise: SUM,
+      mode: 'cash',
+      nature: 'direct'
+    })
+    recordPayment(loanId, SUM, '2026-02-01', 'cheque', bank, undefined, { no: 'R-1' })
+    expect(listCheques(yearId, 'pending')).toHaveLength(1)
+    expect(getLoan(loanId, '2026-02-01')!.outstandingPaise).toBe(0) // settled, pending clearance
+    expect(getAccountBalance(vyapari, yearId)).toBe(0)
+
+    const rc = listCheques(yearId, 'pending')[0]
+    bounceCheque(rc.id, '2026-02-10')
+    expect(getLoan(loanId, '2026-02-01')!.outstandingPaise).toBe(SUM) // owes again
+    expect(getAccountBalance(vyapari, yearId)).toBe(SUM)
+    expect(getAccountBalance(clearing, yearId)).toBe(0)
+    expect(getTrialBalance(yearId).balanced).toBe(true)
   })
 })
