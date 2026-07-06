@@ -62,8 +62,12 @@ export type LoanCategory = (typeof LOAN_CATEGORIES)[number]
 export const LOAN_NATURES = ['direct', 'indirect'] as const
 export type LoanNature = (typeof LOAN_NATURES)[number]
 
-/** A loan is disbursed/repaid by cash or by a bank account (cash & cheque only — no other rails). */
-export const LOAN_MODES = ['cash', 'bank'] as const
+/**
+ * A loan is disbursed/repaid by cash, by a bank account, or by cheque. A cheque loan registers
+ * the cheque in the cheque register and sits in clearing until cleared; interest runs from the
+ * clearance date.
+ */
+export const LOAN_MODES = ['cash', 'bank', 'cheque'] as const
 export type LoanMode = (typeof LOAN_MODES)[number]
 
 /** The lifecycle events recorded against a loan; replayed by the interest engine. */

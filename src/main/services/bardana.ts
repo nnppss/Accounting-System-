@@ -4,6 +4,7 @@ import { account, bardana, voucher } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type { BardanaAccount, BardanaInput, BardanaRow, CreateBardanaResult } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
+import { assertMoneyAccount } from './accounts'
 import { postCore } from './posting'
 
 /**
@@ -47,8 +48,9 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
     throw new Error('An unpaid (credit) bardana needs a party to carry the balance')
   }
   // The cash/bank leg only exists when money actually moves now.
-  if (paidPaise > 0 && input.mode === 'bank' && !input.bankAccountId) {
-    throw new Error('A bank settlement needs a bank account')
+  if (paidPaise > 0 && input.mode === 'bank') {
+    if (!input.bankAccountId) throw new Error('A bank settlement needs a bank account')
+    assertMoneyAccount(input.bankAccountId)
   }
 
   const cashBank =

@@ -42,6 +42,7 @@ export default function LoansPage(): JSX.Element {
   const [form] = Form.useForm()
   const category = Form.useWatch('category', form) as LoanCategory | undefined
   const mode = Form.useWatch('mode', form) as LoanMode | undefined
+  const nature = Form.useWatch('nature', form) as LoanNature | undefined
   const [payLoan, setPayLoan] = useState<LoanRow | null>(null)
   const [detailLoan, setDetailLoan] = useState<LoanRow | null>(null)
   const [open, setOpen] = useState(false)
@@ -276,7 +277,13 @@ export default function LoansPage(): JSX.Element {
               amountPaise: toPaise(v.amount),
               mobile: v.mobile || undefined,
               mode: v.mode,
-              bankAccountId: v.mode === 'bank' ? v.bankAccountId : undefined,
+              bankAccountId: v.mode !== 'cash' ? v.bankAccountId : undefined,
+              chequeNo: v.mode === 'cheque' ? v.chequeNo : undefined,
+              chequeBank: v.mode === 'cheque' ? v.chequeBank || undefined : undefined,
+              chequeClearanceDate:
+                v.mode === 'cheque' && v.chequeClearanceDate
+                  ? (v.chequeClearanceDate as dayjs.Dayjs).format('YYYY-MM-DD')
+                  : undefined,
               nature: v.nature,
               monthlyRateBps: Math.round((v.rate ?? 1.5) * 100),
               remark: v.remark || undefined
@@ -327,13 +334,14 @@ export default function LoansPage(): JSX.Element {
             <Form.Item name="mode" label={t('loans.mode')} rules={[{ required: true }]}>
               <Select
                 style={{ width: 140 }}
-                options={(['cash', 'bank'] as LoanMode[]).map((m) => ({
+                // An indirect loan moves no money, so a cheque makes no sense there.
+                options={((nature === 'indirect' ? ['cash', 'bank'] : ['cash', 'bank', 'cheque']) as LoanMode[]).map((m) => ({
                   value: m,
                   label: t(`loans.mode.${m}`)
                 }))}
               />
             </Form.Item>
-            {mode === 'bank' && (
+            {mode !== 'cash' && (
               <Form.Item name="bankAccountId" label={t('loans.bank')} rules={[{ required: true }]}>
                 <Select placeholder={t('loans.bank')} options={bankOptions} style={{ width: 180 }} />
               </Form.Item>
@@ -342,6 +350,20 @@ export default function LoansPage(): JSX.Element {
               <Input style={{ width: 160 }} />
             </Form.Item>
           </Space>
+
+          {mode === 'cheque' && (
+            <Space size="large" align="start" wrap>
+              <Form.Item name="chequeNo" label={t('cheques.no')} rules={[{ required: true }]}>
+                <Input style={{ width: 160 }} />
+              </Form.Item>
+              <Form.Item name="chequeBank" label={t('cheques.bank')}>
+                <Input style={{ width: 180 }} />
+              </Form.Item>
+              <Form.Item name="chequeClearanceDate" label={t('cheques.clearanceDate')}>
+                <DatePicker format={DATE_FORMAT} />
+              </Form.Item>
+            </Space>
+          )}
 
           <Form.Item name="remark" label={t('common.narration')}>
             <Input.TextArea rows={2} />
@@ -578,9 +600,9 @@ function LoanDetailDrawer({
                     key: 'mode',
                     label: t('loans.mode'),
                     children:
-                      d.mode === 'bank'
-                        ? `${t('loans.mode.bank')} — ${bankName(d.bankAccountId) ?? '—'}`
-                        : t('loans.mode.cash')
+                      d.mode === 'cash'
+                        ? t('loans.mode.cash')
+                        : `${t(`loans.mode.${d.mode}`)} — ${bankName(d.bankAccountId) ?? '—'}`
                   },
                   { key: 'mobile', label: t('loans.mobile'), children: d.mobile || '—' },
                   { key: 'remark', label: t('common.narration'), children: d.remark || '—' }
@@ -635,13 +657,22 @@ function PayModal({
   const mode = Form.useWatch('mode', form) as LoanMode | undefined
 
   const pay = useMutation({
-    mutationFn: (v: { amount: number; date: dayjs.Dayjs; mode: LoanMode; bankAccountId?: number }) =>
+    mutationFn: (v: {
+      amount: number
+      date: dayjs.Dayjs
+      mode: LoanMode
+      bankAccountId?: number
+      chequeNo?: string
+      chequeBank?: string
+    }) =>
       window.api.loans.pay(
         loan.id,
         toPaise(v.amount),
         v.date.format('YYYY-MM-DD'),
         v.mode,
-        v.mode === 'bank' ? v.bankAccountId : undefined
+        v.mode !== 'cash' ? v.bankAccountId : undefined,
+        v.mode === 'cheque' ? v.chequeNo : undefined,
+        v.mode === 'cheque' ? v.chequeBank || undefined : undefined
       ),
     onSuccess: (r) => {
       message.success(t('loans.paid', { interest: formatINR(r.interestPaise) }))
@@ -672,13 +703,23 @@ function PayModal({
         </Form.Item>
         <Form.Item name="mode" label={t('loans.mode')} rules={[{ required: true }]}>
           <Select
-            options={(['cash', 'bank'] as LoanMode[]).map((m) => ({ value: m, label: t(`loans.mode.${m}`) }))}
+            options={(['cash', 'bank', 'cheque'] as LoanMode[]).map((m) => ({ value: m, label: t(`loans.mode.${m}`) }))}
           />
         </Form.Item>
-        {mode === 'bank' && (
+        {mode !== 'cash' && (
           <Form.Item name="bankAccountId" label={t('loans.bank')} rules={[{ required: true }]}>
             <Select options={bankOptions} />
           </Form.Item>
+        )}
+        {mode === 'cheque' && (
+          <>
+            <Form.Item name="chequeNo" label={t('cheques.no')} rules={[{ required: true }]}>
+              <Input />
+            </Form.Item>
+            <Form.Item name="chequeBank" label={t('cheques.bank')}>
+              <Input />
+            </Form.Item>
+          </>
         )}
       </Form>
       </div>

@@ -12,7 +12,7 @@ beforeEach(() => {
   setupDb()
   yearId = makeYear(2026)
   kisan = makeAccount('Ramesh Kisan', 'kisan', 'Farmer')
-  cash = makeAccount('Cash Drawer', 'other', 'Cash and Bank')
+  cash = makeAccount('Cash Drawer', 'bank', 'Cash and Bank')
 })
 afterEach(() => closeDb())
 
