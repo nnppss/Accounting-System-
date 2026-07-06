@@ -6,6 +6,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-07-06
+
+### Added
+- Loans by cheque, with a Cash-and-Bank money guard.
+- Closed-year read-only enforcement, cascading undo-close, and oldest-first
+  re-close.
+- Bardana pre-booking, remarks, and party-ledger completeness.
+- Aamad editing with optional/partial locations and kisan stock lookup.
+- Type-ahead field suggestions and auto title-case for person fields.
+- `S/o` shown in accounts list and account pickers to disambiguate
+  same-named parties.
+
+### Fixed
+- Credit-only bardana failing NOT NULL on mode.
+- Missing `DATE_FORMAT` import in LoansPage.
+
 ### Changed
 - Repository structure hardening: grouped the phase integration tests under
   `src/main/integration/`, added a `@shared` path alias for the main and preload
@@ -30,5 +46,6 @@ Initial internal build. All planned modules ship:
 
 Not yet built: automated file backups and the optional AI assistant.
 
-[Unreleased]: https://example.com/compare/v0.0.1...HEAD
+[Unreleased]: https://example.com/compare/v1.1.0...HEAD
+[1.1.0]: https://example.com/releases/tag/v1.1.0
 [0.0.1]: https://example.com/releases/tag/v0.0.1
