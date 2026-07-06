@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { closeDb } from '../data/db'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
-import { getAccountBalance, getTrialBalance } from './ledger'
+import { getAccountBalance, getAccountLedger, getTrialBalance } from './ledger'
 import { getSummary } from './moneybook'
-import { createBardana, getBardanaAccount } from './bardana'
+import { listVouchers } from './vouchers'
+import { createBardana, deliverBardana, getBardanaAccount } from './bardana'
 
 let yearId: number
 let cash: number
@@ -65,7 +66,7 @@ describe('Bardana sub-ledger (software.md §3.7)', () => {
     expect(getTrialBalance(yearId).balanced).toBe(true)
   })
 
-  it('records the named buyer/supplier but settles to cash/bank', () => {
+  it('a fully-paid deal still shows on the party ledger (sale + payment legs, net 0)', () => {
     const vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
     createBardana(yearId, {
       direction: 'issue',
@@ -77,7 +78,16 @@ describe('Bardana sub-ledger (software.md §3.7)', () => {
     })
     const acct = getBardanaAccount(yearId)
     expect(acct.issues[0].partyName).toBe('Mohan Vyapari')
-    expect(getAccountBalance(vyapari, yearId)).toBe(0) // the name is recorded, not posted to
+    // The full deal is documented on the buyer's ledger: Dr ₹600 (goods) and Cr ₹600 (paid now).
+    const lines = getAccountLedger(vyapari, yearId)
+    expect(lines).toHaveLength(2)
+    expect(lines.map((l) => [l.drPaise, l.crPaise])).toEqual([
+      [60000, 0],
+      [0, 60000]
+    ])
+    expect(getAccountBalance(vyapari, yearId)).toBe(0) // fully paid → nothing outstanding
+    expect(getAccountBalance(cash, yearId)).toBe(60000)
+    expect(getTrialBalance(yearId).balanced).toBe(true)
   })
 
   it('rejects a bank settlement with no bank account, and non-positive quantity', () => {
@@ -107,6 +117,22 @@ describe('Bardana sub-ledger (software.md §3.7)', () => {
     expect(getTrialBalance(yearId).balanced).toBe(true)
   })
 
+  it('remark lands in the voucher narration (readable rate, free-text note)', () => {
+    const supplier = makeAccount('Suresh Supplier', 'vyapari', 'Sundry Creditors')
+    createBardana(yearId, {
+      direction: 'purchase',
+      date: '2026-02-01',
+      partyAccountId: supplier,
+      ratePaise: 5000,
+      qty: 1000,
+      mode: 'cash',
+      paidPaise: 0,
+      remark: 'against advance paid 01/07'
+    })
+    const [v] = listVouchers(yearId)
+    expect(v.narration).toBe('Bardana purchase — 1000 pcs @ ₹50/pc — against advance paid 01/07')
+  })
+
   it('partial issue: part cash now, rest owed by the buyer', () => {
     const vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
     // 20 pcs @ ₹30 = ₹600; buyer pays ₹250 now, owes ₹350.
@@ -126,6 +152,43 @@ describe('Bardana sub-ledger (software.md §3.7)', () => {
     expect(acct.totalSalesPaise).toBe(60000) // A/C aggregates the goods value, not the cash
     expect(acct.issues[0].paidPaise).toBe(25000)
     expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+
+  it('pre-booking: posts like a normal issue, reserves the qty until delivered', () => {
+    const kisan = makeAccount('Ram Kisan', 'kisan', 'Sundry Debtors')
+    // Stock is zero; kisan pre-books 1000 pcs @ ₹30 fully paid.
+    const { bardanaId } = createBardana(yearId, {
+      direction: 'issue',
+      date: '2026-02-01',
+      partyAccountId: kisan,
+      ratePaise: 3000,
+      qty: 1000,
+      mode: 'cash',
+      prebooked: true
+    })
+    expect(getAccountBalance(cash, yearId)).toBe(3000000) // money is real at booking
+    let acct = getBardanaAccount(yearId)
+    expect(acct.reservedQty).toBe(1000)
+    expect(acct.issues[0].prebooked).toBe(true)
+    expect(acct.stockCount).toBe(-1000) // owed against future purchases
+
+    deliverBardana(yearId, bardanaId)
+    acct = getBardanaAccount(yearId)
+    expect(acct.reservedQty).toBe(0)
+    expect(acct.issues[0].prebooked).toBe(false)
+    expect(getAccountBalance(cash, yearId)).toBe(3000000) // delivery is physical only
+    expect(getTrialBalance(yearId).balanced).toBe(true)
+    // Can't deliver twice.
+    expect(() => deliverBardana(yearId, bardanaId)).toThrow()
+  })
+
+  it('rejects a pre-booked purchase, and a pre-booking without a party', () => {
+    expect(() =>
+      createBardana(yearId, { direction: 'purchase', date: '2026-02-01', ratePaise: 2000, qty: 5, mode: 'cash', prebooked: true })
+    ).toThrow()
+    expect(() =>
+      createBardana(yearId, { direction: 'issue', date: '2026-02-01', ratePaise: 2000, qty: 5, mode: 'cash', prebooked: true })
+    ).toThrow()
   })
 
   it('rejects an unpaid bardana with no party, and paid > amount', () => {

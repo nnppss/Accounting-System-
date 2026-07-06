@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { closeDb } from '../data/db'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
-import { getAccountBalance, getTrialBalance } from './ledger'
+import { getAccountBalance, getAccountLedger, getTrialBalance } from './ledger'
 import { getSummary } from './moneybook'
 import {
   getLoadingContractorYear,
@@ -40,6 +40,15 @@ describe('Staff salaries (posting map: Salary | Expense | Cash/Bank)', () => {
     expect(reg).toHaveLength(1)
     expect(reg[0].partyName).toBe('Ravi Staff') // attributed to the staff member
     expect(reg[0].amountPaise).toBe(1500000)
+    expect(reg[0].narration).toBe('Staff salary — Ravi Staff')
+
+    // The payment is documented on the staff member's own ledger: salary due, then paid (net 0).
+    const lines = getAccountLedger(staff, yearId)
+    expect(lines.map((l) => [l.drPaise, l.crPaise])).toEqual([
+      [0, 1500000],
+      [1500000, 0]
+    ])
+    expect(getAccountBalance(staff, yearId)).toBe(0)
     expect(getTrialBalance(yearId).balanced).toBe(true)
   })
 })

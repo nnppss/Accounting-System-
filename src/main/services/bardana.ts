@@ -9,14 +9,18 @@ import { postCore } from './posting'
 /**
  * Bardana (bags) buy/sell sub-ledger — software.md §3.7, posting map architecture.md §6. The cold
  * trades bags independently of stored packets. `amountPaise = ratePaise × qty` (pieces). A deal is
- * not always settled upfront: `paidPaise` is what changed hands in cash/bank now, and the rest is
- * carried on the named party's own ledger (tag 'trade'), exactly like a Nikasi sale. So bardana can
- * be paid in full, paid partly, or left fully on credit. The Bardana A/C stays a pure aggregate over
- * the goods value (stock count + profit), independent of how the deal was paid.
+ * not always settled upfront: `paidPaise` is what changed hands in cash/bank now; the rest stays
+ * owed on the named party's ledger (tag 'trade'). So bardana can be paid in full, paid partly, or
+ * left fully on credit. The Bardana A/C stays a pure aggregate over the goods value (stock count +
+ * profit), independent of how the deal was paid.
  *
- * Posting map — let cash = paidPaise, credit = amountPaise − paidPaise:
- *   purchase  Dr Bardana Purchase (amount) / Cr Cash-Bank (cash) + Cr Party (credit, 'trade')
- *   issue     Dr Cash-Bank (cash) + Dr Party (credit, 'trade') / Cr Bardana Sales (amount)
+ * Posting map — when a party is named, the FULL goods value routes through their ledger so every
+ * deal is documented there (net balance = what's still owed, unchanged):
+ *   purchase  Dr Bardana Purchase (amount) / Cr Party (amount, 'trade')
+ *             + Dr Party (paid, 'trade') / Cr Cash-Bank (paid)      — the payment leg, if any
+ *   issue     Dr Party (amount, 'trade') / Cr Bardana Sales (amount)
+ *             + Dr Cash-Bank (paid) / Cr Party (paid, 'trade')      — the receipt leg, if any
+ *   no party (fully paid over the counter): Bardana head ↔ Cash-Bank directly.
  *   voucher type: payment/receipt when cash moves, else journal (full credit).
  */
 export type { BardanaAccount, BardanaInput, BardanaRow, CreateBardanaResult } from '../../shared/contracts'
@@ -50,6 +54,14 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
   if (paidPaise > 0 && input.mode === 'bank' && !input.bankAccountId) {
     throw new Error('A bank settlement needs a bank account')
   }
+  // A pre-booking is a sale we owe bags against — meaningless for a purchase, and it needs a
+  // named party to deliver to later.
+  if (input.prebooked && input.direction !== 'issue') {
+    throw new Error('Only an issue (sale) can be pre-booked')
+  }
+  if (input.prebooked && !input.partyAccountId) {
+    throw new Error('A pre-booking needs a party to deliver to later')
+  }
 
   const cashBank =
     paidPaise > 0
@@ -76,33 +88,43 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
         paidPaise,
         // mode is meaningless when no cash moves (pure credit); default it so the NOT NULL holds.
         mode: paidPaise > 0 ? input.mode : (input.mode ?? 'cash'),
-        bankAccountId: paidPaise > 0 && input.mode === 'bank' ? (input.bankAccountId ?? null) : null
+        bankAccountId: paidPaise > 0 && input.mode === 'bank' ? (input.bankAccountId ?? null) : null,
+        prebooked: input.prebooked ?? false
       })
       .returning({ id: bardana.id })
       .get()
 
-    // Bardana head takes the full goods value; the contra side splits cash (paid) vs party (credit).
-    // For a purchase the contra is on the Cr side; for an issue it is on the Dr side.
-    const contra: { accountId: number; paise: number; tag: 'general' | 'trade' }[] = []
-    if (paidPaise > 0) contra.push({ accountId: cashBank!, paise: paidPaise, tag: 'general' })
-    if (creditPaise > 0) contra.push({ accountId: input.partyAccountId!, paise: creditPaise, tag: 'trade' })
-
-    const entries = purchase
-      ? [
-          { accountId: bardanaHead, drPaise: amountPaise, crPaise: 0, tag: 'general' as const },
-          ...contra.map((c) => ({ accountId: c.accountId, drPaise: 0, crPaise: c.paise, tag: c.tag }))
-        ]
-      : [
-          ...contra.map((c) => ({ accountId: c.accountId, drPaise: c.paise, crPaise: 0, tag: c.tag })),
-          { accountId: bardanaHead, drPaise: 0, crPaise: amountPaise, tag: 'general' as const }
-        ]
+    // With a named party the full goods value routes through their ledger (so the deal is
+    // documented there even when fully paid), and the paid portion posts back as a payment leg —
+    // net party balance = the outstanding credit. Without a party (fully paid, validated above)
+    // the Bardana head settles against cash/bank directly.
+    const entries: { accountId: number; drPaise: number; crPaise: number; tag: 'general' | 'trade' }[] = []
+    const party = input.partyAccountId
+    if (purchase) {
+      entries.push({ accountId: bardanaHead, drPaise: amountPaise, crPaise: 0, tag: 'general' })
+      if (party) {
+        entries.push({ accountId: party, drPaise: 0, crPaise: amountPaise, tag: 'trade' })
+        if (paidPaise > 0) entries.push({ accountId: party, drPaise: paidPaise, crPaise: 0, tag: 'trade' })
+      }
+      if (paidPaise > 0) entries.push({ accountId: cashBank!, drPaise: 0, crPaise: paidPaise, tag: 'general' })
+    } else {
+      if (paidPaise > 0) entries.push({ accountId: cashBank!, drPaise: paidPaise, crPaise: 0, tag: 'general' })
+      if (party) {
+        entries.push({ accountId: party, drPaise: amountPaise, crPaise: 0, tag: 'trade' })
+        if (paidPaise > 0) entries.push({ accountId: party, drPaise: 0, crPaise: paidPaise, tag: 'trade' })
+      }
+      entries.push({ accountId: bardanaHead, drPaise: 0, crPaise: amountPaise, tag: 'general' })
+    }
 
     const res = postCore(tx, {
       yearId,
       // Cash moved → payment (we paid) / receipt (we received). Pure credit → journal.
       type: paidPaise > 0 ? (purchase ? 'payment' : 'receipt') : 'journal',
       date: input.date,
-      narration: `Bardana ${input.direction} — ${input.qty} pcs @ ${input.ratePaise} paise`,
+      narration:
+        `Bardana ${input.direction}${input.prebooked ? ' (pre-booked)' : ''} — ` +
+        `${input.qty} pcs @ ₹${input.ratePaise / 100}/pc` +
+        (input.remark?.trim() ? ` — ${input.remark.trim()}` : ''),
       accountantUserId: userId,
       sourceModule: 'bardana',
       sourceId: row.id,
@@ -112,6 +134,24 @@ export function createBardana(yearId: number, input: BardanaInput, userId?: numb
     tx.update(bardana).set({ voucherId: res.voucherId }).where(eq(bardana.id, row.id)).run()
     writeAudit({ userId, action: 'create', entity: 'bardana', entityId: row.id, after: { ...input, amountPaise, paidPaise } }, tx)
     return { bardanaId: row.id, voucherId: res.voucherId }
+  })
+}
+
+/**
+ * Hand over a pre-booked issue: the money side was posted at booking time, so delivery is purely
+ * physical — clear the flag (freeing the reservation) and leave the trail to the audit log.
+ */
+export function deliverBardana(yearId: number, id: number, userId?: number): void {
+  db().transaction((tx) => {
+    const row = tx
+      .select()
+      .from(bardana)
+      .where(and(eq(bardana.id, id), eq(bardana.yearId, yearId)))
+      .get()
+    if (!row) throw new Error(`Bardana ${id} not found`)
+    if (!row.prebooked) throw new Error(`Bardana ${id} is not an undelivered pre-booking`)
+    tx.update(bardana).set({ prebooked: false }).where(eq(bardana.id, id)).run()
+    writeAudit({ userId, action: 'update', entity: 'bardana', entityId: id, before: row, after: { ...row, prebooked: false } }, tx)
   })
 }
 
@@ -176,7 +216,8 @@ function rowFrom(b: typeof bardana.$inferSelect, partyName: string | null): Bard
     paidPaise: b.paidPaise,
     mode: b.mode,
     bankAccountId: b.bankAccountId,
-    bankName
+    bankName,
+    prebooked: b.prebooked
   }
 }
 
@@ -197,7 +238,10 @@ export function getBardanaAccount(yearId: number): BardanaAccount {
     issues,
     totalPurchasesPaise,
     totalSalesPaise,
+    // Pre-booked issues count as issued here, so stockCount is what's still free to sell;
+    // reservedQty is on top of it, physically in the store until delivered.
     stockCount: purchasedQty - issuedQty,
+    reservedQty: issues.filter((r) => r.prebooked).reduce((s, r) => s + r.qty, 0),
     profitPaise: totalSalesPaise - totalPurchasesPaise
   }
 }
