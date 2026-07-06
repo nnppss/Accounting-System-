@@ -1,4 +1,7 @@
+import { eq } from 'drizzle-orm'
 import type { Session } from './auth/auth'
+import { db } from './data/db'
+import { financialYear } from './data/schema'
 
 /**
  * The single-user working session, held in the main process for the app's lifetime. Set on
@@ -23,4 +26,22 @@ export function getSession(): Session | null {
 export function requireSession(): Session {
   if (!current) throw new Error('Not logged in')
   return current
+}
+
+/**
+ * For handlers that WRITE into the working year: a closed year is read-only, so any correction
+ * must go through Year-end Close → Undo (which reopens it) rather than silently desyncing the
+ * carry-forwards computed at close time.
+ */
+export function requireOpenYear(): Session {
+  const s = requireSession()
+  const yr = db()
+    .select({ status: financialYear.status })
+    .from(financialYear)
+    .where(eq(financialYear.id, s.yearId))
+    .get()
+  if (yr?.status === 'closed') {
+    throw new Error(`Year ${s.year} is closed — undo its close (Year-end Close page) to make changes`)
+  }
+  return s
 }

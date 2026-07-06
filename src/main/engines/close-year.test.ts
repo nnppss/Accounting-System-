@@ -11,6 +11,8 @@ import { recordCheque } from './cheque-clearing'
 import { getAccountBalance, getTrialBalance } from '../services/ledger'
 import { getMap } from '../services/maps'
 import { closeYear, getCloseStatus, previewClose, rollbackClose } from './close-year'
+import { clearSession, requireOpenYear, setSession } from '../session'
+import { createUser } from '../auth/auth'
 
 const LAKH = 10000000 // ₹1,00,000 in paise
 
@@ -200,6 +202,47 @@ describe('rollbackClose — the undo', () => {
     expect(getCloseStatus(yearId)!.status).toBe('closed')
     expect(getTrialBalance(yearId).balanced).toBe(true)
     expect(getTrialBalance(nextYearId()).balanced).toBe(true)
+  })
+})
+
+describe('multi-year chain — cascade undo, oldest-first close, closed = read-only', () => {
+  function statusOf(yId: number): string {
+    return db().select().from(financialYear).where(eq(financialYear.id, yId)).get()!.status
+  }
+
+  it('undoing an old year reopens every later closed year too, newest first', () => {
+    closeYear(yearId) // 2026 → creates 2027
+    const y2027 = nextYearId()
+    closeYear(y2027) // 2027 → creates 2028
+
+    rollbackClose(yearId) // undo 2026 — cascades through 2027 first
+
+    expect(statusOf(yearId)).toBe('open')
+    expect(statusOf(y2027)).toBe('open')
+    expect(getCloseStatus(yearId)).toBeNull()
+    expect(getCloseStatus(y2027)).toBeNull()
+    expect(openingRows(y2027)).toHaveLength(0) // 2026's carry-forwards reversed
+    expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+
+  it('refuses to close a year while an earlier year is still open', () => {
+    closeYear(yearId)
+    const y2027 = nextYearId()
+    rollbackClose(yearId) // 2026 reopened; 2027 exists and is open
+    expect(() => closeYear(y2027)).toThrow(/Close 2026 first/)
+  })
+
+  it('requireOpenYear blocks writes into a closed working year and unblocks after undo', () => {
+    const uid = createUser('tester', 'pw', 'Tester')
+    setSession({ userId: uid, username: 'tester', accountantName: 'Tester', role: 'accountant', yearId, year: 2026 })
+    try {
+      closeYear(yearId)
+      expect(() => requireOpenYear()).toThrow(/closed/)
+      rollbackClose(yearId)
+      expect(requireOpenYear().yearId).toBe(yearId)
+    } finally {
+      clearSession()
+    }
   })
 })
 

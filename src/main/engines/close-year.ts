@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm'
 import { db } from '../data/db'
 import {
   account,
@@ -293,6 +293,15 @@ export function closeYear(yearId: number, userId?: number): CloseResult {
   if (!yr) throw new Error(`Financial year ${yearId} not found`)
   if (getCloseStatus(yearId)) throw new Error(`Year ${yr.year} is already closed — roll back the close to re-run it`)
 
+  // Years close oldest-first: closing over an open earlier year would carry stale balances forward.
+  const earlierOpen = db()
+    .select({ year: financialYear.year })
+    .from(financialYear)
+    .where(and(lt(financialYear.year, yr.year), eq(financialYear.status, 'open')))
+    .orderBy(asc(financialYear.year))
+    .get()
+  if (earlierOpen) throw new Error(`Close ${earlierOpen.year} first — years must be closed oldest to newest`)
+
   const onDate = nextJan1(yr.year)
   const plan = emptyPlan()
 
@@ -477,8 +486,26 @@ function voidIfLive(voucherId: number, reason: string, userId?: number): void {
 /**
  * Undo a close — replays the rollback plan, reopens the year, and marks the close 'rolled_back'.
  * After this the year can be closed again (re-running produces a fresh close + plan).
+ *
+ * **Cascades**: undoing an old year first undoes every LATER closed year, newest-first, so the
+ * whole chain reopens in one action. (Its carry-forwards were computed from balances this year's
+ * close fed into — leaving them closed would freeze stale numbers.) Re-closing is deliberate and
+ * manual, oldest-first, so the accountant reviews each year's fresh summary.
  */
 export function rollbackClose(yearId: number, userId?: number): YearCloseInfo {
+  const yr = db().select().from(financialYear).where(eq(financialYear.id, yearId)).get()
+  if (!yr) throw new Error(`Financial year ${yearId} not found`)
+  const laterClosed = db()
+    .select({ id: financialYear.id })
+    .from(financialYear)
+    .where(and(gt(financialYear.year, yr.year), eq(financialYear.status, 'closed')))
+    .orderBy(desc(financialYear.year))
+    .all()
+  for (const later of laterClosed) rollbackOne(later.id, userId)
+  return rollbackOne(yearId, userId)
+}
+
+function rollbackOne(yearId: number, userId?: number): YearCloseInfo {
   const row = db()
     .select()
     .from(yearClose)

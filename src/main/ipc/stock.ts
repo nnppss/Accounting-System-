@@ -13,7 +13,7 @@ import { createNikasi, deleteNikasi, getNikasi, listNikasi } from '../services/n
 import { getMap, getRackStock, kisanStockLocations } from '../services/maps'
 import { getStoreConfig, setStoreConfig } from '../services/store'
 import { accrueAllRent } from '../engines/bhada'
-import { requireSession } from '../session'
+import { requireOpenYear, requireSession } from '../session'
 
 /** Phase 2 IPC — store layout, Aamad, Sauda, Nikasi, Maps, and the Bhada engine. */
 export function registerStockIpc(): void {
@@ -25,7 +25,7 @@ export function registerStockIpc(): void {
 
   // Aamad
   ipcMain.handle('aamad:create', (_e, input: AamadInput) => {
-    const s = requireSession()
+    const s = requireOpenYear()
     return createAamad(s.yearId, input, s.userId)
   })
   ipcMain.handle('aamad:update', (_e, id: number, input: AamadInput) => {
@@ -40,18 +40,18 @@ export function registerStockIpc(): void {
     return getAamad(id)
   })
   ipcMain.handle('aamad:delete', (_e, id: number) => {
-    const s = requireSession()
+    const s = requireOpenYear()
     return deleteAamad(s.yearId, id, s.userId)
   })
 
   // Sauda
   ipcMain.handle('sauda:create', (_e, input: SaudaInput) => {
-    const s = requireSession()
+    const s = requireOpenYear()
     return createSauda(s.yearId, input, s.userId)
   })
   ipcMain.handle('sauda:list', () => listSauda(requireSession().yearId))
   ipcMain.handle('sauda:delete', (_e, id: number) => {
-    const s = requireSession()
+    const s = requireOpenYear()
     return deleteSauda(s.yearId, id, s.userId)
   })
   ipcMain.handle('sauda:latestRate', (_e, vyapariAccountId: number, kisanAccountId: number) =>
@@ -60,13 +60,13 @@ export function registerStockIpc(): void {
 
   // Nikasi
   ipcMain.handle('nikasi:create', (_e, input: NikasiInput) => {
-    const s = requireSession()
+    const s = requireOpenYear()
     return createNikasi(s.yearId, input, s.userId)
   })
   ipcMain.handle('nikasi:list', () => listNikasi(requireSession().yearId))
   ipcMain.handle('nikasi:get', (_e, id: number) => getNikasi(id))
   ipcMain.handle('nikasi:delete', (_e, id: number) => {
-    const s = requireSession()
+    const s = requireOpenYear()
     return deleteNikasi(s.yearId, id, s.userId)
   })
 
@@ -81,7 +81,7 @@ export function registerStockIpc(): void {
 
   // Bhada
   ipcMain.handle('bhada:accrueAll', (_e, date: string) => {
-    const s = requireSession()
+    const s = requireOpenYear()
     return accrueAllRent(s.yearId, date, s.userId)
   })
 }

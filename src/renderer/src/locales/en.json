@@ -508,7 +508,7 @@
   "close.password": "Confirm your password",
   "close.passwordPlaceholder": "Password",
   "close.runConfirm": "Closing {{year}} capitalises loan interest, carries every balance into {{next}}, turns dues into indirect loans, and flags defaulters. This is reversible. Continue?",
-  "close.rollbackConfirm": "Undo the close of {{year}}? Carry-forwards, indirect loans, capitalisations and defaulter flags from this close will be reversed.",
+  "close.rollbackConfirm": "Undo the close of {{year}}? Carry-forwards, indirect loans, capitalisations and defaulter flags from this close will be reversed. Any later closed years will be reopened too — after your changes, re-close each year in order, oldest first.",
   "close.closed": "Year {{year}} closed",
   "close.rolledBack": "Close of {{year}} undone",
   "close.alreadyClosed": "{{year}} is closed — rolled forward into {{next}}. Undo the close to reopen it.",

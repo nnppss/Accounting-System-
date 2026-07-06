@@ -20,7 +20,7 @@ import {
 import type { AccountIdentityInput } from '../../shared/contracts'
 import { getAccountLedger } from '../services/ledger'
 import { verifyPassword } from '../auth/auth'
-import { requireSession } from '../session'
+import { requireOpenYear, requireSession } from '../session'
 
 /** Account Manager IPC — year + accountant are injected from the session, never trusted from UI. */
 export function registerAccountsIpc(): void {
@@ -57,7 +57,7 @@ export function registerAccountsIpc(): void {
   ipcMain.handle(
     'accounts:setOpening',
     (_e, accountId: number, amountPaise: number, drCr: DrCr, date: string) => {
-      const s = requireSession()
+      const s = requireOpenYear()
       setOpeningBalance(accountId, s.yearId, amountPaise, drCr, date, s.userId)
     }
   )
