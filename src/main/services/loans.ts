@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, financialYear, loan, loanEvent, voucher, voucherEntry, yearClose } from '../data/schema'
+import { account, cheque, financialYear, loan, loanEvent, voucher, voucherEntry, yearClose } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type {
   CapitaliseAllResult,
@@ -15,6 +15,7 @@ import type {
 } from '../../shared/contracts'
 import type { EntryTag } from '../../shared/enums'
 import { writeAudit } from '../audit/audit'
+import { assertMoneyAccount } from './accounts'
 import { postCore } from './posting'
 import { accruedForPayment, capitaliseLoan, ensureCapitalisedBefore, outstandingAsOf } from '../engines/interest'
 
@@ -26,8 +27,11 @@ import { accruedForPayment, capitaliseLoan, ensureCapitalisedBefore, outstanding
  *
  * Posting map:
  *   Loan given (direct)              Dr Party        Cr Cash/Bank      tag 'loan'
+ *   Loan given by cheque             Dr Party        Cr Clearing       tag 'loan'  (+ cheque row;
+ *                                    clearing→bank on clearance, interest from clearance date)
  *   Loan interest (1 Jan + payment)  Dr Party        Cr Interest Inc.  tag 'interest'
- *   Loan repaid by cash/cheque       Dr Cash/Bank    Cr Party          tag 'loan'
+ *   Loan repaid by cash/bank         Dr Cash/Bank    Cr Party          tag 'loan'
+ *   Loan repaid by cheque            Dr Clearing     Cr Party          tag 'loan'  (+ cheque row)
  *
  * An **indirect** loan (dues reclassified) moves no cash — its principal already sits in the
  * party's ledger — so creating one posts no disbursement; only its later interest posts.
@@ -59,11 +63,23 @@ export function createLoan(yearId: number, input: LoanInput, userId?: number): C
   if (!Number.isInteger(input.amountPaise) || input.amountPaise <= 0) {
     throw new Error('Loan amount must be a positive whole number of paise')
   }
-  if (input.mode === 'bank' && !input.bankAccountId) {
-    throw new Error('A bank loan needs a bank account')
+  if (input.mode !== 'cash') {
+    if (!input.bankAccountId) throw new Error('A bank/cheque loan needs a bank account')
+    assertMoneyAccount(input.bankAccountId)
   }
+  if (input.mode === 'cheque') {
+    if (input.nature !== 'direct') throw new Error('A cheque loan must be direct — indirect loans move no money')
+    if (!input.chequeNo?.trim()) throw new Error('A cheque loan needs a cheque number')
+  }
+  // A cheque loan earns interest from the clearance date: provisionally the expected date (or the
+  // loan date), corrected to the actual date when the cheque clears (engines/cheque-clearing.ts).
   const interestStartDate =
-    input.interestStartDate ?? (input.nature === 'direct' ? input.date : nextJan1(input.date))
+    input.interestStartDate ??
+    (input.mode === 'cheque'
+      ? (input.chequeClearanceDate ?? input.date)
+      : input.nature === 'direct'
+        ? input.date
+        : nextJan1(input.date))
   const monthlyRateBps = input.monthlyRateBps ?? DEFAULT_RATE_BPS
 
   return db().transaction((tx) => {
@@ -77,7 +93,7 @@ export function createLoan(yearId: number, input: LoanInput, userId?: number): C
         principalPaise: input.amountPaise,
         mobile: input.mobile ?? null,
         mode: input.mode,
-        bankAccountId: input.mode === 'bank' ? (input.bankAccountId ?? null) : null,
+        bankAccountId: input.mode !== 'cash' ? (input.bankAccountId ?? null) : null,
         nature: input.nature,
         monthlyRateBps,
         interestStartDate,
@@ -87,25 +103,53 @@ export function createLoan(yearId: number, input: LoanInput, userId?: number): C
       .get()
 
     let voucherId: number | null = null
+    let chequeId: number | null = null
     if (input.nature === 'direct') {
-      // Real cash/bank goes out: Dr Party / Cr Cash-or-Bank.
-      const cashBank =
-        input.mode === 'cash' ? getSystemAccountId(SYSTEM_ACCOUNTS.CASH) : input.bankAccountId!
+      // Money goes out: Dr Party / Cr Cash-or-Bank — or Cr Clearing for a cheque, which only
+      // hits the bank when it clears (cheque-clearing engine).
+      const creditAccount =
+        input.mode === 'cash'
+          ? getSystemAccountId(SYSTEM_ACCOUNTS.CASH)
+          : input.mode === 'bank'
+            ? input.bankAccountId!
+            : getSystemAccountId(SYSTEM_ACCOUNTS.CHEQUES_IN_CLEARING)
       const res = postCore(tx, {
         yearId,
         type: 'payment',
         date: input.date,
-        narration: `Loan given — loan #${row.id}`,
+        narration:
+          input.mode === 'cheque'
+            ? `Loan given by cheque ${input.chequeNo} — loan #${row.id} (in clearing)`
+            : `Loan given — loan #${row.id}`,
         accountantUserId: userId,
         sourceModule: 'loan',
         sourceId: row.id,
         isAuto: true,
         entries: [
           { accountId: input.accountId, drPaise: input.amountPaise, crPaise: 0, tag: 'loan' },
-          { accountId: cashBank, drPaise: 0, crPaise: input.amountPaise, tag: 'loan' }
+          { accountId: creditAccount, drPaise: 0, crPaise: input.amountPaise, tag: 'loan' }
         ]
       })
       voucherId = res.voucherId
+
+      if (input.mode === 'cheque') {
+        chequeId = tx
+          .insert(cheque)
+          .values({
+            voucherId,
+            no: input.chequeNo!,
+            bank: input.chequeBank ?? null,
+            direction: 'given',
+            amountPaise: input.amountPaise,
+            date: input.date,
+            clearanceDate: input.chequeClearanceDate ?? null,
+            status: 'pending',
+            bankAccountId: input.bankAccountId!,
+            partyAccountId: input.accountId
+          })
+          .returning({ id: cheque.id })
+          .get().id
+      }
     }
 
     tx.insert(loanEvent)
@@ -116,27 +160,34 @@ export function createLoan(yearId: number, input: LoanInput, userId?: number): C
       { userId, action: 'create', entity: 'loan', entityId: row.id, after: { ...input, interestStartDate } },
       tx
     )
-    return { loanId: row.id, voucherId }
+    return { loanId: row.id, voucherId, chequeId }
   })
 }
 
 /**
  * Record a (part-)payment against a loan on `date`. First posts any interest accrued on the
- * outstanding to that day (Dr Party / Cr Interest Income), then the cash received
- * (Dr Cash/Bank / Cr Party). The remainder keeps accruing. `mode` decides cash vs a bank book.
+ * outstanding to that day (Dr Party / Cr Interest Income), then the money received
+ * (Dr Cash/Bank / Cr Party). The remainder keeps accruing. `mode` decides cash vs a bank book;
+ * a cheque payment debits Clearing instead and registers a pending 'received' cheque, which
+ * hits the bank only on clearance.
  */
 export function recordPayment(
   loanId: number,
   amountPaise: number,
   date: string,
-  mode: 'cash' | 'bank',
+  mode: 'cash' | 'bank' | 'cheque',
   bankAccountId: number | undefined,
-  userId?: number
+  userId?: number,
+  chequeDetails?: { no: string; bank?: string }
 ): LoanPaymentResult {
   if (!Number.isInteger(amountPaise) || amountPaise <= 0) {
     throw new Error('Payment must be a positive whole number of paise')
   }
-  if (mode === 'bank' && !bankAccountId) throw new Error('A bank payment needs a bank account')
+  if (mode !== 'cash') {
+    if (!bankAccountId) throw new Error('A bank/cheque payment needs a bank account')
+    assertMoneyAccount(bankAccountId)
+  }
+  if (mode === 'cheque' && !chequeDetails?.no?.trim()) throw new Error('A cheque payment needs a cheque number')
 
   // Fold any whole years that have passed, so this payment's interest is simple within its year.
   ensureCapitalisedBefore(loanId, date, userId)
@@ -148,7 +199,12 @@ export function recordPayment(
     throw new Error(`Payment ${amountPaise} exceeds the outstanding ${outstandingPaise} paise`)
   }
 
-  const cashBank = mode === 'cash' ? getSystemAccountId(SYSTEM_ACCOUNTS.CASH) : bankAccountId!
+  const cashBank =
+    mode === 'cash'
+      ? getSystemAccountId(SYSTEM_ACCOUNTS.CASH)
+      : mode === 'bank'
+        ? bankAccountId!
+        : getSystemAccountId(SYSTEM_ACCOUNTS.CHEQUES_IN_CLEARING)
   const interestIncome = getSystemAccountId(SYSTEM_ACCOUNTS.INTEREST_INCOME)
 
   const entries = [
@@ -167,13 +223,31 @@ export function recordPayment(
       yearId: ln.yearId,
       type: 'receipt',
       date,
-      narration: `Loan repayment — loan #${loanId}`,
+      narration:
+        mode === 'cheque'
+          ? `Loan repayment by cheque ${chequeDetails!.no} — loan #${loanId} (in clearing)`
+          : `Loan repayment — loan #${loanId}`,
       accountantUserId: userId,
       sourceModule: 'loan',
       sourceId: loanId,
       isAuto: true,
       entries
     })
+    if (mode === 'cheque') {
+      tx.insert(cheque)
+        .values({
+          voucherId: res.voucherId,
+          no: chequeDetails!.no,
+          bank: chequeDetails!.bank ?? null,
+          direction: 'received',
+          amountPaise,
+          date,
+          status: 'pending',
+          bankAccountId: bankAccountId!,
+          partyAccountId: ln.accountId
+        })
+        .run()
+    }
     tx.insert(loanEvent)
       .values({ loanId, date, type: 'payment', amountPaise, voucherId: res.voucherId })
       .run()

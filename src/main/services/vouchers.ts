@@ -10,6 +10,7 @@ import type {
   VoucherDetail,
   VoucherListRow
 } from '../../shared/contracts'
+import { assertMoneyAccount } from './accounts'
 import { post } from './posting'
 
 /**
@@ -28,6 +29,7 @@ export type {
 
 /** Receipt — a party pays the cold: Dr Cash/Bank, Cr Party. */
 export function createReceipt(input: SimpleVoucherInput): PostResult {
+  assertMoneyAccount(input.cashBankAccountId)
   return post({
     yearId: input.yearId,
     type: 'receipt',
@@ -43,6 +45,7 @@ export function createReceipt(input: SimpleVoucherInput): PostResult {
 
 /** Payment — the cold pays a party: Dr Party, Cr Cash/Bank. */
 export function createPayment(input: SimpleVoucherInput): PostResult {
+  assertMoneyAccount(input.cashBankAccountId)
   return post({
     yearId: input.yearId,
     type: 'payment',
@@ -61,6 +64,9 @@ export function createContra(input: ContraInput): PostResult {
   if (input.fromAccountId === input.toAccountId) {
     throw new Error('Contra needs two different accounts')
   }
+  // Contra is strictly a transfer between the cold's own cash/bank books.
+  assertMoneyAccount(input.fromAccountId)
+  assertMoneyAccount(input.toAccountId)
   return post({
     yearId: input.yearId,
     type: 'contra',

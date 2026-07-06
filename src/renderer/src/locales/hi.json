@@ -316,6 +316,7 @@
   "loans.mode": "माध्यम",
   "loans.mode.cash": "नकद",
   "loans.mode.bank": "बैंक",
+  "loans.mode.cheque": "चेक",
   "loans.bank": "बैंक खाता",
   "loans.principal": "मूलधन",
   "loans.rate": "दर",

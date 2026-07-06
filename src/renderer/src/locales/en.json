@@ -316,6 +316,7 @@
   "loans.mode": "Mode",
   "loans.mode.cash": "Cash",
   "loans.mode.bank": "Bank",
+  "loans.mode.cheque": "Cheque",
   "loans.bank": "Bank account",
   "loans.principal": "Principal",
   "loans.rate": "Rate",

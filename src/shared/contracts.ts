@@ -475,7 +475,12 @@ export interface LoanInput {
   amountPaise: number
   mobile?: string
   mode: LoanMode
-  bankAccountId?: number // required when mode = 'bank'
+  bankAccountId?: number // required when mode = 'bank' or 'cheque' (the bank the cheque draws on)
+  /** Cheque details when mode = 'cheque' — registered pending in the cheque register. */
+  chequeNo?: string
+  chequeBank?: string
+  /** Expected clearance date; interest provisionally starts here until the actual clearing. */
+  chequeClearanceDate?: string
   nature: LoanNature
   /** Monthly rate in basis points (default 150 = 1.5%/mo); editable per loan. */
   monthlyRateBps?: number
@@ -557,6 +562,8 @@ export interface StandingLoan {
 export interface CreateLoanResult {
   loanId: number
   voucherId: number | null
+  /** Set when the loan was disbursed by cheque — the pending cheque in the register. */
+  chequeId: number | null
 }
 
 export interface LoanPaymentResult {

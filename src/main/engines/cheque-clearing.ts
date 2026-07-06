@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../data/db'
-import { cheque, voucher } from '../data/schema'
+import { cheque, loan, loanEvent, voucher } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type { ChequeInput, RecordChequeResult } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
+import { assertMoneyAccount } from '../services/accounts'
 import { post, postCore } from '../services/posting'
 
 /**
@@ -28,6 +29,7 @@ export function recordCheque(yearId: number, input: ChequeInput, userId?: number
     throw new Error('Cheque amount must be a positive whole number of paise')
   }
   if (!input.no?.trim()) throw new Error('A cheque needs a number')
+  assertMoneyAccount(input.bankAccountId)
   const clearing = clearingAccountId()
   const entryDate = input.date ?? input.issueDate ?? new Date().toISOString().slice(0, 10)
   const received = input.direction === 'received'
@@ -83,7 +85,8 @@ export function clearCheque(chequeId: number, clearanceDate: string, userId?: nu
   if (!row) throw new Error(`Cheque ${chequeId} not found`)
   if (row.status !== 'pending') throw new Error(`Cheque ${chequeId} is already ${row.status}`)
   if (!row.bankAccountId) throw new Error(`Cheque ${chequeId} has no bank account to clear into`)
-  const yearId = yearOfVoucher(row.voucherId)
+  const entry = voucherOf(row.voucherId)
+  const yearId = entry.yearId
   const clearing = clearingAccountId()
   const received = row.direction === 'received'
 
@@ -109,6 +112,12 @@ export function clearCheque(chequeId: number, clearanceDate: string, userId?: nu
     entries
   })
   db().update(cheque).set({ status: 'cleared', clearanceDate }).where(eq(cheque.id, chequeId)).run()
+  // A loan disbursed by cheque earns interest only from the day the money actually left the bank.
+  // ponytail: if interest was already posted off the provisional date (rare — a 1-Jan or payment
+  // before clearance), re-run capitaliseLoan to true it up.
+  if (entry.sourceModule === 'loan' && entry.sourceId && row.direction === 'given') {
+    db().update(loan).set({ interestStartDate: clearanceDate }).where(eq(loan.id, entry.sourceId)).run()
+  }
   writeAudit({ userId, action: 'update', entity: 'cheque', entityId: chequeId, after: { status: 'cleared', clearanceDate } })
   return res.voucherId
 }
@@ -118,7 +127,11 @@ export function bounceCheque(chequeId: number, date: string, userId?: number): n
   const row = db().select().from(cheque).where(eq(cheque.id, chequeId)).get()
   if (!row) throw new Error(`Cheque ${chequeId} not found`)
   if (row.status !== 'pending') throw new Error(`Cheque ${chequeId} is already ${row.status}`)
-  const yearId = yearOfVoucher(row.voucherId)
+  const entry = voucherOf(row.voucherId)
+  if (entry.sourceModule === 'loan' && entry.sourceId) {
+    return bounceLoanCheque(row, entry.sourceId, userId)
+  }
+  const yearId = entry.yearId
   const clearing = clearingAccountId()
   const received = row.direction === 'received'
 
@@ -148,10 +161,52 @@ export function bounceCheque(chequeId: number, date: string, userId?: number): n
   return res.voucherId
 }
 
-/** Resolve the financial year from the cheque's entry voucher. */
-function yearOfVoucher(voucherId: number | null): number {
+/** The cheque's entry voucher (year + source doc it was posted from). */
+function voucherOf(voucherId: number | null): typeof voucher.$inferSelect {
   if (!voucherId) throw new Error('Cheque has no entry voucher')
-  const v = db().select({ yearId: voucher.yearId }).from(voucher).where(eq(voucher.id, voucherId)).get()
+  const v = db().select().from(voucher).where(eq(voucher.id, voucherId)).get()
   if (!v) throw new Error(`Voucher ${voucherId} not found`)
-  return v.yearId
+  return v
+}
+
+/**
+ * Bounce a cheque that belongs to a loan. Instead of posting a reversal, void the entry voucher
+ * and erase the loan event it recorded, so both the ledger and the interest engine agree the
+ * money never moved:
+ *   given (disbursement)  — the loan never happened: void the voucher, delete the loan too.
+ *   received (repayment)  — the repayment (and its interest fold) un-happens; the party owes
+ *                           again and interest keeps accruing from the previous base.
+ * Refused if later events exist on the loan (they were computed on top of this one).
+ */
+function bounceLoanCheque(
+  row: typeof cheque.$inferSelect,
+  loanId: number,
+  userId?: number
+): number {
+  const events = db().select().from(loanEvent).where(eq(loanEvent.loanId, loanId)).all()
+  const target = events.find((e) => e.voucherId === row.voucherId)
+  if (!target) throw new Error(`Cheque ${row.id}: no loan event found for its voucher`)
+  const later = events.filter((e) => e.id > target.id)
+  if (later.length > 0) {
+    throw new Error('Later interest/payment entries exist on this loan — void those first, then bounce')
+  }
+
+  return db().transaction((tx) => {
+    // Void the entry voucher in-transaction (same semantics as posting.voidVoucher).
+    tx.update(voucher)
+      .set({ voidedAt: new Date(), voidedReason: `Cheque ${row.no} bounced` })
+      .where(eq(voucher.id, row.voucherId!))
+      .run()
+    writeAudit({ userId, action: 'void', entity: 'voucher', entityId: row.voucherId!, after: { reason: `Cheque ${row.no} bounced` } }, tx)
+
+    tx.delete(loanEvent).where(eq(loanEvent.id, target.id)).run()
+    if (row.direction === 'given') {
+      const ln = tx.select().from(loan).where(eq(loan.id, loanId)).get()
+      tx.delete(loan).where(eq(loan.id, loanId)).run()
+      writeAudit({ userId, action: 'delete', entity: 'loan', entityId: loanId, before: ln }, tx)
+    }
+    tx.update(cheque).set({ status: 'bounced' }).where(eq(cheque.id, row.id)).run()
+    writeAudit({ userId, action: 'update', entity: 'cheque', entityId: row.id, after: { status: 'bounced' } }, tx)
+    return row.voucherId!
+  })
 }

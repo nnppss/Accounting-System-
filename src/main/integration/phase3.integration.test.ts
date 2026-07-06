@@ -23,7 +23,7 @@ describe('Phase 3 done/verify — loans + interest + cheque clearance', () => {
     const yearId = makeYear(2026)
     const kisan = makeAccount('Ramesh Kisan', 'kisan', 'Farmer')
     const vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
-    const bank = makeAccount('HDFC Bank', 'other', 'Cash and Bank')
+    const bank = makeAccount('HDFC Bank', 'bank', 'Cash and Bank')
     const cash = getSystemAccountId(SYSTEM_ACCOUNTS.CASH)
 
     // 1) Loan given: ₹1,00,000 cash to the kisan on 1 Jan 2026 (Dr Kisan / Cr Cash).

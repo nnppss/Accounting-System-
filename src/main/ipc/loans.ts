@@ -24,8 +24,25 @@ export function registerLoansIpc(): void {
   ipcMain.handle('loans:composition', (_e, loanId: number) => getLoanComposition(loanId))
   ipcMain.handle(
     'loans:pay',
-    (_e, loanId: number, amountPaise: number, date: string, mode: 'cash' | 'bank', bankAccountId?: number) =>
-      recordPayment(loanId, amountPaise, date, mode, bankAccountId, requireSession().userId)
+    (
+      _e,
+      loanId: number,
+      amountPaise: number,
+      date: string,
+      mode: 'cash' | 'bank' | 'cheque',
+      bankAccountId?: number,
+      chequeNo?: string,
+      chequeBank?: string
+    ) =>
+      recordPayment(
+        loanId,
+        amountPaise,
+        date,
+        mode,
+        bankAccountId,
+        requireSession().userId,
+        chequeNo ? { no: chequeNo, bank: chequeBank } : undefined
+      )
   )
 
   // Cheques

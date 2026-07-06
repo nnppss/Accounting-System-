@@ -10,6 +10,7 @@ import type {
   PayExpenseResult
 } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
+import { assertMoneyAccount } from './accounts'
 import { post } from './posting'
 
 /**
@@ -42,7 +43,10 @@ function payExpense(
   if (!Number.isInteger(input.amountPaise) || input.amountPaise <= 0) {
     throw new Error('Payment must be a positive whole number of paise')
   }
-  if (input.mode === 'bank' && !input.bankAccountId) throw new Error('A bank payment needs a bank account')
+  if (input.mode === 'bank') {
+    if (!input.bankAccountId) throw new Error('A bank payment needs a bank account')
+    assertMoneyAccount(input.bankAccountId)
+  }
   const cashBank =
     input.mode === 'cash' ? getSystemAccountId(SYSTEM_ACCOUNTS.CASH) : input.bankAccountId!
   const party = db()
