@@ -20,6 +20,7 @@ import {
   Typography
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PageBanner } from '../components/report'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { BardanaRow } from '@shared/contracts'
@@ -222,14 +223,14 @@ export default function BardanaPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('bardana.title')}
-        </Typography.Title>
-        <Button type="primary" onClick={() => setOpen(true)}>
-          {t('bardana.new')}
-        </Button>
-      </Space>
+      <PageBanner
+        title={t('bardana.title')}
+        extra={
+          <Button type="primary" onClick={() => setOpen(true)}>
+            {t('bardana.new')}
+          </Button>
+        }
+      />
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={6}>
@@ -322,6 +323,7 @@ export default function BardanaPage(): JSX.Element {
 
       <div ref={containerRef}>
         <Table
+          className="pc-report"
           rowKey="id"
           size="small"
           loading={list.isLoading}

@@ -33,8 +33,7 @@ afterEach(() => closeDb())
 describe('Bills — person-wise statement (software.md §3.11)', () => {
   function seed(): void {
     // Ram-kisan stores 100 packets, is charged full-year rent (₹1,000), then sells 50 @ ₹500.
-    createAamad(yearId, {
-      serial: 1,
+    const lot = createAamad(yearId, {
       date: '2026-01-10',
       kisanAccountId: kisan,
       totalPackets: 100,
@@ -45,7 +44,7 @@ describe('Bills — person-wise statement (software.md §3.11)', () => {
       date: '2026-05-01',
       deliveredToType: 'vyapari',
       deliveredToAccountId: buyer,
-      lines: [{ fromKisanAccountId: kisan, room: 1, floor: 1, rack: 1, packets: 50, ratePaise: 50000 }]
+      lines: [{ aamadId: lot, packets: 50, ratePaise: 50000 }]
     })
     // Ram-vyapari takes a direct loan ₹10,000 on 1 Jan (interest accrues from then).
     createLoan(yearId, {

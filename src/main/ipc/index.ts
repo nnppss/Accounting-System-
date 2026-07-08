@@ -3,6 +3,7 @@ import { registerAuditIpc } from './audit'
 import { registerAuthIpc } from './auth'
 import { registerBackupIpc } from './backup'
 import { registerCloseIpc } from './close'
+import { registerDayBookIpc } from './daybook'
 import { registerExpensesIpc } from './expenses'
 import { registerLedgerIpc } from './ledger'
 import { registerLoansIpc } from './loans'
@@ -19,6 +20,7 @@ export function registerIpc(): void {
   registerVouchersIpc()
   registerLedgerIpc()
   registerMoneyBookIpc()
+  registerDayBookIpc()
   registerStockIpc()
   registerLoansIpc()
   registerExpensesIpc()

@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Drawer, Select, Space, Table, Typography } from 'antd'
+import { Drawer, Segmented, Select, Table } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { MoneyBookMonth } from '@shared/contracts'
 import { formatDate, formatINR, MONTH_NAMES } from '../lib/format'
 import { SeverityText } from '../components/Highlight'
+import { PageBanner } from '../components/report'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { DayBookView } from '../components/DayBookView'
+
+type View = 'monthly' | 'day'
 
 export default function MoneyBookPage(): JSX.Element {
   const { t } = useTranslation()
+  const [view, setView] = useState<View>('monthly')
   const [accountId, setAccountId] = useState<number | undefined>()
   const [month, setMonth] = useState<number | null>(null)
 
@@ -98,50 +103,70 @@ export default function MoneyBookPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('moneyBook.title')}
-        </Typography.Title>
-        <Select
-          style={{ width: 240 }}
-          placeholder={t('moneyBook.account')}
-          value={accountId}
-          onChange={(v) => setAccountId(v)}
-          options={(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))}
-        />
-      </Space>
+      <PageBanner
+        title={t('moneyBook.title')}
+        extra={
+          <>
+            <Segmented
+              value={view}
+              onChange={(v) => setView(v as View)}
+              options={[
+                { value: 'monthly', label: t('moneyBook.monthly') },
+                { value: 'day', label: t('dayBook.title') }
+              ]}
+            />
+            {view === 'monthly' && (
+              <Select
+                style={{ width: 240 }}
+                placeholder={t('moneyBook.account')}
+                value={accountId}
+                onChange={(v) => setAccountId(v)}
+                options={(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))}
+              />
+            )}
+          </>
+        }
+      />
 
-      <div ref={containerRef}>
-        <Table
-          rowKey="month"
-          size="small"
-          loading={summary.isLoading}
-          columns={columns}
-          dataSource={monthData}
-          pagination={false}
-          rowClassName={rowClassName}
-          onRow={(r: MoneyBookMonth) => ({
-            onClick: () => setMonth(r.month),
-            style: { cursor: 'pointer' }
-          })}
-        />
-      </div>
+      {view === 'day' ? (
+        <DayBookView />
+      ) : (
+        <>
+          <div ref={containerRef}>
+            <Table
+              className="pc-report"
+              rowKey="month"
+              size="small"
+              loading={summary.isLoading}
+              columns={columns}
+              dataSource={monthData}
+              pagination={false}
+              rowClassName={rowClassName}
+              onRow={(r: MoneyBookMonth) => ({
+                onClick: () => setMonth(r.month),
+                style: { cursor: 'pointer' }
+              })}
+            />
+          </div>
 
-      <Drawer
-        title={month ? `${MONTH_NAMES[month - 1]} — ${t('moneyBook.title')}` : ''}
-        open={month !== null}
-        onClose={() => setMonth(null)}
-        width={680}
-      >
-        <Table
-          rowKey="voucherId"
-          size="small"
-          loading={detail.isLoading}
-          columns={detailColumns}
-          dataSource={detail.data ?? []}
-          pagination={false}
-        />
-      </Drawer>
+          <Drawer
+            title={month ? `${MONTH_NAMES[month - 1]} — ${t('moneyBook.title')}` : ''}
+            open={month !== null}
+            onClose={() => setMonth(null)}
+            width={680}
+          >
+            <Table
+              className="pc-report"
+              rowKey="voucherId"
+              size="small"
+              loading={detail.isLoading}
+              columns={detailColumns}
+              dataSource={detail.data ?? []}
+              pagination={false}
+            />
+          </Drawer>
+        </>
+      )}
     </div>
   )
 }

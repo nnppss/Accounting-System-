@@ -240,8 +240,8 @@ export const cheque = sqliteTable(
     bank: text('bank'),
     direction: text('direction', { enum: CHEQUE_DIRECTIONS }).notNull(),
     amountPaise: integer('amount_paise').notNull(),
-    date: text('date'), // date written on the cheque
-    issueDate: text('issue_date'),
+    date: text('date'), // issue date — the date written on the cheque
+    receiveDate: text('issue_date'), // day the cheque came into the office (legacy column name)
     clearanceDate: text('clearance_date'),
     status: text('status', { enum: CHEQUE_STATUSES }).notNull().default('pending'),
     bankAccountId: integer('bank_account_id').references(() => account.id),
@@ -405,7 +405,11 @@ export const nikasi = sqliteTable(
   })
 )
 
-/** A nikasi line: packets taken from one kisan's stock at a location, at a per-packet sale rate. */
+/**
+ * A nikasi line: packets taken from one lot (aamad) at a location, at a per-packet sale rate.
+ * The operator picks a lot + packets; the service allocates them across the lot's racks and
+ * writes one line per rack. `aamadId` records which lot; nullable only for pre-lot rows.
+ */
 export const nikasiLine = sqliteTable(
   'nikasi_line',
   {
@@ -413,6 +417,7 @@ export const nikasiLine = sqliteTable(
     nikasiId: integer('nikasi_id')
       .notNull()
       .references(() => nikasi.id),
+    aamadId: integer('aamad_id').references(() => aamad.id),
     fromKisanAccountId: integer('from_kisan_account_id')
       .notNull()
       .references(() => account.id),
@@ -423,7 +428,10 @@ export const nikasiLine = sqliteTable(
     weightKg: integer('weight_kg'), // recorded only; not used in money
     ratePaise: integer('rate_paise').notNull()
   },
-  (t) => ({ byNikasi: index('nikasi_line_nikasi_idx').on(t.nikasiId) })
+  (t) => ({
+    byNikasi: index('nikasi_line_nikasi_idx').on(t.nikasiId),
+    byAamad: index('nikasi_line_aamad_idx').on(t.aamadId)
+  })
 )
 
 // ========================= LOANS (Phase 3) =========================

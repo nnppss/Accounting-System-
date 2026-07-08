@@ -38,8 +38,7 @@ describe('Phase 6 done/verify — close a worked year, roll it back, re-close', 
     const gopal = makeAccount('Gopal Vyapari', 'vyapari', 'Sundry Debtors')
 
     // Kisan stores 200 packets (₹2,000 rent), sells 80 @ ₹400 to Gopal (₹32,000 proceeds).
-    createAamad(yearId, {
-      serial: 1,
+    const lot = createAamad(yearId, {
       date: '2026-01-08',
       kisanAccountId: kisan,
       totalPackets: 200,
@@ -50,7 +49,7 @@ describe('Phase 6 done/verify — close a worked year, roll it back, re-close', 
       date: '2026-04-15',
       deliveredToType: 'vyapari',
       deliveredToAccountId: gopal,
-      lines: [{ fromKisanAccountId: kisan, room: 1, floor: 1, rack: 1, packets: 80, ratePaise: 40000 }]
+      lines: [{ aamadId: lot, packets: 80, ratePaise: 40000 }]
     })
     // Hari (as a vyapari) takes a ₹20,000 direct loan on 1 Jan.
     createLoan(yearId, {

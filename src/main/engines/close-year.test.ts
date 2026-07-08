@@ -46,7 +46,6 @@ beforeEach(() => {
 
   // Kisan stores 200 packets → owes ₹2,000 full-year rent (Dr 200,000 paise).
   createAamad(yearId, {
-    serial: 1,
     date: '2026-01-08',
     kisanAccountId: kisan,
     totalPackets: 200,

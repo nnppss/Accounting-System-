@@ -8,28 +8,30 @@ import type { ThemeConfig } from 'antd'
  * up the new look without any page having to change its markup or behaviour.
  */
 
-// Design-system palette (Material 3 derived).
+// Design-system palette — Rippling "berry" ledger family (see the template zips).
+// Berry #7a005d headers, deep-green positives, salmon section bars, colour-coded status pills.
 export const palette = {
-  primary: '#008080', // teal — active nav, buttons, links
-  primaryContainer: '#006666', // darker teal — hover/active
-  primaryFixed: '#b2d8d8', // light teal — avatars / soft accents
+  primary: '#7a005d', // berry — active nav, buttons, links, banners
+  primaryContainer: '#5c0046', // darker berry — hover/active
+  primaryFixed: '#eab8f2', // light purple — avatars / soft accents
   onPrimary: '#ffffff',
-  success: '#419873', // green — positive balances
-  error: '#ba1a1a', // red — danger: defaulters, irreversible actions
-  errorContainer: '#fdf2f2', // faint red — danger row/surface tint
-  warning: '#c77800', // amber — attention: accruing interest, pending items, exceptions
-  warningContainer: '#fdf5e9', // faint amber — warning row/surface tint
-  info: '#0086ad', // teal-blue — neutral information
-  surface: '#e7eff6', // app background (soft cool)
+  section: '#f3c7ba', // salmon — Rippling section sub-bars
+  success: '#0d674d', // deep green — positive balances / "On Track"
+  error: '#ba1a1a', // red — danger: defaulters, "Over Budget", irreversible actions
+  errorContainer: '#fbe9ef', // faint berry-red — danger row/surface tint
+  warning: '#b5710a', // amber/gold — attention: accruing interest, "Near Limit", exceptions
+  warningContainer: '#fbf1dc', // faint gold — warning row/surface tint
+  info: '#7a005d', // folded into berry — neutral information
+  surface: '#f7f3f6', // app background (soft warm-neutral)
   surfaceContainerLowest: '#ffffff', // cards / sider / header / boxes
-  surfaceContainerLow: '#eef4fa', // table header / hover / subtle fills
-  surfaceContainer: '#dde8f1',
-  surfaceContainerHigh: '#cdddec',
+  surfaceContainerLow: '#f5e9f3', // table header / hover / subtle fills (soft lilac)
+  surfaceContainer: '#ecdcea',
+  surfaceContainerHigh: '#e3cde0',
   field: '#ffffff', // input controls
-  onSurface: '#1f3344', // primary ink (dark slate)
-  onSurfaceVariant: '#5b7385', // secondary text
-  outline: '#90a4b3',
-  outlineVariant: '#c9d8e6' // soft cool borders
+  onSurface: '#2a1c27', // primary ink (warm dark)
+  onSurfaceVariant: '#7a6a75', // secondary text
+  outline: '#b79caf',
+  outlineVariant: '#e3d3de' // soft warm borders
 } as const
 
 const fontFamily =
@@ -49,7 +51,7 @@ export const theme: ThemeConfig = {
     colorBorder: palette.outlineVariant,
     colorBorderSecondary: palette.surfaceContainer,
     colorText: palette.onSurface,
-    colorTextHeading: '#2a4d69',
+    colorTextHeading: '#4a0039',
     colorTextSecondary: palette.onSurfaceVariant,
     colorTextTertiary: palette.outline,
     fontFamily,
@@ -85,7 +87,7 @@ export const theme: ThemeConfig = {
     },
     Table: {
       headerBg: palette.surfaceContainerLow,
-      headerColor: palette.onSurfaceVariant,
+      headerColor: palette.primary,
       headerSplitColor: 'transparent',
       rowHoverBg: palette.surfaceContainerLow,
       borderColor: palette.surfaceContainer,

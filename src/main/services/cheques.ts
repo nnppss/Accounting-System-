@@ -1,6 +1,6 @@
 import { aliasedTable, desc, eq, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, cheque, voucher } from '../data/schema'
+import { account, cheque, person, voucher } from '../data/schema'
 import type { ChequeRow } from '../../shared/contracts'
 import type { ChequeStatus } from '../../shared/enums'
 
@@ -22,19 +22,21 @@ export function listCheques(yearId: number, status?: ChequeStatus): ChequeRow[] 
       status: cheque.status,
       partyAccountId: cheque.partyAccountId,
       partyName: party.name,
+      partySonOf: person.sonOf,
       bankAccountId: cheque.bankAccountId,
       bankName: bank.name,
       amountPaise: cheque.amountPaise,
       no: cheque.no,
       bank: cheque.bank,
       date: cheque.date,
-      issueDate: cheque.issueDate,
+      receiveDate: cheque.receiveDate,
       clearanceDate: cheque.clearanceDate,
       yearId: voucher.yearId
     })
     .from(cheque)
     .innerJoin(voucher, eq(cheque.voucherId, voucher.id))
     .leftJoin(party, eq(cheque.partyAccountId, party.id))
+    .leftJoin(person, eq(party.personId, person.id))
     .leftJoin(bank, eq(cheque.bankAccountId, bank.id))
     .where(
       status
@@ -50,13 +52,14 @@ export function listCheques(yearId: number, status?: ChequeStatus): ChequeRow[] 
     status: r.status,
     partyAccountId: r.partyAccountId ?? 0,
     partyName: r.partyName ?? '—',
+    partySonOf: r.partySonOf,
     bankAccountId: r.bankAccountId ?? 0,
     bankName: r.bankName ?? '—',
     amountPaise: r.amountPaise,
     no: r.no,
     bank: r.bank,
     date: r.date,
-    issueDate: r.issueDate,
+    receiveDate: r.receiveDate,
     clearanceDate: r.clearanceDate
   }))
 }

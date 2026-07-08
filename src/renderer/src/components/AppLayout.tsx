@@ -52,6 +52,7 @@ import AccountLedgerPage from '../pages/AccountLedgerPage'
 import PeoplePage from '../pages/PeoplePage'
 import VouchersPage from '../pages/VouchersPage'
 import TrialBalancePage from '../pages/TrialBalancePage'
+import FinancialsPage from '../pages/FinancialsPage'
 import MoneyBookPage from '../pages/MoneyBookPage'
 import AamadPage from '../pages/AamadPage'
 import MapsPage from '../pages/MapsPage'
@@ -217,7 +218,8 @@ export default function AppLayout(): JSX.Element {
       label: t('nav.group.books'),
       children: [
         { key: '/vouchers', icon: <BankOutlined />, label: t('nav.vouchers') },
-        { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') }
+        { key: '/trial-balance', icon: <BookOutlined />, label: t('nav.trialBalance') },
+        { key: '/financials', icon: <FileTextOutlined />, label: t('nav.financials') }
       ]
     },
     {
@@ -407,6 +409,7 @@ export default function AppLayout(): JSX.Element {
             <Route path="/party" element={<PartyPage />} />
             <Route path="/vouchers" element={<VouchersPage />} />
             <Route path="/trial-balance" element={<TrialBalancePage />} />
+            <Route path="/financials" element={<FinancialsPage />} />
             <Route path="/money-book" element={<MoneyBookPage />} />
             <Route path="/close" element={<ClosePage />} />
             <Route path="/audit" element={<AuditPage />} />

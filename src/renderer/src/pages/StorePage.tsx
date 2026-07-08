@@ -15,6 +15,7 @@ import dayjs from 'dayjs'
 import { useSession } from '../store/session'
 import { DATE_INPUT_FORMATS, formatINR } from '../lib/format'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { PageBanner } from '../components/report'
 
 export default function StorePage(): JSX.Element {
   const { t } = useTranslation()
@@ -53,9 +54,7 @@ export default function StorePage(): JSX.Element {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        {t('nav.store')}
-      </Typography.Title>
+      <PageBanner title={t('nav.store')} />
 
       <Card title={t('store.title')} style={{ maxWidth: 520, marginBottom: 24 }}>
         {store.data && (

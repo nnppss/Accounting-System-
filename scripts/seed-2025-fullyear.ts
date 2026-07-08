@@ -130,8 +130,18 @@ createContra({ yearId: Y, date: '2025-10-31', fromAccountId: HDFC, toAccountId: 
 // 4) AAMAD — FILLING SEASON (mid-Feb → mid-Mar)
 // ============================================================
 log('\n=== AAMAD (filling season) ===')
+// Serials are now auto; the `serial` arg is just a log label. Each location is registered so
+// nikasi lines below can resolve their lot (aamad) from the rack they name.
+const lotAt = new Map<string, number>()
 const A = (serial: number, date: string, k: number, total: number, locs: Array<{ room: number; floor: number; rack: number; packets: number }>): void => {
-  createAamad(Y, { serial, date, kisanAccountId: k, totalPackets: total, locations: locs }, U); did(`2025-${serial} ${date} ${total} pkts (${locs.length} loc)`)
+  const id = createAamad(Y, { date, kisanAccountId: k, totalPackets: total, locations: locs }, U)
+  for (const l of locs) lotAt.set(`${l.room}:${l.floor}:${l.rack}`, id)
+  did(`lot#${serial} ${date} ${total} pkts (${locs.length} loc)`)
+}
+const lotOf = (room: number, floor: number, rack: number): number => {
+  const id = lotAt.get(`${room}:${floor}:${rack}`)
+  if (!id) throw new Error(`seed: no lot placed at R${room}/F${floor}/Rack${rack}`)
+  return id
 }
 A(1, '2025-02-15', SAHIL, 600, [{ room: 1, floor: 1, rack: 1, packets: 300 }, { room: 1, floor: 1, rack: 2, packets: 300 }])
 A(2, '2025-02-16', SP, 700, [{ room: 4, floor: 1, rack: 40, packets: 400 }, { room: 4, floor: 2, rack: 40, packets: 300 }])
@@ -171,7 +181,7 @@ const sale = (date: string, v: number, lines: Array<{ k: number; room: number; f
   const r = createNikasi(Y, {
     date, deliveredToType: 'vyapari', deliveredToAccountId: v,
     vehicleNo: extra.vehicle, receivedBy: extra.recv, bhadaRecoveredPaise: extra.bhada ? R(extra.bhada) : undefined,
-    lines: lines.map((l) => ({ fromKisanAccountId: l.k, room: l.room, floor: l.floor, rack: l.rack, packets: l.pkts, weightKg: l.wt, ratePaise: R(l.rate) }))
+    lines: lines.map((l) => ({ aamadId: lotOf(l.room, l.floor, l.rack), packets: l.pkts, weightKg: l.wt, ratePaise: R(l.rate) }))
   }, U)
   did(`SALE ${date} bill#${r.billNo} → vch ${r.voucherId} (${lines.length} line)`)
 }
@@ -199,7 +209,7 @@ sale('2025-10-28', MANOJ, [{ k: NANU, room: 1, floor: 5, rack: 20, pkts: 500, ra
 
 // Self-withdrawals (kisan takes own stock — physical only, no posting)
 const self = (date: string, k: number, room: number, floor: number, rack: number, pkts: number): void => {
-  const r = createNikasi(Y, { date, deliveredToType: 'kisan', deliveredToAccountId: k, receivedBy: 'Self', lines: [{ fromKisanAccountId: k, room, floor, rack, packets: pkts, ratePaise: 0 }] }, U)
+  const r = createNikasi(Y, { date, deliveredToType: 'kisan', deliveredToAccountId: k, receivedBy: 'Self', lines: [{ aamadId: lotOf(room, floor, rack), packets: pkts, ratePaise: 0 }] }, U)
   did(`SELF-WITHDRAW ${date} bill#${r.billNo} (physical, voucher=${r.voucherId ?? 'none'})`)
 }
 self('2025-05-20', SP, 4, 2, 40, 100)
@@ -300,10 +310,9 @@ setDefaulter(DHARAMVEER, true, U); did('Dharamveer flagged DEFAULTER (₹60,000 
 // 15) NEGATIVE / EDGE CASES — these MUST be rejected
 // ============================================================
 log('\n=== NEGATIVE / EDGE CASES (must reject) ===')
-expectReject('over-stock nikasi (draw > available)', () => createNikasi(Y, { date: '2025-10-30', deliveredToType: 'vyapari', deliveredToAccountId: MANOJ, lines: [{ fromKisanAccountId: SAHIL, room: 1, floor: 1, rack: 1, packets: 9999, ratePaise: R(450) }] }, U))
-expectReject('aamad totals mismatch', () => createAamad(Y, { serial: 9001, date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 100, locations: [{ room: 1, floor: 1, rack: 3, packets: 50 }] }, U))
-expectReject('aamad rack out of bounds (rack 9999)', () => createAamad(Y, { serial: 9002, date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 10, locations: [{ room: 1, floor: 1, rack: 9999, packets: 10 }] }, U))
-expectReject('aamad duplicate serial in year', () => createAamad(Y, { serial: 1, date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 10, locations: [{ room: 1, floor: 1, rack: 4, packets: 10 }] }, U))
+expectReject('over-stock nikasi (draw > available)', () => createNikasi(Y, { date: '2025-10-30', deliveredToType: 'vyapari', deliveredToAccountId: MANOJ, lines: [{ aamadId: lotOf(1, 1, 1), packets: 9999, ratePaise: R(450) }] }, U))
+expectReject('aamad locations exceed total', () => createAamad(Y, { date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 100, locations: [{ room: 1, floor: 1, rack: 3, packets: 150 }] }, U))
+expectReject('aamad rack out of bounds (rack 9999)', () => createAamad(Y, { date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 10, locations: [{ room: 1, floor: 1, rack: 9999, packets: 10 }] }, U))
 expectReject('loan amount zero', () => createLoan(Y, { category: 'kisan', accountId: SAHIL, date: '2025-01-01', amountPaise: 0, mode: 'cash', nature: 'direct' }, U))
 expectReject('contra same account', () => createContra({ yearId: Y, date: '2025-01-01', fromAccountId: CASH_ID, toAccountId: CASH_ID, amountPaise: R(100) }))
 expectReject('repayment exceeds outstanding', () => recordPayment(l4.loanId, R(99999999), '2025-12-31', 'cash', undefined, U))

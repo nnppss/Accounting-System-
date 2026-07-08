@@ -29,8 +29,7 @@ describe('Phase 2 done/verify — worked settlement', () => {
     const cash = getSystemAccountId(SYSTEM_ACCOUNTS.CASH)
 
     // 1) Kisan stores 200 packets across two racks.
-    createAamad(yearId, {
-      serial: 1,
+    const lot = createAamad(yearId, {
       date: '2026-02-10',
       kisanAccountId: kisan,
       totalPackets: 200,
@@ -49,7 +48,7 @@ describe('Phase 2 done/verify — worked settlement', () => {
     expect(getAccountBalance(kisan, yearId)).toBe(200 * RENT) // ₹3,000 Dr so far
     expect(getStandingBhada(kisan, yearId).standingPaise).toBe(200 * RENT)
 
-    // 4) Nikasi sale: vyapari buys 150 packets (120 + 30) at the sauda rate.
+    // 4) Nikasi sale: vyapari buys 150 packets from the lot (drained rack1 120 + rack2 30).
     const proceeds = 150 * RATE // ₹75,000
     const res = createNikasi(yearId, {
       date: '2026-05-15',
@@ -57,10 +56,7 @@ describe('Phase 2 done/verify — worked settlement', () => {
       deliveredToAccountId: vyapari,
       vehicleNo: 'UP14 AB 1234',
       receivedBy: 'Mohan',
-      lines: [
-        { fromKisanAccountId: kisan, room: 1, floor: 1, rack: 1, packets: 120, ratePaise: RATE },
-        { fromKisanAccountId: kisan, room: 1, floor: 1, rack: 2, packets: 30, ratePaise: RATE }
-      ]
+      lines: [{ aamadId: lot, packets: 150, ratePaise: RATE }]
     })
     expect(res.voucherId).not.toBeNull()
 

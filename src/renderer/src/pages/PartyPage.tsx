@@ -23,6 +23,7 @@ import { ACCOUNT_TYPES, LOAN_CATEGORIES, type AccountType } from '@shared/enums'
 import type { NumericFilter, NumericOp, PartyCriteria, PartyRow } from '@shared/contracts'
 import { balanceLabel, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { BalanceAmount } from '../components/Highlight'
+import { PageBanner } from '../components/report'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
 
@@ -234,9 +235,7 @@ export default function PartyPage(): JSX.Element {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        {t('party.title')}
-      </Typography.Title>
+      <PageBanner title={t('party.title')} />
 
       <Card style={{ marginBottom: 16 }}>
         <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>

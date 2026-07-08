@@ -22,6 +22,7 @@ import type { CloseException, CloseSummary } from '@shared/contracts'
 import { useSession } from '../store/session'
 import { formatINR } from '../lib/format'
 import { SeverityTag } from '../components/Highlight'
+import { PageBanner } from '../components/report'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 
 /**
@@ -94,15 +95,11 @@ export default function ClosePage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} align="center">
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('close.title')}
-        </Typography.Title>
-        {closed ? <Tag color="red">{t('close.closedTag')}</Tag> : <Tag color="green">{t('close.openTag')}</Tag>}
-      </Space>
-      <Typography.Paragraph type="secondary">
-        {t('close.subtitle', { year, next: nextYear })}
-      </Typography.Paragraph>
+      <PageBanner
+        title={t('close.title')}
+        subtitle={t('close.subtitle', { year, next: nextYear })}
+        extra={closed ? <Tag color="red">{t('close.closedTag')}</Tag> : <Tag color="green">{t('close.openTag')}</Tag>}
+      />
 
       {closed && (
         <Alert

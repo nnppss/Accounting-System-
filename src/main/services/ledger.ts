@@ -1,6 +1,7 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, subgroup, voucher, voucherEntry } from '../data/schema'
+import { account, cheque, subgroup, voucher, voucherEntry } from '../data/schema'
+import { SYSTEM_ACCOUNTS } from '../data/seed'
 import type { LedgerLine, TrialBalance, TrialBalanceRow } from '../../shared/contracts'
 
 /**
@@ -16,6 +17,7 @@ export function getAccountLedger(accountId: number, yearId: number): LedgerLine[
       voucherId: voucher.id,
       voucherNo: voucher.no,
       type: voucher.type,
+      sourceModule: voucher.sourceModule,
       date: voucher.date,
       narration: voucher.narration,
       tag: voucherEntry.tag,
@@ -30,11 +32,51 @@ export function getAccountLedger(accountId: number, yearId: number): LedgerLine[
     .orderBy(asc(voucher.date), asc(voucher.no), asc(voucherEntry.id))
     .all()
 
+  const modeByVoucher = paymentModes(
+    rows.map((r) => r.voucherId),
+    accountId
+  )
+
   let balance = 0
   return rows.map((r) => {
     balance += r.drPaise - r.crPaise
-    return { ...r, balancePaise: balance }
+    return { ...r, balancePaise: balance, mode: modeByVoucher.get(r.voucherId) ?? '' }
   })
+}
+
+/**
+ * The money mode per voucher — read off its cash/bank/clearing counter-leg (the party's own entry
+ * excluded). A cheque record wins (it carries the number + bank); otherwise a bank counter-leg
+ * shows the bank's name and a Cash leg shows 'Cash'. Vouchers with no money leg (Bhada/Nikasi
+ * journals) simply don't appear in the map, so their mode reads empty.
+ */
+function paymentModes(voucherIds: number[], partyAccountId: number): Map<number, string> {
+  const out = new Map<number, string>()
+  if (voucherIds.length === 0) return out
+
+  const legs = db()
+    .select({ voucherId: voucherEntry.voucherId, name: account.name, type: account.type })
+    .from(voucherEntry)
+    .innerJoin(account, eq(voucherEntry.accountId, account.id))
+    .where(and(inArray(voucherEntry.voucherId, voucherIds), ne(voucherEntry.accountId, partyAccountId)))
+    .all()
+  for (const leg of legs) {
+    if (out.has(leg.voucherId)) continue
+    if (leg.type === 'bank') out.set(leg.voucherId, leg.name)
+    else if (leg.name === SYSTEM_ACCOUNTS.CASH) out.set(leg.voucherId, 'Cash')
+  }
+
+  // Cheques carry the number/bank and take precedence over the plain 'Cheques in Clearing' leg.
+  const cheques = db()
+    .select({ voucherId: cheque.voucherId, no: cheque.no, bank: cheque.bank })
+    .from(cheque)
+    .where(inArray(cheque.voucherId, voucherIds))
+    .all()
+  for (const c of cheques) {
+    if (c.voucherId == null) continue
+    out.set(c.voucherId, `Cheque ${c.no}${c.bank ? ` — ${c.bank}` : ''}`)
+  }
+  return out
 }
 
 /** Net signed balance (Dr positive) for one account in one year. */

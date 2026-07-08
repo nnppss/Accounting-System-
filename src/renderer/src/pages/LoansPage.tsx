@@ -18,6 +18,7 @@ import {
   Typography
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PageBanner } from '../components/report'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { Bill, LoanRow } from '@shared/contracts'
@@ -97,7 +98,16 @@ export default function LoansPage(): JSX.Element {
 
   const columns = [
     { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
-    { title: t('loans.party'), dataIndex: 'accountName' },
+    {
+      title: t('loans.party'),
+      dataIndex: 'accountName',
+      render: (name: string, row: LoanRow) => (
+        <>
+          {name}
+          {row.sonOf && <Typography.Text type="secondary"> s/o {row.sonOf}</Typography.Text>}
+        </>
+      )
+    },
     {
       title: t('loans.category'),
       dataIndex: 'category',
@@ -176,14 +186,14 @@ export default function LoansPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('loans.title')}
-        </Typography.Title>
-        <Button type="primary" onClick={() => setOpen(true)}>
-          {t('loans.new')}
-        </Button>
-      </Space>
+      <PageBanner
+        title={t('loans.title')}
+        extra={
+          <Button type="primary" onClick={() => setOpen(true)}>
+            {t('loans.new')}
+          </Button>
+        }
+      />
 
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect
@@ -239,6 +249,7 @@ export default function LoansPage(): JSX.Element {
 
       <div ref={containerRef}>
         <Table
+          className="pc-report"
           rowKey="id"
           size="small"
           loading={loans.isLoading}

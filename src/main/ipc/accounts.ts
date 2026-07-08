@@ -19,6 +19,7 @@ import {
 } from '../services/accounts'
 import type { AccountIdentityInput } from '../../shared/contracts'
 import { getAccountLedger } from '../services/ledger'
+import { getAccountOverview } from '../services/overview'
 import { verifyPassword } from '../auth/auth'
 import { requireOpenYear, requireSession } from '../session'
 
@@ -54,6 +55,9 @@ export function registerAccountsIpc(): void {
   )
   ipcMain.handle('accounts:ledger', (_e, accountId: number) =>
     getAccountLedger(accountId, requireSession().yearId)
+  )
+  ipcMain.handle('accounts:overview', (_e, accountId: number) =>
+    getAccountOverview(accountId, requireSession().yearId)
   )
   ipcMain.handle(
     'accounts:setOpening',

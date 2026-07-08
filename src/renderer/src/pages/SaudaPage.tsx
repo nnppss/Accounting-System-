@@ -8,8 +8,7 @@ import {
   Modal,
   Popconfirm,
   Space,
-  Table,
-  Typography
+  Table
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -20,6 +19,7 @@ import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { PageBanner } from '../components/report'
 
 export default function SaudaPage(): JSX.Element {
   const { t } = useTranslation()
@@ -120,14 +120,14 @@ export default function SaudaPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('sauda.title')}
-        </Typography.Title>
-        <Button type="primary" onClick={() => setOpen(true)}>
-          {t('sauda.new')}
-        </Button>
-      </Space>
+      <PageBanner
+        title={t('sauda.title')}
+        extra={
+          <Button type="primary" onClick={() => setOpen(true)}>
+            {t('sauda.new')}
+          </Button>
+        }
+      />
 
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect

@@ -15,6 +15,7 @@ import {
   Typography
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PageBanner, SectionBar } from '../components/report'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { ExpenseRow, LoadingContractorYearRow } from '@shared/contracts'
@@ -116,17 +117,17 @@ export default function ExpensesPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('expenses.title')}
-        </Typography.Title>
-        <Space>
-          <Button onClick={() => setChargesOpen(true)}>{t('expenses.contractorCharges')}</Button>
-          <Button type="primary" onClick={() => setOpen(true)}>
-            {t('expenses.new')}
-          </Button>
-        </Space>
-      </Space>
+      <PageBanner
+        title={t('expenses.title')}
+        extra={
+          <>
+            <Button onClick={() => setChargesOpen(true)}>{t('expenses.contractorCharges')}</Button>
+            <Button type="primary" onClick={() => setOpen(true)}>
+              {t('expenses.new')}
+            </Button>
+          </>
+        }
+      />
 
       <Space style={{ marginBottom: 16 }} wrap>
         <Select
@@ -184,6 +185,7 @@ export default function ExpensesPage(): JSX.Element {
 
       <div ref={containerRef}>
       <Table
+        className="pc-report"
         rowKey="voucherId"
         size="small"
         loading={salary.isLoading || loading.isLoading}
@@ -363,10 +365,9 @@ function ContractorChargesDrawer({ open, onClose }: { open: boolean; onClose: ()
 
   return (
     <Drawer open={open} onClose={onClose} width={720} title={t('expenses.contractorCharges')}>
-      <Typography.Title level={5} style={{ marginTop: 0 }}>
-        {t('expenses.yearCharges')}
-      </Typography.Title>
+      <SectionBar>{t('expenses.yearCharges')}</SectionBar>
       <Table
+        className="pc-report"
         rowKey="accountId"
         size="small"
         loading={years.isLoading}

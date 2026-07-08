@@ -12,12 +12,19 @@ export const SUBGROUP_SEED: ReadonlyArray<{ name: string; nature: SubgroupNature
   { name: 'Capital Account', nature: 'capital' },
   { name: 'Cash and Bank', nature: 'asset' },
   { name: 'Direct Expense', nature: 'expense' },
+  { name: 'Indirect Expense', nature: 'expense' },
   { name: 'Farmer', nature: 'asset' },
   { name: 'Sundry Creditors', nature: 'liability' },
   { name: 'Sundry Debtors', nature: 'asset' },
   { name: 'Secured Loans', nature: 'liability' },
+  { name: 'Duties & Taxes', nature: 'liability' },
+  { name: 'Fixed Assets', nature: 'asset' },
+  { name: 'Current Assets', nature: 'asset' },
+  { name: 'Loans & Advances (Asset)', nature: 'asset' },
   { name: 'Revenue Account', nature: 'income' },
-  { name: 'Income from Other Resource', nature: 'income' }
+  { name: 'Income from Other Resource', nature: 'income' },
+  { name: 'Indirect Income', nature: 'income' }
+  // ponytail: add Investments/Provisions here (one line each) if the books ever need them.
 ]
 
 /**

@@ -1,9 +1,11 @@
 /* Global chrome for the Paritosh Cold makeover. Purely cosmetic — no layout
    behaviour is changed here. */
 
+/* These mirror the Rippling "berry" palette in theme.ts — keep in sync with `palette` there. */
 :root {
-  --pc-surface: #e7eff6;
-  --pc-on-surface-variant: #5b7385;
+  --pc-surface: #f7f3f6;
+  --pc-on-surface-variant: #7a6a75;
+  --pc-primary: #7a005d;
 }
 
 html,
@@ -37,12 +39,18 @@ body {
   background: #fbeeda;
 }
 
-/* Keyboard-navigated active row — subtle teal tint matching the app's primary colour. */
+/* Keyboard-navigated active row — subtle lilac tint matching the app's berry primary. */
 .ant-table-tbody > tr.pc-row-active > td {
-  background: #e1f5ee;
+  background: #f6e9f4;
 }
 .ant-table-tbody > tr.pc-row-active:hover > td {
-  background: #c5ead9;
+  background: #efd9ec;
+}
+
+/* Rippling look: report tables carry a berry underline beneath the column headers
+   (matches the 3px header rule in the templates). Opt-in via `className="pc-report"`. */
+.pc-report .ant-table-thead > tr > th {
+  border-bottom: 2px solid var(--pc-primary);
 }
 
 /* Keyboard focus emphasis on form controls, so the Tally-style cursor position is
@@ -53,7 +61,7 @@ body {
 .ant-input-number-focused,
 .ant-picker-focused,
 .ant-select-focused .ant-select-selector {
-  box-shadow: 0 0 0 2px rgba(0, 128, 128, 0.18) !important;
+  box-shadow: 0 0 0 2px rgba(122, 0, 93, 0.18) !important;
 }
 
 /* Top section nav: tame AntD's default horizontal-menu chrome. AntD animates a bottom-border
@@ -73,12 +81,12 @@ body {
 #pc-top-nav.ant-menu-horizontal > .ant-menu-submenu-active .ant-menu-submenu-title,
 #pc-top-nav.ant-menu-horizontal > .ant-menu-submenu-open .ant-menu-submenu-title {
   background: transparent;
-  color: #008080;
+  color: var(--pc-primary);
 }
 #pc-top-nav.ant-menu-horizontal > .ant-menu-item-selected,
 #pc-top-nav.ant-menu-horizontal > .ant-menu-submenu-selected .ant-menu-submenu-title {
-  color: #008080;
-  box-shadow: inset 0 -2px 0 0 #008080;
+  color: var(--pc-primary);
+  box-shadow: inset 0 -2px 0 0 var(--pc-primary);
 }
 
 /* Keyboard focus on the top section nav (reached by pressing Esc): mark the group the arrow keys
@@ -88,7 +96,7 @@ body {
 #pc-top-nav .ant-menu-submenu-title:focus,
 #pc-top-nav .ant-menu-submenu-title:focus-visible {
   outline: none;
-  box-shadow: inset 0 -2px 0 0 #008080;
+  box-shadow: inset 0 -2px 0 0 var(--pc-primary);
 }
 
 /* Slim, muted scrollbars to match the design system. */
@@ -100,11 +108,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #c9d8e6;
+  background: #e3d3de;
   border-radius: 10px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #90a4b3;
+  background: #b79caf;
 }
 
 /* Section-jump panel rising from the footer hint bar. */
@@ -117,4 +125,46 @@ body {
     transform: translateY(0);
     opacity: 1;
   }
+}
+
+/* Banner action buttons: contrasting white-on-berry so they pop off the banner. */
+.pc-banner-actions .ant-btn-primary {
+  background: #fff;
+  border-color: #fff;
+  color: var(--pc-primary);
+}
+.pc-banner-actions .ant-btn-primary:not(:disabled):hover {
+  background: #f3c7ba;
+  border-color: #f3c7ba;
+  color: #5c0046;
+}
+
+/* Day Book date strip: clickable day chips, selected in berry, today outlined. Width must match CHIP in DayBookView. */
+.pc-day-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 66px;
+  flex: 0 0 auto;
+  padding: 4px 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #3a2233;
+  line-height: 1.15;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.pc-day-chip:hover {
+  background: #f3e6ef;
+}
+.pc-day-chip.is-today:not([aria-pressed='true']) {
+  border-color: var(--pc-primary);
+}
+.pc-day-chip[aria-pressed='true'] {
+  background: var(--pc-primary);
+  color: #fff;
+}
+.pc-day-chip[aria-pressed='true']:hover {
+  background: #5c0046;
 }

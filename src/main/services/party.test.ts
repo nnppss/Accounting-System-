@@ -50,7 +50,6 @@ let aamadSeq = 0
 function bring(kisanAccountId: number, packets: number): void {
   aamadSeq++
   createAamad(yearId, {
-    serial: aamadSeq,
     date: '2026-01-15',
     kisanAccountId,
     totalPackets: packets,

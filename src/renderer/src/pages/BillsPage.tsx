@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { Input, Segmented, Space, Table, Tag, Typography } from 'antd'
+import { Input, Segmented, Space, Table, Tag } from 'antd'
+import { PageBanner } from '../components/report'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -82,19 +83,19 @@ export default function BillsPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} align="center" wrap>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('bills.title')}
-        </Typography.Title>
-        <Segmented
-          value={mode}
-          onChange={(v) => setMode(v as BillMode)}
-          options={[
-            { label: t('bills.tab.bill'), value: 'bill' },
-            { label: t('bills.tab.salary'), value: 'salary' }
-          ]}
-        />
-      </Space>
+      <PageBanner
+        title={t('bills.title')}
+        extra={
+          <Segmented
+            value={mode}
+            onChange={(v) => setMode(v as BillMode)}
+            options={[
+              { label: t('bills.tab.bill'), value: 'bill' },
+              { label: t('bills.tab.salary'), value: 'salary' }
+            ]}
+          />
+        }
+      />
       <div>
         <Input.Search
           placeholder={t('bills.search')}
@@ -106,6 +107,7 @@ export default function BillsPage(): JSX.Element {
       </div>
       <div ref={containerRef}>
         <Table
+          className="pc-report"
           rowKey="subjectKey"
           size="small"
           loading={subjects.isLoading}

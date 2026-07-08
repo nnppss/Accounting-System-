@@ -17,66 +17,19 @@ import {
   Tag,
   Typography
 } from 'antd'
-import type { FormInstance } from 'antd'
 import { DeleteOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DeliveryTarget } from '@shared/enums'
-import type { NikasiListRow } from '@shared/contracts'
+import type { LotRemaining, NikasiListRow } from '@shared/contracts'
 import { DATE_INPUT_FORMATS, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
-
-/**
- * Per-line lot picker: lists every rack where the chosen kisan still has stock.
- * Picking one fills Room/Floor/Rack and pre-fills Packets with the full lot;
- * lower the packet count for a partial nikasi.
- */
-function LotPicker({
-  form,
-  name,
-  kisanId: kisanOverride
-}: {
-  form: FormInstance
-  name: number
-  /** On a self-withdrawal the header kisan owns every line — no per-line kisan field. */
-  kisanId?: number
-}): JSX.Element {
-  const { t } = useTranslation()
-  const lineKisanId = Form.useWatch(['lines', name, 'fromKisanAccountId'], form) as
-    | number
-    | undefined
-  const kisanId = kisanOverride ?? lineKisanId
-  const locs = useQuery({
-    queryKey: ['kisanStock', kisanId],
-    queryFn: () => window.api.maps.kisanStock(kisanId!),
-    enabled: !!kisanId
-  })
-  return (
-    <Select
-      placeholder={t('nikasi.pickLot')}
-      style={{ width: 200 }}
-      disabled={!kisanId}
-      loading={locs.isFetching}
-      notFoundContent={t('nikasi.noStock')}
-      options={(locs.data ?? []).map((l) => ({
-        value: `${l.room}:${l.floor}:${l.rack}:${l.packets}`,
-        label: `R${l.room}/F${l.floor}/${l.rack} — ${l.packets} pkt`
-      }))}
-      onChange={(v: string) => {
-        const [room, floor, rack, packets] = v.split(':').map(Number)
-        form.setFieldValue(['lines', name, 'room'], room)
-        form.setFieldValue(['lines', name, 'floor'], floor)
-        form.setFieldValue(['lines', name, 'rack'], rack)
-        form.setFieldValue(['lines', name, 'packets'], packets)
-      }}
-    />
-  )
-}
+import { PageBanner } from '../components/report'
 
 export default function NikasiPage(): JSX.Element {
   const { t } = useTranslation()
@@ -102,6 +55,19 @@ export default function NikasiPage(): JSX.Element {
     enabled: detailId !== null
   })
 
+  // Lots to pick from: on a self-withdrawal only the header kisan's lots; on a sale, all lots.
+  const lotFilterKisan = deliveredToType === 'kisan' ? deliveredToAccountId : undefined
+  const lots = useQuery({
+    queryKey: ['nikasiLots', lotFilterKisan],
+    queryFn: () => window.api.nikasi.lots(lotFilterKisan),
+    enabled: open
+  })
+  const lotById = useMemo(() => {
+    const m = new Map<number, LotRemaining>()
+    for (const l of lots.data ?? []) m.set(l.aamadId, l)
+    return m
+  }, [lots.data])
+
   const rows = useMemo(() => {
     const all = (nikasis.data ?? []) as NikasiListRow[]
     return all.filter((r) => {
@@ -124,7 +90,7 @@ export default function NikasiPage(): JSX.Element {
       queryClient.invalidateQueries({ queryKey: ['nikasi'] })
       queryClient.invalidateQueries({ queryKey: ['maps'] })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      queryClient.invalidateQueries({ queryKey: ['kisanStock'] })
+      queryClient.invalidateQueries({ queryKey: ['nikasiLots'] })
     },
     onError: (e: Error) => message.error(e.message)
   })
@@ -136,23 +102,28 @@ export default function NikasiPage(): JSX.Element {
       queryClient.invalidateQueries({ queryKey: ['nikasi'] })
       queryClient.invalidateQueries({ queryKey: ['maps'] })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      queryClient.invalidateQueries({ queryKey: ['kisanStock'] })
+      queryClient.invalidateQueries({ queryKey: ['nikasiLots'] })
     },
     onError: (e: Error) => message.error(e.message)
   })
 
-  // When a line's kisan changes on a vyapari sale, pre-fill its rate from the latest sauda.
+  // When a line's lot is picked, pre-fill packets with the whole lot remaining, and (on a sale)
+  // its rate from the latest sauda for that lot's kisan. Both are editable afterwards.
   const onValuesChange = async (changed: Record<string, unknown>): Promise<void> => {
-    if (deliveredToType !== 'vyapari' || !deliveredToAccountId) return
-    const lines = changed.lines as Array<{ fromKisanAccountId?: number } | undefined> | undefined
+    const lines = changed.lines as Array<{ aamadId?: number } | undefined> | undefined
     if (!Array.isArray(lines)) return
     for (let i = 0; i < lines.length; i++) {
-      const kisanId = lines[i]?.fromKisanAccountId
-      if (kisanId) {
-        const rate = await window.api.sauda.latestRate(deliveredToAccountId, kisanId)
-        if (rate !== null) {
-          const current = form.getFieldValue(['lines', i, 'rate'])
-          if (!current) form.setFieldValue(['lines', i, 'rate'], paiseToRupees(rate))
+      const aamadId = lines[i]?.aamadId
+      if (!aamadId) continue
+      const lot = lotById.get(aamadId)
+      if (!lot) continue
+      if (!form.getFieldValue(['lines', i, 'packets'])) {
+        form.setFieldValue(['lines', i, 'packets'], lot.remaining)
+      }
+      if (deliveredToType === 'vyapari' && deliveredToAccountId) {
+        const rate = await window.api.sauda.latestRate(deliveredToAccountId, lot.kisanAccountId)
+        if (rate !== null && !form.getFieldValue(['lines', i, 'rate'])) {
+          form.setFieldValue(['lines', i, 'rate'], paiseToRupees(rate))
         }
       }
     }
@@ -165,17 +136,9 @@ export default function NikasiPage(): JSX.Element {
     vehicleNo?: string
     receivedBy?: string
     bhadaRecovered?: number
-    lines: Array<{
-      fromKisanAccountId?: number
-      room: number
-      floor: number
-      rack: number
-      packets: number
-      weightKg?: number
-      rate?: number
-    }>
+    lines: Array<{ aamadId: number; packets: number; weightKg?: number; rate?: number }>
   }): void => {
-    // Self-withdrawal: the kisan takes his own stock — no per-line kisan, no sale rate.
+    // Self-withdrawal: the kisan takes his own stock — no sale rate.
     const isSelf = v.deliveredToType === 'kisan'
     create.mutate({
       date: v.date.format('YYYY-MM-DD'),
@@ -185,10 +148,7 @@ export default function NikasiPage(): JSX.Element {
       receivedBy: v.receivedBy,
       bhadaRecoveredPaise: toPaise(v.bhadaRecovered),
       lines: (v.lines ?? []).map((l) => ({
-        fromKisanAccountId: isSelf ? v.deliveredToAccountId : l.fromKisanAccountId!,
-        room: l.room,
-        floor: l.floor,
-        rack: l.rack,
+        aamadId: l.aamadId,
         packets: l.packets,
         weightKg: l.weightKg,
         ratePaise: isSelf ? 0 : toPaise(l.rate)
@@ -248,14 +208,14 @@ export default function NikasiPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('nikasi.title')}
-        </Typography.Title>
-        <Button type="primary" onClick={() => setOpen(true)}>
-          {t('nikasi.new')}
-        </Button>
-      </Space>
+      <PageBanner
+        title={t('nikasi.title')}
+        extra={
+          <Button type="primary" onClick={() => setOpen(true)}>
+            {t('nikasi.new')}
+          </Button>
+        }
+      />
 
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect
@@ -362,31 +322,19 @@ export default function NikasiPage(): JSX.Element {
               <div>
                 {fields.map((field) => (
                   <Space key={field.key} align="baseline" wrap data-pc-row>
-                    {deliveredToType !== 'kisan' && (
-                      <Form.Item
-                        name={[field.name, 'fromKisanAccountId']}
-                        rules={[{ required: true }]}
-                      >
-                        <AccountSearchSelect
-                          type="kisan"
-                          placeholder={t('nikasi.fromKisan')}
-                          style={{ width: 180 }}
-                        />
-                      </Form.Item>
-                    )}
-                    <LotPicker
-                      form={form}
-                      name={field.name}
-                      kisanId={deliveredToType === 'kisan' ? deliveredToAccountId : undefined}
-                    />
-                    <Form.Item name={[field.name, 'room']} rules={[{ required: true }]}>
-                      <InputNumber min={1} placeholder={t('aamad.room')} style={{ width: 80 }} />
-                    </Form.Item>
-                    <Form.Item name={[field.name, 'floor']} rules={[{ required: true }]}>
-                      <InputNumber min={1} placeholder={t('aamad.floor')} style={{ width: 80 }} />
-                    </Form.Item>
-                    <Form.Item name={[field.name, 'rack']} rules={[{ required: true }]}>
-                      <InputNumber min={1} placeholder={t('aamad.rack')} style={{ width: 80 }} />
+                    <Form.Item name={[field.name, 'aamadId']} rules={[{ required: true }]}>
+                      <Select
+                        showSearch
+                        placeholder={t('nikasi.pickLot')}
+                        style={{ width: 300 }}
+                        loading={lots.isFetching}
+                        notFoundContent={t('nikasi.noStock')}
+                        optionFilterProp="label"
+                        options={(lots.data ?? []).map((l) => ({
+                          value: l.aamadId,
+                          label: `${l.lotNo} — ${l.kisanName} — ${l.remaining} ${t('nikasi.leftPkt')}`
+                        }))}
+                      />
                     </Form.Item>
                     <Form.Item name={[field.name, 'packets']} rules={[{ required: true }]}>
                       <InputNumber min={1} placeholder={t('nikasi.packets')} style={{ width: 90 }} />
@@ -461,17 +409,13 @@ export default function NikasiPage(): JSX.Element {
               </Descriptions.Item>
             </Descriptions>
             <Table
-              rowKey="id"
+              rowKey={(_, i) => String(i)}
               size="small"
               pagination={false}
               dataSource={detail.data.lines}
               columns={[
+                { title: t('aamad.lot'), dataIndex: 'lotNo' },
                 { title: t('nikasi.fromKisan'), dataIndex: 'fromKisanName' },
-                {
-                  title: t('maps.rack'),
-                  key: 'loc',
-                  render: (_: unknown, l) => `R${l.room}/F${l.floor}/${l.rack}`
-                },
                 { title: t('nikasi.packets'), dataIndex: 'packets', align: 'right' as const },
                 // Rate/amount only mean something on a vyapari sale.
                 ...(detail.data.deliveredToType === 'vyapari'

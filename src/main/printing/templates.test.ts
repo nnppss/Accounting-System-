@@ -28,12 +28,10 @@ describe('print templates', () => {
       voucherNo: 7,
       lines: [
         {
-          id: 1,
+          aamadId: 11,
+          lotNo: '7/345',
           fromKisanAccountId: 3,
           fromKisanName: 'Ramesh',
-          room: 1,
-          floor: 2,
-          rack: 5,
           packets: 80,
           weightKg: 4000,
           ratePaise: 40000,
@@ -45,7 +43,7 @@ describe('print templates', () => {
     expect(html).toContain('Gate Pass / गेट पास')
     expect(html).toContain('#42')
     expect(html).toContain('Gopal')
-    expect(html).toContain('R1 / F2 / 5')
+    expect(html).toContain('7/345')
     expect(html).toContain('₹32,000.00') // line amount = total
     expect(html.startsWith('<!DOCTYPE html>')).toBe(true)
   })
@@ -71,12 +69,14 @@ describe('print templates', () => {
               voucherId: 1,
               voucherNo: 1,
               type: 'journal',
+              sourceModule: 'bhada',
               date: '2026-06-30',
               narration: 'Bhada',
               tag: 'rent',
               drPaise: 200000,
               crPaise: 0,
-              balancePaise: 200000
+              balancePaise: 200000,
+              mode: ''
             }
           ],
           postedBalancePaise: 200000,
@@ -123,12 +123,14 @@ describe('print templates', () => {
         voucherId: 1,
         voucherNo: 1,
         type: 'payment',
+        sourceModule: 'loan',
         date: '2026-01-01',
         narration: 'Loan given',
         tag: 'loan',
         drPaise: 10000000,
         crPaise: 0,
-        balancePaise: 10000000
+        balancePaise: 10000000,
+        mode: 'Cash'
       }
     ]
     const html = ledgerHtml('Suresh Vyapari', lines)

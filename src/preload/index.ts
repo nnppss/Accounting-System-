@@ -11,6 +11,7 @@ import type {
   AccountInput,
   AccountListFilter,
   AccountListRow,
+  AccountOverview,
   AccrueAllResult,
   AuditFacets,
   AuditFilter,
@@ -31,11 +32,13 @@ import type {
   CreateBardanaResult,
   CreateLoanResult,
   CreateNikasiResult,
+  DayBook,
   ExpensePaymentInput,
   ExpenseRow,
   JournalArg,
   KisanStockLocation,
   LedgerLine,
+  LotRemaining,
   LoadingContractorYearInput,
   LoadingContractorYearRow,
   LoanComposition,
@@ -47,6 +50,7 @@ import type {
   MoneyBookSummary,
   NikasiDetail,
   NikasiInput,
+  NikasiListFilter,
   NikasiListRow,
   PartyCriteria,
   PartyResult,
@@ -105,6 +109,8 @@ const api = {
       ipcRenderer.invoke('accounts:updateIdentity', accountId, input),
     ledger: (accountId: number): Promise<LedgerLine[]> =>
       ipcRenderer.invoke('accounts:ledger', accountId),
+    overview: (accountId: number): Promise<AccountOverview> =>
+      ipcRenderer.invoke('accounts:overview', accountId),
     setOpening: (accountId: number, amountPaise: number, drCr: DrCr, date: string): Promise<void> =>
       ipcRenderer.invoke('accounts:setOpening', accountId, amountPaise, drCr, date),
     setDefaulter: (accountId: number, isDefaulter: boolean): Promise<void> =>
@@ -136,6 +142,9 @@ const api = {
     detail: (accountId: number, month: number): Promise<MoneyBookDetailRow[]> =>
       ipcRenderer.invoke('moneybook:detail', accountId, month)
   },
+  daybook: {
+    get: (date: string): Promise<DayBook> => ipcRenderer.invoke('daybook:get', date)
+  },
   store: {
     get: (): Promise<StoreConfig> => ipcRenderer.invoke('store:get'),
     set: (cfg: StoreConfig): Promise<void> => ipcRenderer.invoke('store:set', cfg)
@@ -159,8 +168,11 @@ const api = {
   nikasi: {
     create: (input: NikasiInput): Promise<CreateNikasiResult> =>
       ipcRenderer.invoke('nikasi:create', input),
-    list: (): Promise<NikasiListRow[]> => ipcRenderer.invoke('nikasi:list'),
+    list: (filter?: NikasiListFilter): Promise<NikasiListRow[]> =>
+      ipcRenderer.invoke('nikasi:list', filter),
     get: (id: number): Promise<NikasiDetail | null> => ipcRenderer.invoke('nikasi:get', id),
+    lots: (kisanAccountId?: number): Promise<LotRemaining[]> =>
+      ipcRenderer.invoke('nikasi:lots', kisanAccountId),
     delete: (id: number): Promise<void> => ipcRenderer.invoke('nikasi:delete', id)
   },
   maps: {

@@ -4,12 +4,13 @@ import type {
   AamadSearchFilter,
   MapType,
   NikasiInput,
+  NikasiListFilter,
   SaudaInput,
   StoreConfig
 } from '../../shared/contracts'
 import { createAamad, deleteAamad, getAamad, listAamad, updateAamad } from '../services/aamad'
 import { createSauda, deleteSauda, latestRate, listSauda } from '../services/sauda'
-import { createNikasi, deleteNikasi, getNikasi, listNikasi } from '../services/nikasi'
+import { createNikasi, deleteNikasi, getNikasi, listNikasi, lotsWithRemaining } from '../services/nikasi'
 import { getMap, getRackStock, kisanStockLocations } from '../services/maps'
 import { getStoreConfig, setStoreConfig } from '../services/store'
 import { accrueAllRent } from '../engines/bhada'
@@ -63,8 +64,13 @@ export function registerStockIpc(): void {
     const s = requireOpenYear()
     return createNikasi(s.yearId, input, s.userId)
   })
-  ipcMain.handle('nikasi:list', () => listNikasi(requireSession().yearId))
+  ipcMain.handle('nikasi:list', (_e, filter?: NikasiListFilter) =>
+    listNikasi(requireSession().yearId, filter)
+  )
   ipcMain.handle('nikasi:get', (_e, id: number) => getNikasi(id))
+  ipcMain.handle('nikasi:lots', (_e, kisanAccountId?: number) =>
+    lotsWithRemaining(requireSession().yearId, kisanAccountId)
+  )
   ipcMain.handle('nikasi:delete', (_e, id: number) => {
     const s = requireOpenYear()
     return deleteNikasi(s.yearId, id, s.userId)

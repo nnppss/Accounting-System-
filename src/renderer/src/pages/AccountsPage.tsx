@@ -26,6 +26,7 @@ import type { AccountInput, AccountListRow } from '@shared/contracts'
 import { toPaise } from '../lib/format'
 import { BalanceAmount, SeverityTag, severityRowClass } from '../components/Highlight'
 import { SuggestInput, titleCase } from '../components/SuggestInput'
+import { PageBanner } from '../components/report'
 import { useAccountsFilter, type AccountFilters } from '../store/accountsFilter'
 import { useSession } from '../store/session'
 import { useCreateHotkey } from '../lib/useHotkeys'
@@ -272,14 +273,14 @@ export default function AccountsPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('accounts.title')}
-        </Typography.Title>
-        <Button type="primary" onClick={() => setNewOpen(true)}>
-          {t('accounts.new')}
-        </Button>
-      </Space>
+      <PageBanner
+        title={t('accounts.title')}
+        extra={
+          <Button type="primary" onClick={() => setNewOpen(true)}>
+            {t('accounts.new')}
+          </Button>
+        }
+      />
 
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap size="middle" align="end">

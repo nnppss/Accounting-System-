@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Card, Drawer, Segmented, Space, Statistic, Table, Typography } from 'antd'
+import { Card, Drawer, Segmented, Statistic, Table } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { MapType } from '@shared/contracts'
 import { palette } from '../theme'
+import { PageBanner } from '../components/report'
 
 export default function MapsPage(): JSX.Element {
   const { t } = useTranslation()
@@ -21,6 +22,9 @@ export default function MapsPage(): JSX.Element {
 
   const packetsAt = (room: number, floor: number): number =>
     map.data?.cells.find((c) => c.room === room && c.floor === floor)?.packets ?? 0
+
+  const roomTotal = (room: number): number =>
+    map.data?.cells.filter((c) => c.room === room).reduce((s, c) => s + c.packets, 0) ?? 0
 
   const rooms = map.data?.rooms ?? 0
   const floors = map.data?.floors ?? 0
@@ -74,20 +78,20 @@ export default function MapsPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('maps.title')}
-        </Typography.Title>
-        <Segmented
-          value={type}
-          onChange={(v) => setType(v as MapType)}
-          options={[
-            { value: 'aamad', label: t('maps.aamad') },
-            { value: 'nikasi', label: t('maps.nikasi') },
-            { value: 'current', label: t('maps.current') }
-          ]}
-        />
-      </Space>
+      <PageBanner
+        title={t('maps.title')}
+        extra={
+          <Segmented
+            value={type}
+            onChange={(v) => setType(v as MapType)}
+            options={[
+              { value: 'aamad', label: t('maps.aamad') },
+              { value: 'nikasi', label: t('maps.nikasi') },
+              { value: 'current', label: t('maps.current') }
+            ]}
+          />
+        }
+      />
 
       <Statistic title={t('maps.total')} value={map.data?.totalPackets ?? 0} style={{ marginBottom: 16 }} />
 
@@ -132,6 +136,19 @@ export default function MapsPage(): JSX.Element {
               </tr>
             ))}
           </tbody>
+          <tfoot>
+            <tr>
+              <td style={headStyle}>{t('maps.total')}</td>
+              {Array.from({ length: rooms }, (_, i) => i + 1).map((room) => {
+                const p = roomTotal(room)
+                return (
+                  <td key={room} style={{ ...headStyle, color: p > 0 ? '#0958d9' : '#bfbfbf' }}>
+                    {p || '·'}
+                  </td>
+                )
+              })}
+            </tr>
+          </tfoot>
         </table>
       </Card>
 

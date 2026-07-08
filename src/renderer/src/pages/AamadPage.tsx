@@ -20,16 +20,15 @@ import dayjs from 'dayjs'
 import type { AamadListRow } from '@shared/contracts'
 import { DATE_INPUT_FORMATS, formatDate } from '../lib/format'
 import AccountSearchSelect from '../components/AccountSearchSelect'
-import { useSession } from '../store/session'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { PageBanner } from '../components/report'
 
 export default function AamadPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const queryClient = useQueryClient()
-  const year = useSession((s) => s.session?.year)
   const [kisanFilter, setKisanFilter] = useState<number | undefined>()
   const [range, setRange] = useState<[string, string] | undefined>()
   const [open, setOpen] = useState(false)
@@ -78,7 +77,6 @@ export default function AamadPage(): JSX.Element {
     const d = await window.api.aamad.get(id)
     if (!d) return
     form.setFieldsValue({
-      serial: Number(d.no.slice(d.no.indexOf('-') + 1)),
       date: dayjs(d.date),
       kisanAccountId: d.kisanAccountId,
       totalPackets: d.totalPackets,
@@ -104,7 +102,6 @@ export default function AamadPage(): JSX.Element {
   })
 
   const onFinish = (v: {
-    serial: number
     date: dayjs.Dayjs
     kisanAccountId: number
     totalPackets: number
@@ -119,7 +116,6 @@ export default function AamadPage(): JSX.Element {
     save.mutate({
       id: editingId,
       input: {
-        serial: v.serial,
         date: v.date.format('YYYY-MM-DD'),
         kisanAccountId: v.kisanAccountId,
         totalPackets: v.totalPackets,
@@ -134,6 +130,12 @@ export default function AamadPage(): JSX.Element {
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 70, render: (id: number) => `#${id}` },
     { title: t('aamad.no'), dataIndex: 'no', width: 120 },
+    {
+      title: t('aamad.lot'),
+      key: 'lot',
+      width: 110,
+      render: (_: unknown, r: AamadListRow) => `${r.no.slice(r.no.indexOf('-') + 1)}/${r.totalPackets}`
+    },
     { title: t('common.date'), dataIndex: 'date', width: 120, render: (v: string) => formatDate(v) },
     { title: t('aamad.kisan'), dataIndex: 'kisanName' },
     {
@@ -180,14 +182,14 @@ export default function AamadPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('aamad.title')}
-        </Typography.Title>
-        <Button type="primary" onClick={() => setOpen(true)}>
-          {t('aamad.new')}
-        </Button>
-      </Space>
+      <PageBanner
+        title={t('aamad.title')}
+        extra={
+          <Button type="primary" onClick={() => setOpen(true)}>
+            {t('aamad.new')}
+          </Button>
+        }
+      />
 
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect
@@ -235,19 +237,6 @@ export default function AamadPage(): JSX.Element {
           onFinish={onFinish}
         >
           <Space size="large" wrap>
-            <Form.Item
-              name="serial"
-              label={t('aamad.serial')}
-              tooltip={t('aamad.serialHint')}
-              rules={[{ required: true }]}
-            >
-              <InputNumber
-                min={1}
-                precision={0}
-                addonBefore={year ? `${year}-` : undefined}
-                style={{ width: 160 }}
-              />
-            </Form.Item>
             <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
               <DatePicker format={DATE_INPUT_FORMATS} />
             </Form.Item>

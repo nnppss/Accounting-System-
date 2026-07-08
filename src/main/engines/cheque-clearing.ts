@@ -31,7 +31,7 @@ export function recordCheque(yearId: number, input: ChequeInput, userId?: number
   if (!input.no?.trim()) throw new Error('A cheque needs a number')
   assertMoneyAccount(input.bankAccountId)
   const clearing = clearingAccountId()
-  const entryDate = input.date ?? input.issueDate ?? new Date().toISOString().slice(0, 10)
+  const entryDate = input.date ?? input.receiveDate ?? new Date().toISOString().slice(0, 10)
   const received = input.direction === 'received'
 
   return db().transaction((tx) => {
@@ -43,7 +43,7 @@ export function recordCheque(yearId: number, input: ChequeInput, userId?: number
         direction: input.direction,
         amountPaise: input.amountPaise,
         date: input.date ?? null,
-        issueDate: input.issueDate ?? null,
+        receiveDate: input.receiveDate ?? null,
         clearanceDate: input.clearanceDate ?? null,
         status: 'pending',
         bankAccountId: input.bankAccountId,

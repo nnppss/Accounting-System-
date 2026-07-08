@@ -113,6 +113,40 @@ export interface AccountDetail {
   hasOpening: boolean
 }
 
+/**
+ * 360° snapshot for the opened-account Overview tab: stock movement + money composition for the
+ * working year. Money slices are net dr − cr per entry tag and sum to `balancePaise`.
+ */
+export interface AccountOverview {
+  accountId: number
+  stock: {
+    /** Packets brought in as a kisan (aamad). */
+    aamadPackets: number
+    aamadCount: number
+    /** Packets of this kisan's own stock that left the store (nikasi lines from this kisan). */
+    nikasiOutPackets: number
+    balancePackets: number
+    /** Packets received as a vyapari across all gate passes. */
+    purchasedPackets: number
+  }
+  money: {
+    openingPaise: number
+    rentPaise: number
+    loanPaise: number
+    /** Total interest to date = posted 'interest' tag + live accrued-but-unposted loan interest. */
+    interestPaise: number
+    tradePaise: number
+    /** 'general'-tagged net (bardana, misc). */
+    otherPaise: number
+    /** Posted ledger balance (matches the account header + Ledger tab). */
+    balancePaise: number
+    /** Balance including accrued-but-unposted interest (matches the legacy interest-inclusive total). */
+    newBalancePaise: number
+  }
+  /** Flat per-packet storage rent rate for the year — drives per-lot/per-gate-pass rent columns. */
+  rentRatePaise: number
+}
+
 export interface AccountListFilter {
   type?: AccountType
   /** Matches the account's own name or the linked person's name. */
@@ -148,12 +182,21 @@ export interface LedgerLine {
   voucherId: number
   voucherNo: number
   type: VoucherType
+  /** The document that produced the voucher: 'loan' | 'bhada' | 'nikasi' | 'bardana' | 'salary' |
+   * 'opening' | 'cheque' | 'manual' | null. Drives the human-readable label in the ledger. */
+  sourceModule: string | null
   date: string
   narration: string | null
   tag: EntryTag
   drPaise: number
   crPaise: number
   balancePaise: number
+  /**
+   * How the money moved on this voucher, from its cash/bank/clearing counter-leg: 'Cash', a bank
+   * account's name, or 'Cheque <no> — <bank>'. Empty when no money moved (e.g. a Bhada/Nikasi
+   * journal that only builds a credit balance).
+   */
+  mode: string
 }
 
 export interface TrialBalanceRow {
@@ -277,6 +320,33 @@ export interface MoneyBookDetailRow {
   paymentPaise: number
 }
 
+/** One posting line of a day-book voucher. */
+export interface DayBookEntry {
+  accountId: number
+  accountName: string
+  drPaise: number
+  crPaise: number
+  tag: EntryTag
+}
+
+/** A voucher (with its entries) that posted on the chosen day. */
+export interface DayBookVoucher {
+  voucherId: number
+  voucherNo: number
+  type: VoucherType
+  sourceModule: string | null
+  narration: string | null
+  entries: DayBookEntry[]
+}
+
+/** Every financial transaction posted on one date — the Day Book / day register. */
+export interface DayBook {
+  date: string
+  vouchers: DayBookVoucher[]
+  totalDrPaise: number
+  totalCrPaise: number
+}
+
 // ============================ STORE & STOCK (Phase 2) ============================
 
 export interface StoreConfig {
@@ -294,8 +364,6 @@ export interface AamadLocationInput {
 }
 
 export interface AamadInput {
-  /** Serial allotted at the gate. The service prefixes the working year → `no` = `YYYY-serial`. */
-  serial: number
   date: string
   kisanAccountId: number
   totalPackets: number
@@ -352,14 +420,24 @@ export interface SaudaListRow {
 }
 
 // ---- Nikasi (stock-out / gate pass) ----
+/** One outbound lot: N packets from lot `aamadId`. The kisan is implied by the lot; the
+ * service allocates the packets across that lot's racks. */
 export interface NikasiLineInput {
-  fromKisanAccountId: number
-  room: number
-  floor: number
-  rack: number
+  aamadId: number
   packets: number
   weightKg?: number
   ratePaise: number
+}
+
+/** A kisan's lot with packets still on hand — powers the nikasi lot picker. */
+export interface LotRemaining {
+  aamadId: number
+  no: string
+  lotNo: string
+  kisanAccountId: number
+  kisanName: string
+  totalPackets: number
+  remaining: number
 }
 
 export interface NikasiInput {
@@ -372,6 +450,14 @@ export interface NikasiInput {
   lines: NikasiLineInput[]
 }
 
+/** Narrow the gate-pass list to one party's dealings (Overview drill-downs). */
+export interface NikasiListFilter {
+  /** Gate passes delivered to this vyapari. */
+  deliveredToAccountId?: number
+  /** Gate passes carrying a line from this kisan; totals are scoped to that kisan's packets. */
+  fromKisanAccountId?: number
+}
+
 export interface NikasiListRow {
   id: number
   billNo: number
@@ -379,14 +465,21 @@ export interface NikasiListRow {
   deliveredToType: DeliveryTarget
   deliveredToAccountId: number
   deliveredToName: string
+  vehicleNo: string | null
   totalPackets: number
   totalAmountPaise: number
   isPosted: boolean
 }
 
-export interface NikasiLineView extends NikasiLineInput {
-  id: number
+/** Nikasi lines grouped back to one row per lot (the rack split is internal). */
+export interface NikasiLineView {
+  aamadId: number | null
+  lotNo: string
+  fromKisanAccountId: number
   fromKisanName: string
+  packets: number
+  weightKg?: number
+  ratePaise: number
   amountPaise: number
 }
 
@@ -494,6 +587,7 @@ export interface LoanRow {
   category: LoanCategory
   accountId: number
   accountName: string
+  sonOf: string | null
   date: string
   principalPaise: number
   mobile: string | null
@@ -588,7 +682,7 @@ export interface ChequeInput {
   no: string
   bank?: string
   date?: string
-  issueDate?: string
+  receiveDate?: string
   clearanceDate?: string
 }
 
@@ -598,13 +692,14 @@ export interface ChequeRow {
   status: ChequeStatus
   partyAccountId: number
   partyName: string
+  partySonOf: string | null
   bankAccountId: number
   bankName: string
   amountPaise: number
   no: string
   bank: string | null
   date: string | null
-  issueDate: string | null
+  receiveDate: string | null
   clearanceDate: string | null
 }
 

@@ -11,6 +11,7 @@ import {
   Radio,
   Space,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography
@@ -28,12 +29,14 @@ import dayjs from 'dayjs'
 import type { DrCr } from '@shared/enums'
 import type { AccountIdentityInput, LedgerLine } from '@shared/contracts'
 import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
-import { BalanceAmount, BalanceSentence, SeverityTag } from '../components/Highlight'
+import { BalanceAmount, BalanceSentence } from '../components/Highlight'
 import { SuggestInput } from '../components/SuggestInput'
+import { PageBanner, SectionBar, StatusPill } from '../components/report'
 import { usePrinter } from '../lib/usePrinter'
 import { useAccountsFilter } from '../store/accountsFilter'
 import { useSession } from '../store/session'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
+import { AccountOverview } from '../components/AccountOverview'
 
 /**
  * One identity field as "Label: value". Sits in a flex-wrap row so the whole strip reflows to as
@@ -65,6 +68,7 @@ export default function AccountLedgerPage(): JSX.Element {
   const location = useLocation()
   const backTarget = (location.state as { fromNav?: string } | null)?.fromNav ?? '/accounts'
 
+  const [tab, setTab] = useState('overview')
   const [openingOpen, setOpeningOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -81,6 +85,12 @@ export default function AccountLedgerPage(): JSX.Element {
   const ledger = useQuery({
     queryKey: ['ledger', accountId],
     queryFn: () => window.api.accounts.ledger(accountId)
+  })
+  // Same key as the Overview tab, so this is served from cache. Gives us the accrued-but-unposted
+  // loan interest (newBalance − balance) to show as a standing-interest total under the ledger.
+  const overview = useQuery({
+    queryKey: ['overview', accountId],
+    queryFn: () => window.api.accounts.overview(accountId)
   })
   const acct = detail.data
 
@@ -180,21 +190,52 @@ export default function AccountLedgerPage(): JSX.Element {
     }
   })
 
+  // Human-readable voucher label: the business document (from source module) on top with its
+  // reference no., and the plain money action (Paid/Received/Transfer) underneath — replaces the
+  // bare "Payment #3 / Journal #8" accounting jargon.
+  const DOCS = ['loan', 'bhada', 'nikasi', 'bardana', 'salary', 'opening', 'cheque', 'manual']
+  const voucherLabel = (r: LedgerLine): JSX.Element => {
+    const doc = r.sourceModule && DOCS.includes(r.sourceModule) ? t(`ledger.doc.${r.sourceModule}`) : null
+    const action = r.type !== 'journal' ? t(`ledger.action.${r.type}`) : null
+    const primary = doc ?? action ?? t(`vouchers.${r.type}`)
+    return (
+      <div>
+        <span>
+          {primary} <Typography.Text type="secondary">#{r.voucherNo}</Typography.Text>
+        </span>
+        {doc && action && (
+          <div>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {action}
+            </Typography.Text>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const columns = [
     { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
     {
       title: t('vouchers.type'),
       key: 'voucher',
       width: 120,
-      render: (_: unknown, r: LedgerLine) => `${t(`vouchers.${r.type}`)} #${r.voucherNo}`
+      render: (_: unknown, r: LedgerLine) => voucherLabel(r)
     },
-    { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? '—' },
     {
       title: 'Tag',
       dataIndex: 'tag',
       width: 90,
       render: (tag: string) => (tag === 'general' ? '' : <Tag>{tag}</Tag>)
     },
+    {
+      title: t('ledger.mode'),
+      dataIndex: 'mode',
+      width: 160,
+      // A cash/bank/cheque leg fills this; a Bhada/Nikasi entry moves no money, so it's on credit.
+      render: (m: string) => m || <Typography.Text type="secondary">{t('ledger.mode.credit')}</Typography.Text>
+    },
+    { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? '—' },
     {
       title: t('common.dr'),
       dataIndex: 'drPaise',
@@ -222,43 +263,51 @@ export default function AccountLedgerPage(): JSX.Element {
 
   return (
     <div>
-      {/* Toolbar: Back keeps filters, Close clears them */}
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Space>
-          <Tooltip title={t('accounts.backToList')}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(backTarget)} />
-          </Tooltip>
-          {acct?.code && <Typography.Text code>{acct.code}</Typography.Text>}
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            {acct?.name ?? `#${accountId}`}
-          </Typography.Title>
-          {acct && <Tag>{t(`accounts.type.${acct.type}`)}</Tag>}
-          {acct?.isDefaulter && (
-            <SeverityTag severity="danger" icon>
-              {t('accounts.defaulter')}
-            </SeverityTag>
-          )}
-        </Space>
-        <Tooltip title={t('accounts.closeAccount')}>
-          <Button
-            icon={<CloseOutlined />}
-            onClick={() => {
-              resetFilters()
-              navigate(backTarget)
-            }}
-          >
-            {t('common.close')}
-          </Button>
-        </Tooltip>
-      </Space>
+      {/* Rippling-style account banner: code · name, type/subgroup underneath, Back keeps filters
+          and Close clears them. */}
+      <PageBanner
+        title={
+          <Space size={8} align="baseline">
+            <Tooltip title={t('accounts.backToList')}>
+              <Button
+                size="small"
+                icon={<ArrowLeftOutlined />}
+                onClick={() => navigate(backTarget)}
+              />
+            </Tooltip>
+            {acct?.code && <span style={{ opacity: 0.75, fontWeight: 600 }}>{acct.code}</span>}
+            <span>{acct?.name ?? `#${accountId}`}</span>
+          </Space>
+        }
+        subtitle={
+          acct
+            ? [t(`accounts.type.${acct.type}`), acct.subgroupName].filter(Boolean).join(' · ')
+            : undefined
+        }
+        extra={
+          <>
+            {acct?.isDefaulter && (
+              <StatusPill tone="danger">{t('accounts.defaulter')}</StatusPill>
+            )}
+            <Tooltip title={t('accounts.closeAccount')}>
+              <Button
+                icon={<CloseOutlined />}
+                onClick={() => {
+                  resetFilters()
+                  navigate(backTarget)
+                }}
+              >
+                {t('common.close')}
+              </Button>
+            </Tooltip>
+          </>
+        }
+      />
 
-      {/* Identity header + actions */}
+      {/* Account details section (type · subgroup already sit in the banner above) */}
+      <SectionBar>{t('accounts.details')}</SectionBar>
       <Card size="small" style={{ marginBottom: 16 }} loading={detail.isLoading}>
         <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 28, rowGap: 8 }}>
-          <IdentityItem label={t('accounts.type')}>
-            {acct && <Tag style={{ margin: 0 }}>{t(`accounts.type.${acct.type}`)}</Tag>}
-          </IdentityItem>
-          <IdentityItem label={t('accounts.subgroup')}>{acct?.subgroupName ?? '—'}</IdentityItem>
           {acct?.type === 'bank' ? (
             <>
               <IdentityItem label={t('accounts.bankAccountNumber')}>
@@ -314,27 +363,81 @@ export default function AccountLedgerPage(): JSX.Element {
         )}
       </Card>
 
-      {/* Ledger — all account activity */}
-      <Table
-        rowKey="voucherId"
-        size="small"
-        loading={ledger.isLoading}
-        columns={columns}
-        dataSource={ledger.data ?? []}
-        pagination={false}
-        summary={(rows) => {
-          const last = rows[rows.length - 1] as LedgerLine | undefined
-          return last ? (
-            <Table.Summary.Row>
-              <Table.Summary.Cell index={0} colSpan={6} align="right">
-                <strong>{t('common.balance')}</strong>
-              </Table.Summary.Cell>
-              <Table.Summary.Cell index={6} align="right">
-                <BalanceAmount paise={last.balancePaise} strong />
-              </Table.Summary.Cell>
-            </Table.Summary.Row>
-          ) : null
-        }}
+      {/* Overview (360° tiles + drill-downs) and the raw dr/cr ledger, as tabs. */}
+      <Tabs
+        activeKey={tab}
+        onChange={setTab}
+        items={[
+          {
+            key: 'overview',
+            label: t('overview.tab'),
+            children: <AccountOverview accountId={accountId} onShowLedger={() => setTab('ledger')} />
+          },
+          {
+            key: 'ledger',
+            label: t('accounts.ledger'),
+            children: (
+              <>
+              <SectionBar>{t('accounts.ledger')}</SectionBar>
+              <Table
+                className="pc-report"
+                rowKey="voucherId"
+                size="small"
+                loading={ledger.isLoading}
+                columns={columns}
+                dataSource={ledger.data ?? []}
+                pagination={false}
+                summary={(rows) => {
+                  const last = rows[rows.length - 1] as LedgerLine | undefined
+                  if (!last) return null
+                  const newBalance = overview.data?.money.newBalancePaise ?? last.balancePaise
+                  const standingInterest = newBalance - last.balancePaise
+                  const totalDr = rows.reduce((s, r) => s + (r as LedgerLine).drPaise, 0)
+                  const totalCr = rows.reduce((s, r) => s + (r as LedgerLine).crPaise, 0)
+                  return (
+                    <>
+                      <Table.Summary.Row>
+                        <Table.Summary.Cell index={0} colSpan={5} align="right">
+                          <strong>{t('common.total')}</strong>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={5} align="right">
+                          <strong>{formatINR(totalDr)}</strong>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={6} align="right">
+                          <strong>{formatINR(totalCr)}</strong>
+                        </Table.Summary.Cell>
+                        <Table.Summary.Cell index={7} align="right">
+                          <BalanceAmount paise={last.balancePaise} strong />
+                        </Table.Summary.Cell>
+                      </Table.Summary.Row>
+                      {standingInterest !== 0 && (
+                        <>
+                          <Table.Summary.Row>
+                            <Table.Summary.Cell index={0} colSpan={7} align="right">
+                              {t('overview.standingInterest')}
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={7} align="right">
+                              {formatINR(standingInterest)}
+                            </Table.Summary.Cell>
+                          </Table.Summary.Row>
+                          <Table.Summary.Row>
+                            <Table.Summary.Cell index={0} colSpan={7} align="right">
+                              <strong>{t('overview.newBalance')}</strong>
+                            </Table.Summary.Cell>
+                            <Table.Summary.Cell index={7} align="right">
+                              <BalanceAmount paise={newBalance} strong />
+                            </Table.Summary.Cell>
+                          </Table.Summary.Row>
+                        </>
+                      )}
+                    </>
+                  )
+                }}
+              />
+              </>
+            )
+          }
+        ]}
       />
 
       {/* Set opening balance */}

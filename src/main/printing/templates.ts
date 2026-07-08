@@ -1,5 +1,6 @@
 import { formatINR } from '../../shared/money'
 import type {
+  AccountDetail,
   BardanaRow,
   Bill,
   BillLoanLine,
@@ -280,7 +281,7 @@ export function gatePassHtml(n: NikasiDetail): string {
     .map(
       (l) => `<tr>
         <td>${esc(l.fromKisanName)}</td>
-        <td>R${l.room} / F${l.floor} / ${l.rack}</td>
+        <td>${esc(l.lotNo)}</td>
         <td class="num">${l.packets}</td>
         <td class="num">${l.weightKg ?? ''}</td>
         <td class="num">${formatINR(l.ratePaise)}</td>
@@ -310,7 +311,7 @@ export function gatePassHtml(n: NikasiDetail): string {
   <table>
     <thead><tr>
       <th>${L('From kisan', 'किसान')}</th>
-      <th>${L('Location', 'स्थान')}</th>
+      <th>${L('Lot no.', 'लॉट सं.')}</th>
       <th class="num">${L('Packets', 'पैकेट')}</th>
       <th class="num">${L('Weight (kg)', 'वज़न')}</th>
       <th class="num">${L('Rate', 'दर')}</th>
@@ -693,15 +694,29 @@ export function voucherHtml(v: VoucherDetail): string {
 
 // ---------------------------------------------------------------- Ledger statement
 
-export function ledgerHtml(accountName: string, lines: LedgerLine[]): string {
+export function ledgerHtml(accountName: string, lines: LedgerLine[], acct?: AccountDetail | null): string {
   const closing = lines.length ? lines[lines.length - 1].balancePaise : 0
   const totalDr = lines.reduce((s, l) => s + l.drPaise, 0)
   const totalCr = lines.reduce((s, l) => s + l.crPaise, 0)
   const period = lines.length ? `${esc(fmtDate(lines[0].date))} → ${esc(fmtDate(lines[lines.length - 1].date))}` : '—'
+  // Identity rows so the printout names *which* party this is — several kisans may share a name,
+  // so son-of / village / phone are what tell them apart. Empty fields drop out (metaGrid filters).
+  const idRows = acct
+    ? [
+        acct.code ? metaRow(L('Code', 'कोड'), esc(acct.code)) : '',
+        metaRow(L('Type', 'प्रकार'), esc(acct.type.replace(/_/g, ' '))),
+        acct.subgroupName ? metaRow(L('Subgroup', 'उपसमूह'), esc(acct.subgroupName)) : '',
+        acct.sonOf ? metaRow('S/o', esc(acct.sonOf)) : '',
+        acct.villageCity ? metaRow(L('Village / City', 'गाँव / शहर'), esc(acct.villageCity)) : '',
+        acct.state ? metaRow(L('State', 'राज्य'), esc(acct.state)) : '',
+        acct.phone ? metaRow(L('Phone', 'फ़ोन'), esc(acct.phone)) : ''
+      ]
+    : []
 
   const body = `<h2>${esc(accountName)}</h2>
   ${metaGrid([
     metaRow(L('Account', 'खाता'), esc(accountName)),
+    ...idRows,
     metaRow(L('Period', 'अवधि'), period),
     metaRow(L('Entries', 'प्रविष्टियाँ'), String(lines.length))
   ])}

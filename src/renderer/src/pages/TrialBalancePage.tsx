@@ -1,25 +1,33 @@
-import { Button, Space, Table, Tag, Typography } from 'antd'
-import { PrinterOutlined } from '@ant-design/icons'
+import { useState } from 'react'
+import { Button, Input, Table } from 'antd'
+import { PrinterOutlined, SearchOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TrialBalanceRow } from '@shared/contracts'
 import { formatINR } from '../lib/format'
+import { groupBySubgroup } from '../lib/financials'
 import { usePrinter } from '../lib/usePrinter'
-import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { PageBanner, SectionBar, StatusPill } from '../components/report'
 
 export default function TrialBalancePage(): JSX.Element {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const print = usePrinter()
+  const [search, setSearch] = useState('')
   const tb = useQuery({ queryKey: ['trialBalance'], queryFn: () => window.api.ledger.trialBalance() })
-  const { containerRef, rowClassName } = useTableKeyNav(tb.data?.rows, (r) =>
-    navigate(`/accounts/${r.accountId}`, { state: { fromNav: '/trial-balance' } })
+
+  const q = search.trim().toLowerCase()
+  const rows = (tb.data?.rows ?? []).filter(
+    (r) => !q || r.accountName.toLowerCase().includes(q) || r.subgroupName.toLowerCase().includes(q)
   )
+  const groups = groupBySubgroup(rows)
+  // Grand totals reflect what's shown (equal the book totals when no search is active).
+  const totalDr = rows.reduce((s, r) => s + r.drPaise, 0)
+  const totalCr = rows.reduce((s, r) => s + r.crPaise, 0)
 
   const columns = [
     { title: t('trialBalance.account'), dataIndex: 'accountName' },
-    { title: t('accounts.subgroup'), dataIndex: 'subgroupName' },
     {
       title: t('common.dr'),
       dataIndex: 'drPaise',
@@ -38,51 +46,91 @@ export default function TrialBalancePage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ marginBottom: 16 }} align="center">
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('trialBalance.title')}
-        </Typography.Title>
-        {tb.data &&
-          (tb.data.balanced ? (
-            <Tag color="green">{t('trialBalance.balanced')}</Tag>
-          ) : (
-            <Tag color="red">{t('trialBalance.unbalanced')}</Tag>
-          ))}
-        <Button
-          size="small"
-          icon={<PrinterOutlined />}
-          onClick={() => print(() => window.api.print.trialBalance())}
-        >
-          {t('common.print')}
-        </Button>
-      </Space>
-      <div ref={containerRef}>
-      <Table
-        rowKey="accountId"
-        size="small"
-        loading={tb.isLoading}
-        columns={columns}
-        dataSource={tb.data?.rows ?? []}
-        pagination={false}
-        rowClassName={rowClassName}
-        onRow={(r) => ({
-          onClick: () => navigate(`/accounts/${r.accountId}`, { state: { fromNav: '/trial-balance' } }),
-          style: { cursor: 'pointer' }
-        })}
-        summary={() => (
-          <Table.Summary.Row>
-            <Table.Summary.Cell index={0} colSpan={2} align="right">
-              <strong>{t('common.total')}</strong>
-            </Table.Summary.Cell>
-            <Table.Summary.Cell index={2} align="right">
-              <strong>{formatINR(tb.data?.totalDr ?? 0)}</strong>
-            </Table.Summary.Cell>
-            <Table.Summary.Cell index={3} align="right">
-              <strong>{formatINR(tb.data?.totalCr ?? 0)}</strong>
-            </Table.Summary.Cell>
-          </Table.Summary.Row>
-        )}
+      <PageBanner
+        title={t('trialBalance.title')}
+        extra={
+          <>
+            <Input
+              size="small"
+              allowClear
+              prefix={<SearchOutlined />}
+              placeholder={t('common.search')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: 200 }}
+            />
+            {tb.data && (
+              <StatusPill tone={tb.data.balanced ? 'ok' : 'danger'}>
+                {tb.data.balanced ? t('trialBalance.balanced') : t('trialBalance.unbalanced')}
+              </StatusPill>
+            )}
+            <Button
+              size="small"
+              icon={<PrinterOutlined />}
+              onClick={() => print(() => window.api.print.trialBalance())}
+            >
+              {t('common.print')}
+            </Button>
+          </>
+        }
       />
+      {groups.map((g, i) => {
+        const subDr = g.rows.reduce((s, r) => s + r.drPaise, 0)
+        const subCr = g.rows.reduce((s, r) => s + r.crPaise, 0)
+        return (
+          <div key={g.subgroup}>
+            <SectionBar>{g.subgroup}</SectionBar>
+            <Table
+              className="pc-report"
+              rowKey="accountId"
+              size="small"
+              loading={tb.isLoading}
+              showHeader={i === 0}
+              columns={columns}
+              dataSource={g.rows}
+              pagination={false}
+              onRow={(r: TrialBalanceRow) => ({
+                onClick: () => navigate(`/accounts/${r.accountId}`, { state: { fromNav: '/trial-balance' } }),
+                style: { cursor: 'pointer' }
+              })}
+              summary={() => (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0} align="right">
+                    <strong>{`${t('common.total')} ${g.subgroup}`}</strong>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} align="right">
+                    <strong>{subDr ? formatINR(subDr) : ''}</strong>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={2} align="right">
+                    <strong>{subCr ? formatINR(subCr) : ''}</strong>
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              )}
+            />
+          </div>
+        )
+      })}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: 24,
+          marginTop: 16,
+          padding: '10px 16px',
+          borderRadius: 8,
+          background: '#4a0039',
+          color: '#fff',
+          fontWeight: 700,
+          fontVariantNumeric: 'tabular-nums'
+        }}
+      >
+        <span style={{ marginRight: 'auto' }}>{t('common.total')}</span>
+        <span>
+          {t('common.dr')} {formatINR(totalDr)}
+        </span>
+        <span>
+          {t('common.cr')} {formatINR(totalCr)}
+        </span>
       </div>
     </div>
   )

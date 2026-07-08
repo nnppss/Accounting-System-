@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
-import { App as AntApp, Button, Empty, Input, Popconfirm, Space, Table, Typography } from 'antd'
+import { App as AntApp, Button, Empty, Input, Popconfirm, Space, Table } from 'antd'
 import { DeleteOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { PersonRow } from '@shared/contracts'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { PageBanner } from '../components/report'
 
 /**
  * People (person master) management. Persons are a permanent, reusable identity list — one human can
@@ -87,10 +88,7 @@ export default function PeoplePage(): JSX.Element {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        {t('people.title')}
-      </Typography.Title>
-      <Typography.Paragraph type="secondary">{t('people.subtitle')}</Typography.Paragraph>
+      <PageBanner title={t('people.title')} subtitle={t('people.subtitle')} />
 
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <Input.Search

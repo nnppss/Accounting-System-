@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { AuditAction, AuditFilter, AuditLogRow } from '@shared/contracts'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { PageBanner } from '../components/report'
 
 const ACTION_COLORS: Record<AuditAction, string> = {
   create: 'green',
@@ -120,9 +121,7 @@ export default function AuditPage(): JSX.Element {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        {t('audit.title')}
-      </Typography.Title>
+      <PageBanner title={t('audit.title')} />
 
       <Card style={{ marginBottom: 16 }}>
         <Space wrap>

@@ -4,7 +4,6 @@ import {
   Button,
   Card,
   DatePicker,
-  Divider,
   Form,
   Input,
   InputNumber,
@@ -12,10 +11,10 @@ import {
   Select,
   Space,
   Table,
-  Tag,
-  Typography
+  Tag
 } from 'antd'
 import { DeleteOutlined, PrinterOutlined } from '@ant-design/icons'
+import { PageBanner, SectionBar } from '../components/report'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
@@ -151,9 +150,7 @@ export default function VouchersPage(): JSX.Element {
 
   return (
     <div>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>
-        {t('vouchers.title')}
-      </Typography.Title>
+      <PageBanner title={t('vouchers.title')} />
 
       <Card style={{ marginBottom: 24, maxWidth: 720 }}>
         <Segmented
@@ -280,10 +277,10 @@ export default function VouchersPage(): JSX.Element {
         </div>
       </Card>
 
-      <Divider />
-      <Typography.Title level={4}>{t('vouchers.recent')}</Typography.Title>
+      <SectionBar>{t('vouchers.recent')}</SectionBar>
       <div ref={containerRef}>
         <Table
+          className="pc-report"
           rowKey="id"
           size="small"
           loading={vouchers.isLoading}

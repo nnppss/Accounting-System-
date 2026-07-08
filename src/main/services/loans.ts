@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, cheque, financialYear, loan, loanEvent, voucher, voucherEntry, yearClose } from '../data/schema'
+import { account, cheque, financialYear, loan, loanEvent, person, voucher, voucherEntry, yearClose } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type {
   CreateLoanResult,
@@ -260,6 +260,7 @@ export function recordPayment(
 function rowFrom(
   l: typeof loan.$inferSelect,
   accountName: string,
+  sonOf: string | null,
   asOf: string
 ): LoanRow {
   return {
@@ -267,6 +268,7 @@ function rowFrom(
     category: l.category,
     accountId: l.accountId,
     accountName,
+    sonOf,
     date: l.date,
     principalPaise: l.principalPaise,
     mobile: l.mobile,
@@ -283,21 +285,23 @@ function rowFrom(
 export function listLoans(yearId: number, asOf?: string): LoanRow[] {
   const at = asOf ?? todayIso()
   const rows = db()
-    .select({ loan, accountName: account.name })
+    .select({ loan, accountName: account.name, sonOf: person.sonOf })
     .from(loan)
     .innerJoin(account, eq(loan.accountId, account.id))
+    .leftJoin(person, eq(account.personId, person.id))
     .where(eq(loan.yearId, yearId))
     .orderBy(desc(loan.date), desc(loan.id))
     .all()
-  return rows.map((r) => rowFrom(r.loan, r.accountName, at))
+  return rows.map((r) => rowFrom(r.loan, r.accountName, r.sonOf, at))
 }
 
 export function getLoan(loanId: number, asOf?: string): LoanDetail | null {
   const at = asOf ?? todayIso()
   const r = db()
-    .select({ loan, accountName: account.name })
+    .select({ loan, accountName: account.name, sonOf: person.sonOf })
     .from(loan)
     .innerJoin(account, eq(loan.accountId, account.id))
+    .leftJoin(person, eq(account.personId, person.id))
     .where(eq(loan.id, loanId))
     .get()
   if (!r) return null
@@ -307,7 +311,7 @@ export function getLoan(loanId: number, asOf?: string): LoanDetail | null {
     .where(eq(loanEvent.loanId, loanId))
     .orderBy(asc(loanEvent.date), asc(loanEvent.id))
     .all()
-  return { ...rowFrom(r.loan, r.accountName, at), events, breakdown: outstandingAsOf(loanId, at) }
+  return { ...rowFrom(r.loan, r.accountName, r.sonOf, at), events, breakdown: outstandingAsOf(loanId, at) }
 }
 
 /**

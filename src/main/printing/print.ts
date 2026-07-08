@@ -11,6 +11,7 @@ import { getBill } from '../services/bills'
 import { getVoucher } from '../services/vouchers'
 import { getAccountLedger } from '../services/ledger'
 import { getTrialBalance } from '../services/ledger'
+import { getAccountDetail } from '../services/accounts'
 import {
   billHtml,
   gatePassHtml,
@@ -79,9 +80,10 @@ export async function printVoucher(voucherId: number): Promise<PrintResult> {
 
 export async function printLedger(accountId: number, yearId: number): Promise<PrintResult> {
   const lines = getAccountLedger(accountId, yearId)
-  const name = accountName(accountId)
+  const acct = getAccountDetail(accountId, yearId)
+  const name = acct?.name ?? accountName(accountId)
   const safe = name.replace(/[^\w]+/g, '-').toLowerCase()
-  return renderPdf(ledgerHtml(name, lines), `ledger-${safe}.pdf`)
+  return renderPdf(ledgerHtml(name, lines, acct), `ledger-${safe}.pdf`)
 }
 
 export async function printTrialBalance(yearId: number, year: number): Promise<PrintResult> {

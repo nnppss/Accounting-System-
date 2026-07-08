@@ -13,9 +13,12 @@ import {
   Select,
   Space,
   Table,
+  Tag,
   Typography
 } from 'antd'
+import { CheckCircleFilled } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { PageBanner } from '../components/report'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { ChequeRow } from '@shared/contracts'
@@ -69,10 +72,14 @@ export default function ChequesPage(): JSX.Element {
     },
     onError: (e: Error) => message.error(e.message)
   })
+  // The accountant clears cheques from statements days/weeks later, so he picks the actual clearance date.
+  const [clearTarget, setClearTarget] = useState<ChequeRow | null>(null)
+  const [clearDate, setClearDate] = useState<dayjs.Dayjs>(dayjs())
   const clear = useMutation({
-    mutationFn: (id: number) => window.api.cheques.clear(id, dayjs().format('YYYY-MM-DD')),
+    mutationFn: (input: { id: number; date: string }) => window.api.cheques.clear(input.id, input.date),
     onSuccess: () => {
       message.success(t('cheques.cleared'))
+      setClearTarget(null)
       invalidate()
     },
     onError: (e: Error) => message.error(e.message)
@@ -125,7 +132,16 @@ export default function ChequesPage(): JSX.Element {
       width: 110,
       render: (d: ChequeDirection) => t(`cheques.dir.${d}`)
     },
-    { title: t('cheques.party'), dataIndex: 'partyName' },
+    {
+      title: t('cheques.party'),
+      dataIndex: 'partyName',
+      render: (name: string, row: ChequeRow) => (
+        <>
+          {name}
+          {row.partySonOf && <Typography.Text type="secondary"> s/o {row.partySonOf}</Typography.Text>}
+        </>
+      )
+    },
     { title: t('cheques.bankAccount'), dataIndex: 'bankName' },
     {
       title: t('common.amount'),
@@ -134,16 +150,23 @@ export default function ChequesPage(): JSX.Element {
       width: 140,
       render: (v: number) => formatINR(v)
     },
+    { title: t('cheques.issueDate'), dataIndex: 'date', width: 120, render: (d: string | null) => (d ? formatDate(d) : '—') },
+    { title: t('cheques.receiveDate'), dataIndex: 'receiveDate', width: 120, render: (d: string | null) => (d ? formatDate(d) : '—') },
     { title: t('cheques.clearanceDate'), dataIndex: 'clearanceDate', width: 130, render: (d: string | null) => (d ? formatDate(d) : '—') },
     {
       title: t('cheques.status'),
       dataIndex: 'status',
       width: 100,
-      render: (s: ChequeStatus) => (
-        <SeverityTag severity={STATUS_SEVERITY[s]} icon={s !== 'cleared'}>
-          {t(`cheques.st.${s}`)}
-        </SeverityTag>
-      )
+      render: (s: ChequeStatus) =>
+        s === 'cleared' ? (
+          <Tag color="green" icon={<CheckCircleFilled />}>
+            {t('cheques.st.cleared')}
+          </Tag>
+        ) : (
+          <SeverityTag severity={STATUS_SEVERITY[s]} icon>
+            {t(`cheques.st.${s}`)}
+          </SeverityTag>
+        )
     },
     {
       title: t('common.actions'),
@@ -152,11 +175,16 @@ export default function ChequesPage(): JSX.Element {
       render: (_: unknown, row: ChequeRow) =>
         row.status === 'pending' ? (
           <Space>
-            <Popconfirm title={t('cheques.confirmClear')} onConfirm={() => clear.mutate(row.id)}>
-              <Button size="small" type="primary">
-                {t('cheques.clear')}
-              </Button>
-            </Popconfirm>
+            <Button
+              size="small"
+              type="primary"
+              onClick={() => {
+                setClearDate(row.clearanceDate ? dayjs(row.clearanceDate) : dayjs())
+                setClearTarget(row)
+              }}
+            >
+              {t('cheques.clear')}
+            </Button>
             <Popconfirm title={t('cheques.confirmBounce')} onConfirm={() => bounce.mutate(row.id)}>
               <Button size="small" danger>
                 {t('cheques.bounce')}
@@ -171,14 +199,14 @@ export default function ChequesPage(): JSX.Element {
 
   return (
     <div>
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t('cheques.title')}
-        </Typography.Title>
-        <Button type="primary" onClick={() => setOpen(true)}>
-          {t('cheques.new')}
-        </Button>
-      </Space>
+      <PageBanner
+        title={t('cheques.title')}
+        extra={
+          <Button type="primary" onClick={() => setOpen(true)}>
+            {t('cheques.new')}
+          </Button>
+        }
+      />
 
       <Space style={{ marginBottom: 16 }} wrap>
         <Select
@@ -242,6 +270,7 @@ export default function ChequesPage(): JSX.Element {
 
       <div ref={containerRef}>
         <Table
+          className="pc-report"
           rowKey="id"
           size="small"
           loading={cheques.isLoading}
@@ -286,6 +315,7 @@ export default function ChequesPage(): JSX.Element {
               no: v.no,
               bank: v.bank || undefined,
               date: v.date ? (v.date as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
+              receiveDate: v.receiveDate ? (v.receiveDate as dayjs.Dayjs).format('YYYY-MM-DD') : undefined,
               clearanceDate: v.clearanceDate
                 ? (v.clearanceDate as dayjs.Dayjs).format('YYYY-MM-DD')
                 : undefined
@@ -337,12 +367,17 @@ export default function ChequesPage(): JSX.Element {
           </Row>
 
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="date" label={t('common.date')}>
+            <Col span={8}>
+              <Form.Item name="date" label={t('cheques.issueDate')}>
                 <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col span={8}>
+              <Form.Item name="receiveDate" label={t('cheques.receiveDate')}>
+                <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
               <Form.Item name="clearanceDate" label={t('cheques.clearanceDate')}>
                 <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
               </Form.Item>
@@ -350,6 +385,26 @@ export default function ChequesPage(): JSX.Element {
           </Row>
         </Form>
         </div>
+      </Modal>
+
+      <Modal
+        title={t('cheques.clear')}
+        open={clearTarget !== null}
+        onCancel={() => setClearTarget(null)}
+        onOk={() => clearTarget && clear.mutate({ id: clearTarget.id, date: clearDate.format('YYYY-MM-DD') })}
+        confirmLoading={clear.isPending}
+        okText={t('cheques.clear')}
+      >
+        <Typography.Paragraph>{t('cheques.confirmClear')}</Typography.Paragraph>
+        <Form.Item label={t('cheques.clearanceDate')} style={{ marginBottom: 0 }}>
+          <DatePicker
+            format={DATE_INPUT_FORMATS}
+            allowClear={false}
+            value={clearDate}
+            onChange={(d) => d && setClearDate(d)}
+            style={{ width: '100%' }}
+          />
+        </Form.Item>
       </Modal>
     </div>
   )

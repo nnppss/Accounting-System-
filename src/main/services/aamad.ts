@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { aamad, aamadLocation, account, financialYear } from '../data/schema'
+import { aamad, aamadLocation, account, financialYear, nikasiLine } from '../data/schema'
 import type {
   AamadDetail,
   AamadInput,
@@ -21,34 +21,21 @@ export type {
   AamadSearchFilter
 } from '../../shared/contracts'
 
+/** Serial embedded in an aamad `no` (`YYYY-serial`), and the lot no. shown to parties. */
+export const serialOf = (no: string): number => Number(no.slice(no.indexOf('-') + 1))
+export const lotNoOf = (no: string, totalPackets: number): string =>
+  `${serialOf(no)}/${totalPackets}`
+
 /**
  * Shared create/update checks. Locations are optional (at peak season the consignment is booked
  * by total only and placed later) and may cover only part of the total — but never more.
- * Returns the computed aamad no.
  */
-function validateInput(yearId: number, input: AamadInput, excludeId?: number): string {
-  if (!Number.isInteger(input.serial) || input.serial <= 0) {
-    throw new Error('Aamad serial must be a positive whole number')
-  }
+function validateInput(input: AamadInput): void {
   if (!Number.isInteger(input.totalPackets) || input.totalPackets <= 0) {
     throw new Error('Total packets must be a positive whole number')
   }
   const kisan = db().select().from(account).where(eq(account.id, input.kisanAccountId)).get()
   if (!kisan) throw new Error(`Kisan account ${input.kisanAccountId} not found`)
-
-  // Aamad no. = `YYYY-serial`: the year is the working storage year (not the entry date), so
-  // entries booked in early next year still belong to this season's series.
-  const fy = db().select().from(financialYear).where(eq(financialYear.id, yearId)).get()
-  if (!fy) throw new Error(`Financial year ${yearId} not found`)
-  const no = `${fy.year}-${input.serial}`
-  const clash = db()
-    .select({ id: aamad.id })
-    .from(aamad)
-    .where(and(eq(aamad.yearId, yearId), eq(aamad.no, no)))
-    .get()
-  if (clash && clash.id !== excludeId) {
-    throw new Error(`Aamad ${no} already exists — serial ${input.serial} is used in ${fy.year}`)
-  }
 
   let locSum = 0
   for (const l of input.locations) {
@@ -61,12 +48,18 @@ function validateInput(yearId: number, input: AamadInput, excludeId?: number): s
   if (locSum > input.totalPackets) {
     throw new Error(`Location packets (${locSum}) exceed the total (${input.totalPackets})`)
   }
-  return no
 }
 
 export function createAamad(yearId: number, input: AamadInput, userId?: number): number {
-  const no = validateInput(yearId, input)
+  validateInput(input)
+  // Aamad no. = `YYYY-serial`; the serial auto-increments per storage year (year is the working
+  // year, not the entry date, so early-next-year entries still join this season's series).
+  const fy = db().select().from(financialYear).where(eq(financialYear.id, yearId)).get()
+  if (!fy) throw new Error(`Financial year ${yearId} not found`)
   return db().transaction((tx) => {
+    const existing = tx.select({ no: aamad.no }).from(aamad).where(eq(aamad.yearId, yearId)).all()
+    const serial = existing.reduce((m, r) => Math.max(m, serialOf(r.no)), 0) + 1
+    const no = `${fy.year}-${serial}`
     const header = tx
       .insert(aamad)
       .values({
@@ -128,12 +121,11 @@ export function updateAamad(yearId: number, id: number, input: AamadInput, userI
     .where(and(eq(aamad.id, id), eq(aamad.yearId, yearId)))
     .get()
   if (!before) throw new Error(`Aamad ${id} not found`)
-  const no = validateInput(yearId, input, id)
+  validateInput(input) // no. (and its serial) never changes on edit
   db().transaction((tx) => {
     const beforeLocations = tx.select().from(aamadLocation).where(eq(aamadLocation.aamadId, id)).all()
     tx.update(aamad)
       .set({
-        no,
         date: input.date,
         kisanAccountId: input.kisanAccountId,
         totalPackets: input.totalPackets
@@ -180,6 +172,19 @@ export function deleteAamad(yearId: number, id: number, userId?: number): void {
       .where(and(eq(aamad.id, id), eq(aamad.yearId, yearId)))
       .get()
     if (!header) throw new Error(`Aamad ${id} not found`)
+    // Nikasi lines reference this lot (aamad_id), so the header delete would fail on the FK with a
+    // cryptic message — check first and give the same "already left" guard the shrink path gives.
+    const shipped = tx
+      .select({ n: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)` })
+      .from(nikasiLine)
+      .where(eq(nikasiLine.aamadId, id))
+      .get()
+    if ((shipped?.n ?? 0) > 0) {
+      throw new Error(
+        `Aamad ${header.no} cannot be deleted: ${shipped!.n} of its packets have already left ` +
+          `through nikasi — delete those gate passes first`
+      )
+    }
     const locations = tx.select().from(aamadLocation).where(eq(aamadLocation.aamadId, id)).all()
     tx.delete(aamadLocation).where(eq(aamadLocation.aamadId, id)).run()
     tx.delete(aamad).where(eq(aamad.id, id)).run()
