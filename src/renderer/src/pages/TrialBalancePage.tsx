@@ -6,8 +6,9 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TrialBalanceRow } from '@shared/contracts'
 import { formatINR } from '../lib/format'
-import { groupBySubgroup } from '../lib/financials'
+import { groupBySubgroup } from '@shared/financials'
 import { usePrinter } from '../lib/usePrinter'
+import { useTableKeyNav } from '../lib/useTableKeyNav'
 import { PageBanner, SectionBar, StatusPill } from '../components/report'
 
 export default function TrialBalancePage(): JSX.Element {
@@ -22,12 +23,35 @@ export default function TrialBalancePage(): JSX.Element {
     (r) => !q || r.accountName.toLowerCase().includes(q) || r.subgroupName.toLowerCase().includes(q)
   )
   const groups = groupBySubgroup(rows)
+  // Keyboard row-selection spans the per-subgroup tables. groupBySubgroup re-sorts, so the
+  // hook must see the rows in rendered (grouped) order; the global index then maps onto
+  // per-group indices via an offset.
+  const openLedger = (r: TrialBalanceRow): void =>
+    navigate(`/accounts/${r.accountId}`, { state: { fromNav: '/trial-balance' } })
+  const { activeIndex, containerRef } = useTableKeyNav(
+    groups.flatMap((g) => g.rows),
+    openLedger
+  )
+  const groupOffsets: number[] = []
+  groups.reduce((off, g) => {
+    groupOffsets.push(off)
+    return off + g.rows.length
+  }, 0)
   // Grand totals reflect what's shown (equal the book totals when no search is active).
   const totalDr = rows.reduce((s, r) => s + r.drPaise, 0)
   const totalCr = rows.reduce((s, r) => s + r.crPaise, 0)
 
   const columns = [
-    { title: t('trialBalance.account'), dataIndex: 'accountName' },
+    {
+      title: t('trialBalance.account'),
+      dataIndex: 'accountName',
+      render: (v: string, r: TrialBalanceRow) => (
+        <span>
+          {v}
+          {r.sonOf ? <span style={{ color: '#8c8c8c' }}> · s/o {r.sonOf}</span> : null}
+        </span>
+      )
+    },
     {
       title: t('common.dr'),
       dataIndex: 'drPaise',
@@ -74,6 +98,7 @@ export default function TrialBalancePage(): JSX.Element {
           </>
         }
       />
+      <div ref={containerRef}>
       {groups.map((g, i) => {
         const subDr = g.rows.reduce((s, r) => s + r.drPaise, 0)
         const subCr = g.rows.reduce((s, r) => s + r.crPaise, 0)
@@ -89,8 +114,9 @@ export default function TrialBalancePage(): JSX.Element {
               columns={columns}
               dataSource={g.rows}
               pagination={false}
+              rowClassName={(_, ri) => (groupOffsets[i] + ri === activeIndex ? 'pc-row-active' : '')}
               onRow={(r: TrialBalanceRow) => ({
-                onClick: () => navigate(`/accounts/${r.accountId}`, { state: { fromNav: '/trial-balance' } }),
+                onClick: () => openLedger(r),
                 style: { cursor: 'pointer' }
               })}
               summary={() => (
@@ -110,6 +136,7 @@ export default function TrialBalancePage(): JSX.Element {
           </div>
         )
       })}
+      </div>
       <div
         style={{
           display: 'flex',

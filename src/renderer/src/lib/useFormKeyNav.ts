@@ -21,6 +21,9 @@ import { useCallback, useEffect, useRef, type KeyboardEvent as ReactKeyboardEven
  *  - When an antd Select/DatePicker panel is open, Enter is left to antd so it commits the
  *    selection — a second Enter then advances (the natural "pick, then move on" flow).
  *  - Shift+Enter in a <textarea> inserts a newline.
+ *  - Tab / Shift+Tab move through the SAME field stops as Enter (one stop per compound
+ *    control, never the inner bits); on the first/last field they fall back to native Tab
+ *    so focus can reach the modal footer buttons.
  */
 
 // antd compound controls render several inner nodes; we treat each as ONE field stop.
@@ -125,16 +128,33 @@ export function useFormKeyNav({
   }, [open, autoFocus])
 
   const onKeyDownCapture = useCallback((e: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (e.key !== 'Enter') return
+    if (e.key !== 'Enter' && e.key !== 'Tab') return
     const target = e.target as HTMLElement
 
-    // Let antd commit an open Select option / DatePicker date on Enter.
+    // Let antd commit an open Select option / DatePicker date on Enter/Tab.
     if (anyAntPanelOpen()) return
-    // Allow newlines in a multiline field.
-    if (target.tagName === 'TEXTAREA' && e.shiftKey) return
 
     const container = containerRef.current
     if (!container) return
+
+    // Tab / Shift+Tab → same stops as Enter, without the accept/add-line behaviour.
+    if (e.key === 'Tab') {
+      if (e.altKey || e.ctrlKey || e.metaKey) return
+      const fields = collectFields(container)
+      const curRoot = fieldRoot(target)
+      const idx = fields.findIndex((f) => f.root === curRoot || f.root.contains(curRoot))
+      if (idx < 0) return
+      const next = fields[idx + (e.shiftKey ? -1 : 1)]
+      if (!next) return // leaving the form → native Tab reaches the footer buttons
+      e.preventDefault()
+      focusField(next)
+      return
+    }
+
+    // Allow newlines in a multiline field.
+    if (target.tagName === 'TEXTAREA' && e.shiftKey) return
+    // Enter on the "add line" button itself is a click, not a move.
+    if (target.closest('[data-pc-additem]')) return
 
     // Ctrl/Cmd+Enter → accept from anywhere.
     if (e.ctrlKey || e.metaKey) {

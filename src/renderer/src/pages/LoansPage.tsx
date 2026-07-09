@@ -17,6 +17,7 @@ import {
   Tooltip,
   Typography
 } from 'antd'
+import { PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageBanner } from '../components/report'
 import { useTranslation } from 'react-i18next'
@@ -24,6 +25,7 @@ import dayjs from 'dayjs'
 import type { Bill, LoanRow } from '@shared/contracts'
 import type { LoanCategory, LoanEventType, LoanMode, LoanNature } from '@shared/enums'
 import { DATE_FORMAT, DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 import { SeverityText, interestSeverity, severityRowClass } from '../components/Highlight'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
@@ -39,6 +41,7 @@ const CATEGORY_TYPE: Record<LoanCategory, 'kisan' | 'vyapari' | null> = {
 export default function LoansPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
+  const print = usePrinter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
   const category = Form.useWatch('category', form) as LoanCategory | undefined
@@ -168,18 +171,29 @@ export default function LoansPage(): JSX.Element {
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 90,
+      width: 130,
       render: (_: unknown, row: LoanRow) => (
-        <Button
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation()
-            setPayLoan(row)
-          }}
-          disabled={row.outstandingPaise <= 0}
-        >
-          {t('loans.pay')}
-        </Button>
+        <Space size={4}>
+          <Button
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation()
+              setPayLoan(row)
+            }}
+            disabled={row.outstandingPaise <= 0}
+          >
+            {t('loans.pay')}
+          </Button>
+          <Button
+            size="small"
+            type="text"
+            icon={<PrinterOutlined />}
+            onClick={(e) => {
+              e.stopPropagation()
+              print(() => window.api.print.loanStatement(row.id))
+            }}
+          />
+        </Space>
       )
     }
   ]
@@ -189,9 +203,14 @@ export default function LoansPage(): JSX.Element {
       <PageBanner
         title={t('loans.title')}
         extra={
-          <Button type="primary" onClick={() => setOpen(true)}>
-            {t('loans.new')}
-          </Button>
+          <Space>
+            <Button icon={<PrinterOutlined />} onClick={() => print(() => window.api.print.loanRegister(rows))}>
+              {t('common.print')}
+            </Button>
+            <Button type="primary" onClick={() => setOpen(true)}>
+              {t('loans.new')}
+            </Button>
+          </Space>
         }
       />
 

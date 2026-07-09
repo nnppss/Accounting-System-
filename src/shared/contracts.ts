@@ -202,6 +202,7 @@ export interface LedgerLine {
 export interface TrialBalanceRow {
   accountId: number
   accountName: string
+  sonOf?: string | null
   subgroupName: string
   nature: SubgroupNature
   drPaise: number

@@ -1,17 +1,30 @@
 import { formatINR } from '../../shared/money'
 import type {
+  AamadDetail,
+  AamadListRow,
   AccountDetail,
+  BardanaAccount,
   BardanaRow,
   Bill,
   BillLoanLine,
   BillSection,
+  DayBook,
   ExpenseRow,
   LedgerLine,
+  LoanComposition,
+  LoanDetail,
+  LoanRow,
+  MoneyBookDetailRow,
+  MoneyBookSummary,
   NikasiDetail,
+  NikasiListRow,
+  PartyRow,
+  SaudaListRow,
   TrialBalance,
   VoucherDetail
 } from '../../shared/contracts'
 import type { EntryTag, VoucherType } from '../../shared/enums'
+import type { Financials, StatementLine, SubgroupSection } from '../../shared/financials'
 
 /**
  * Print templates — **pure** functions that turn a DTO into a self-contained HTML string
@@ -740,7 +753,7 @@ export function trialBalanceHtml(year: number, tb: TrialBalance): string {
   const rows = tb.rows
     .map(
       (r) => `<tr>
-        <td>${esc(r.accountName)}</td>
+        <td>${esc(r.accountName)}${r.sonOf ? ` <span class="muted">s/o ${esc(r.sonOf)}</span>` : ''}</td>
         <td class="muted">${esc(r.subgroupName)}</td>
         <td class="num">${money(r.drPaise)}</td>
         <td class="num">${money(r.crPaise)}</td>
@@ -776,4 +789,533 @@ export function trialBalanceHtml(year: number, tb: TrialBalance): string {
     </tr></tfoot>
   </table>`
   return shell(L('Trial Balance', 'तलपट'), String(year), body)
+}
+
+// ================================================================ Registers & reports
+// Shared little helpers for the list-style documents added below.
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** A single-line (bilingual) table header cell; `num` right-aligns it for figures. */
+function thc(label: string, num = false): string {
+  return `<th${num ? ' class="num"' : ''}>${label}</th>`
+}
+
+/** Assemble a `<table>` from a header row, body rows and an optional footer row (all pre-built HTML). */
+function table(headCells: string, bodyRows: string, footCells = ''): string {
+  return `<table>
+    <thead><tr>${headCells}</tr></thead>
+    <tbody>${bodyRows}</tbody>
+    ${footCells ? `<tfoot><tr>${footCells}</tr></tfoot>` : ''}
+  </table>`
+}
+
+/** An "empty" note row spanning `cols` columns, for registers with no matching rows. */
+function emptyRow(cols: number): string {
+  return `<tr><td colspan="${cols}" class="empty">${L('No entries', 'कोई प्रविष्टि नहीं')}</td></tr>`
+}
+
+// ---------------------------------------------------------------- Money Book (summary)
+
+export function moneyBookSummaryHtml(accountName: string, year: number, s: MoneyBookSummary): string {
+  const totalReceipts = s.months.reduce((a, m) => a + m.receiptsPaise, 0)
+  const totalPayments = s.months.reduce((a, m) => a + m.paymentsPaise, 0)
+  const rows = s.months
+    .map(
+      (m) => `<tr>
+        <td>${MONTHS[m.month - 1] ?? m.month}</td>
+        <td class="num">${money(m.openingPaise)}</td>
+        <td class="num">${money(m.receiptsPaise)}</td>
+        <td class="num">${money(m.paymentsPaise)}</td>
+        <td class="num">${money(m.closingPaise)}</td>
+      </tr>`
+    )
+    .join('')
+  const body = `<h2>${esc(accountName)}</h2>
+  ${cards([
+    { label: L('Opening', 'प्रारंभिक शेष'), value: formatINR(s.openingPaise) },
+    { label: L('Total receipts', 'कुल प्राप्ति'), value: formatINR(totalReceipts), tone: 'green' },
+    { label: L('Total payments', 'कुल भुगतान'), value: formatINR(totalPayments), tone: 'amber' },
+    { label: L('Closing', 'अंतिम शेष'), value: formatINR(s.closingPaise), tone: 'accent' }
+  ])}
+  ${table(
+    thc(L('Month', 'माह')) +
+      thc(L('Opening', 'प्रारंभिक'), true) +
+      thc(L('Receipts', 'प्राप्ति'), true) +
+      thc(L('Payments', 'भुगतान'), true) +
+      thc(L('Closing', 'शेष'), true),
+    rows || emptyRow(5),
+    `<td>${L('Total', 'कुल')}</td><td class="num">${formatINR(s.openingPaise)}</td><td class="num">${formatINR(totalReceipts)}</td><td class="num">${formatINR(totalPayments)}</td><td class="num">${formatINR(s.closingPaise)}</td>`
+  )}`
+  return shell(L('Money Book', 'रोकड़ बही'), `${esc(accountName)} · ${year}`, body)
+}
+
+// ---------------------------------------------------------------- Money Book (month detail)
+
+export function moneyBookDetailHtml(
+  accountName: string,
+  year: number,
+  month: number,
+  rows: MoneyBookDetailRow[]
+): string {
+  const totalRcpt = rows.reduce((a, r) => a + r.receiptPaise, 0)
+  const totalPay = rows.reduce((a, r) => a + r.paymentPaise, 0)
+  const body = rows
+    .map(
+      (r) => `<tr>
+        <td class="num">${esc(fmtDate(r.date))}</td>
+        <td>${voucherTypeShort(r.type)} <span class="muted">#${r.voucherNo}</span></td>
+        <td>${esc(r.counterparty)}</td>
+        <td>${esc(r.narration) || ''}</td>
+        <td class="num">${money(r.receiptPaise)}</td>
+        <td class="num">${money(r.paymentPaise)}</td>
+      </tr>`
+    )
+    .join('')
+  const title = `${MONTHS[month - 1] ?? month} ${year}`
+  const html = `<h2>${esc(accountName)} — ${title}</h2>
+  ${table(
+    thc(L('Date', 'दिनांक'), true) +
+      thc(L('Voucher', 'वाउचर')) +
+      thc(L('Counterparty', 'प्रतिपक्ष')) +
+      thc(L('Particulars', 'विवरण')) +
+      thc(L('Receipt', 'प्राप्ति'), true) +
+      thc(L('Payment', 'भुगतान'), true),
+    body || emptyRow(6),
+    `<td colspan="4">${L('Total', 'कुल')}</td><td class="num">${formatINR(totalRcpt)}</td><td class="num">${formatINR(totalPay)}</td>`
+  )}`
+  return shell(L('Money Book — Month', 'रोकड़ बही — माह'), `${esc(accountName)} · ${title}`, html)
+}
+
+// ---------------------------------------------------------------- Day Book
+
+export function dayBookHtml(db: DayBook): string {
+  const blocks = db.vouchers
+    .map((v) => {
+      const rows = v.entries
+        .map(
+          (e, i) => `<tr>
+        <td>${i === 0 ? `${voucherTypeShort(v.type)} <span class="muted">#${v.voucherNo}</span>${v.narration ? `<span class="muted"> · ${esc(v.narration)}</span>` : ''}` : ''}</td>
+        <td>${esc(e.accountName)}${tagChip(e.tag)}</td>
+        <td class="num">${money(e.drPaise)}</td>
+        <td class="num">${money(e.crPaise)}</td>
+      </tr>`
+        )
+        .join('')
+      return rows
+    })
+    .join('')
+  const body = `
+  ${metaGrid([
+    metaRow(L('Date', 'दिनांक'), esc(fmtDate(db.date))),
+    metaRow(L('Vouchers', 'वाउचर'), String(db.vouchers.length))
+  ])}
+  ${table(
+    thc(L('Voucher', 'वाउचर')) +
+      thc(L('Account', 'खाता')) +
+      thc(L('Dr', 'नामे'), true) +
+      thc(L('Cr', 'जमा'), true),
+    blocks || emptyRow(4),
+    `<td colspan="2">${L('Total', 'कुल')}</td><td class="num">${formatINR(db.totalDrPaise)}</td><td class="num">${formatINR(db.totalCrPaise)}</td>`
+  )}`
+  return shell(L('Day Book', 'दैनिक बही'), esc(fmtDate(db.date)), body)
+}
+
+// ---------------------------------------------------------------- Aamad register
+
+export function aamadRegisterHtml(subtitle: string, rows: AamadListRow[]): string {
+  const totalPackets = rows.reduce((a, r) => a + r.totalPackets, 0)
+  const totalUnassigned = rows.reduce((a, r) => a + (r.totalPackets - r.assignedPackets), 0)
+  const body = rows
+    .map((r) => {
+      const unassigned = r.totalPackets - r.assignedPackets
+      return `<tr>
+        <td>${esc(r.no)}</td>
+        <td class="num">${esc(fmtDate(r.date))}</td>
+        <td>${esc(r.kisanName)}</td>
+        <td class="num">${r.totalPackets}</td>
+        <td class="num">${unassigned > 0 ? unassigned : ''}</td>
+      </tr>`
+    })
+    .join('')
+  const html = table(
+    thc(L('Aamad no.', 'आमद सं.')) +
+      thc(L('Date', 'दिनांक'), true) +
+      thc(L('Kisan', 'किसान')) +
+      thc(L('Total packets', 'कुल पैकेट'), true) +
+      thc(L('Unassigned', 'शेष स्थान'), true),
+    body || emptyRow(5),
+    `<td colspan="3">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td class="num">${totalUnassigned || ''}</td>`
+  )
+  return shell(L('Aamad Register', 'आमद रजिस्टर'), subtitle || '—', html)
+}
+
+// ---------------------------------------------------------------- Aamad receipt (per intake)
+
+export function aamadReceiptHtml(a: AamadDetail): string {
+  const locs = a.locations
+    .map(
+      (l) => `<tr>
+        <td class="num">${l.room}</td>
+        <td class="num">${l.floor}</td>
+        <td class="num">${l.rack}</td>
+        <td class="num">${l.packets}</td>
+      </tr>`
+    )
+    .join('')
+  const body = `
+  ${cards([
+    { label: L('Total packets', 'कुल पैकेट'), value: String(a.totalPackets), tone: 'accent' },
+    { label: L('Assigned', 'निर्धारित'), value: String(a.assignedPackets) }
+  ])}
+  ${metaGrid([
+    metaRow(L('Aamad no.', 'आमद सं.'), esc(a.no)),
+    metaRow(L('Date', 'दिनांक'), esc(fmtDate(a.date))),
+    metaRow(L('Kisan', 'किसान'), esc(a.kisanName))
+  ])}
+  ${table(
+    thc(L('Room', 'कमरा'), true) +
+      thc(L('Floor', 'मंज़िल'), true) +
+      thc(L('Rack', 'रैक'), true) +
+      thc(L('Packets', 'पैकेट'), true),
+    locs || emptyRow(4)
+  )}`
+  return shell(L('Aamad Receipt', 'आमद रसीद'), `${esc(a.no)} · ${esc(fmtDate(a.date))}`, body)
+}
+
+// ---------------------------------------------------------------- Sauda register
+
+export function saudaRegisterHtml(rows: SaudaListRow[]): string {
+  const totalPackets = rows.reduce((a, r) => a + r.packets, 0)
+  const body = rows
+    .map(
+      (r) => `<tr>
+        <td class="num">${esc(fmtDate(r.date))}</td>
+        <td>${esc(r.vyapariName)}</td>
+        <td>${esc(r.kisanName)}</td>
+        <td class="num">${r.packets}</td>
+        <td class="num">${formatINR(r.ratePaise)}</td>
+      </tr>`
+    )
+    .join('')
+  const html = table(
+    thc(L('Date', 'दिनांक'), true) +
+      thc(L('Vyapari', 'व्यापारी')) +
+      thc(L('Kisan', 'किसान')) +
+      thc(L('Packets', 'पैकेट'), true) +
+      thc(L('Rate', 'दर'), true),
+    body || emptyRow(5),
+    `<td colspan="3">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td></td>`
+  )
+  return shell(L('Sauda Register', 'सौदा रजिस्टर'), `${rows.length} ${L('deals', 'सौदे')}`, html)
+}
+
+// ---------------------------------------------------------------- Nikasi register
+
+export function nikasiRegisterHtml(subtitle: string, rows: NikasiListRow[]): string {
+  const totalPackets = rows.reduce((a, r) => a + r.totalPackets, 0)
+  const totalAmount = rows.reduce((a, r) => a + r.totalAmountPaise, 0)
+  const body = rows
+    .map(
+      (r) => `<tr>
+        <td>#${r.billNo}</td>
+        <td class="num">${esc(fmtDate(r.date))}</td>
+        <td>${esc(r.deliveredToName)} <span class="muted">(${r.deliveredToType === 'vyapari' ? L('Vyapari', 'व्यापारी') : L('Kisan', 'किसान')})</span></td>
+        <td class="num">${r.totalPackets}</td>
+        <td class="num">${formatINR(r.totalAmountPaise)}${r.isPosted ? '' : ` <span class="muted">(${L('unposted', 'अनपोस्ट')})</span>`}</td>
+      </tr>`
+    )
+    .join('')
+  const html = table(
+    thc(L('Bill no.', 'बिल सं.')) +
+      thc(L('Date', 'दिनांक'), true) +
+      thc(L('Delivered to', 'प्राप्तकर्ता')) +
+      thc(L('Packets', 'पैकेट'), true) +
+      thc(L('Amount', 'राशि'), true),
+    body || emptyRow(5),
+    `<td colspan="3">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td class="num">${formatINR(totalAmount)}</td>`
+  )
+  return shell(L('Nikasi Register', 'निकासी रजिस्टर'), subtitle || '—', html)
+}
+
+// ---------------------------------------------------------------- Financial statements
+
+/** An amount shown on its accounting side; a contra (negative) balance flips to the other side. */
+function sideAmt(paise: number, side: 'Dr' | 'Cr'): string {
+  const s = paise >= 0 ? side : side === 'Dr' ? 'Cr' : 'Dr'
+  return `${formatINR(Math.abs(paise))} ${s}`
+}
+
+/** Grouped statement column: subgroup header + lines + subtotal per section, then a grand total. */
+function statementColumn(
+  sections: SubgroupSection[],
+  side: 'Dr' | 'Cr',
+  totalLabel: string,
+  totalPaise: number,
+  nameFor: (raw: string) => string
+): string {
+  const body = sections
+    .map((s) => {
+      const head = `<tr><td colspan="2" style="background:var(--beige);font-weight:700">${esc(nameFor(s.subgroup))}</td></tr>`
+      const lines = s.lines
+        .map(
+          (l) =>
+            `<tr><td>${esc(nameFor(l.name))}${l.sonOf ? ` <span class="muted">s/o ${esc(l.sonOf)}</span>` : ''}</td><td class="num">${sideAmt(l.paise, side)}</td></tr>`
+        )
+        .join('')
+      const sub = `<tr><td style="font-weight:700;border-top:1px solid var(--line)">${L('Subtotal', 'उप-कुल')}</td><td class="num" style="font-weight:700;border-top:1px solid var(--line)">${sideAmt(s.totalPaise, side)}</td></tr>`
+      return head + lines + sub
+    })
+    .join('')
+  return table(
+    thc(L('Particulars', 'विवरण')) + thc(L('Amount', 'राशि'), true),
+    body || emptyRow(2),
+    `<td>${esc(totalLabel)}</td><td class="num">${sideAmt(totalPaise, side)}</td>`
+  )
+}
+
+export function financialsHtml(year: number, f: Financials): string {
+  const RET = L('Retained Earnings', 'प्रतिधारित आय')
+  const nameFor = (raw: string): string => (raw === '__retained__' || raw === '__netProfit__' ? RET : raw)
+  const i = f.income
+  const b = f.balance
+  const isLoss = i.netProfitPaise < 0
+
+  const summaryRows = f.summary.byNature
+    .map(
+      (n) => `<tr>
+        <td>${esc(n.nature)}</td>
+        <td class="num">${money(n.drPaise)}</td>
+        <td class="num">${money(n.crPaise)}</td>
+      </tr>`
+    )
+    .join('')
+
+  const body = `
+  <h2>${L('Income Statement', 'आय विवरण')}</h2>
+  <div class="mini-lab" style="color:var(--muted);font-size:11px;margin:0 0 4px">${L('Revenue', 'आय')}</div>
+  ${statementColumn(i.revenue, 'Cr', L('Total Revenue', 'कुल आय'), i.totalRevenuePaise, nameFor)}
+  <div class="mini-lab" style="color:var(--muted);font-size:11px;margin:0 0 4px">${L('Expenses', 'व्यय')}</div>
+  ${statementColumn(i.expenses, 'Dr', L('Total Expenses', 'कुल व्यय'), i.totalExpensesPaise, nameFor)}
+  <div class="closing">
+    <span class="lab">${isLoss ? L('Net Loss', 'शुद्ध हानि') : L('Net Profit', 'शुद्ध लाभ')}</span>
+    <span>${sideAmt(i.netProfitPaise, 'Cr')}</span>
+  </div>
+
+  <h2>${L('Balance Sheet', 'तुलन पत्र')}</h2>
+  <div class="mini-lab" style="color:var(--muted);font-size:11px;margin:0 0 4px">${L('Assets', 'संपत्ति')}</div>
+  ${statementColumn(b.assets, 'Dr', L('Total Assets', 'कुल संपत्ति'), b.totalAssetsPaise, nameFor)}
+  <div class="mini-lab" style="color:var(--muted);font-size:11px;margin:0 0 4px">${L('Liabilities', 'देयता')}</div>
+  ${statementColumn(b.liabilities, 'Cr', L('Total Liabilities', 'कुल देयता'), b.totalLiabilitiesPaise, nameFor)}
+  <div class="mini-lab" style="color:var(--muted);font-size:11px;margin:0 0 4px">${L('Equity', 'पूँजी')}</div>
+  ${statementColumn(b.equity, 'Cr', L('Total Equity', 'कुल पूँजी'), b.totalEquityPaise, nameFor)}
+  <div class="closing">
+    <span class="lab">${L('Liabilities + Equity', 'देयता + पूँजी')}</span>
+    <span>${sideAmt(b.totalLiabilitiesPaise + b.totalEquityPaise, 'Cr')}</span>
+  </div>
+  <div class="plain">${b.balanced ? `<span class="status-ok">${L('Balanced', 'संतुलित')}</span>` : `<span class="status-bad">${L('NOT balanced', 'असंतुलित')}</span>`}</div>
+
+  <h2>${L('Summary', 'सारांश')}</h2>
+  ${table(
+    thc(L('Category', 'श्रेणी')) + thc(L('Dr', 'नामे'), true) + thc(L('Cr', 'जमा'), true),
+    summaryRows || emptyRow(3),
+    `<td>${L('Total', 'कुल')}</td><td class="num">${formatINR(f.summary.totalDrPaise)}</td><td class="num">${formatINR(f.summary.totalCrPaise)}</td>`
+  )}`
+  return shell(L('Financial Statements', 'वित्तीय विवरण'), String(year), body)
+}
+
+// ---------------------------------------------------------------- Expense register (salary + loading)
+
+/** A register row tagged with which expense head it hit — mirrors the on-screen combined register. */
+type ExpenseRegisterRow = ExpenseRow & { kind: 'salary' | 'loading' }
+
+export function expenseRegisterHtml(subtitle: string, rows: ExpenseRegisterRow[]): string {
+  const total = rows.reduce((a, r) => a + r.amountPaise, 0)
+  const body = rows
+    .map(
+      (r) => `<tr>
+        <td class="num">${esc(fmtDate(r.date))}</td>
+        <td>#${r.voucherNo}</td>
+        <td>${r.kind === 'salary' ? L('Salary', 'वेतन') : L('Loading', 'लदाई')}</td>
+        <td>${esc(r.partyName) || '—'}</td>
+        <td>${esc(r.narration) || ''}</td>
+        <td class="num">${formatINR(r.amountPaise)}</td>
+      </tr>`
+    )
+    .join('')
+  const html = table(
+    thc(L('Date', 'दिनांक'), true) +
+      thc(L('Voucher', 'वाउचर')) +
+      thc(L('Type', 'प्रकार')) +
+      thc(L('Party', 'पक्ष')) +
+      thc(L('Particulars', 'विवरण')) +
+      thc(L('Amount', 'राशि'), true),
+    body || emptyRow(6),
+    `<td colspan="5">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${formatINR(total)}</td>`
+  )
+  return shell(L('Expense Register', 'व्यय रजिस्टर'), subtitle || `${rows.length} ${L('payments', 'भुगतान')}`, html)
+}
+
+// ---------------------------------------------------------------- Bardana (account + list)
+
+export function bardanaHtml(subtitle: string, acct: BardanaAccount, rows: BardanaRow[]): string {
+  const listBody = rows
+    .map((r) => {
+      const due = r.amountPaise - r.paidPaise
+      const outstanding =
+        due <= 0
+          ? `<span class="muted">${L('Settled', 'चुकता')}</span>`
+          : r.paidPaise <= 0
+            ? `<span class="pill pill-cr">${L('Credit', 'उधार')}</span>`
+            : formatINR(due)
+      const payMode = r.paidPaise <= 0 ? '—' : r.mode === 'bank' ? esc(r.bankName) || L('Bank', 'बैंक') : L('Cash', 'नकद')
+      const dir = r.direction === 'purchase' ? L('Purchase', 'खरीद') : L('Issue', 'जारी')
+      return `<tr>
+        <td class="num">${esc(fmtDate(r.date))}</td>
+        <td>${dir}${r.prebooked ? ` <span class="muted">(${L('pre-booked', 'पूर्व-बुक')})</span>` : ''}</td>
+        <td>${esc(r.partyName) || '—'}</td>
+        <td class="num">${r.qty}</td>
+        <td class="num">${formatINR(r.ratePaise)}</td>
+        <td class="num">${formatINR(r.amountPaise)}</td>
+        <td class="num">${outstanding}</td>
+        <td>${payMode}</td>
+      </tr>`
+    })
+    .join('')
+  const body = `
+  ${cards([
+    { label: L('Total purchases', 'कुल खरीद'), value: formatINR(acct.totalPurchasesPaise), tone: 'amber' },
+    { label: L('Total sales', 'कुल बिक्री'), value: formatINR(acct.totalSalesPaise), tone: 'green' },
+    { label: L('Stock (pcs)', 'स्टॉक'), value: String(acct.stockCount), tone: 'accent' },
+    { label: L('Profit', 'लाभ'), value: formatINR(acct.profitPaise) }
+  ])}
+  ${table(
+    thc(L('Date', 'दिनांक'), true) +
+      thc(L('Direction', 'प्रकार')) +
+      thc(L('Party', 'पक्ष')) +
+      thc(L('Qty', 'मात्रा'), true) +
+      thc(L('Rate', 'दर'), true) +
+      thc(L('Amount', 'राशि'), true) +
+      thc(L('Outstanding', 'बकाया'), true) +
+      thc(L('Mode', 'माध्यम')),
+    listBody || emptyRow(8)
+  )}`
+  return shell(L('Bardana Account', 'बारदाना खाता'), subtitle || '—', body)
+}
+
+// ---------------------------------------------------------------- Loan register
+
+/** Monthly interest rate from basis points → "1.5%/mo". */
+function rateLabel(bps: number): string {
+  return `${bps / 100}%/mo`
+}
+
+export function loanRegisterHtml(rows: LoanRow[]): string {
+  const totalPrincipal = rows.reduce((a, r) => a + r.principalPaise, 0)
+  const totalInterest = rows.reduce((a, r) => a + (r.outstandingPaise - r.principalPaise), 0)
+  const totalOutstanding = rows.reduce((a, r) => a + r.outstandingPaise, 0)
+  const body = rows
+    .map((r) => {
+      const interest = r.outstandingPaise - r.principalPaise
+      return `<tr>
+        <td class="num">${esc(fmtDate(r.date))}</td>
+        <td>${esc(r.accountName)}${r.sonOf ? ` <span class="muted">s/o ${esc(r.sonOf)}</span>` : ''}</td>
+        <td>${esc(r.category)} <span class="muted">· ${esc(r.nature)}</span></td>
+        <td class="num">${formatINR(r.principalPaise)}</td>
+        <td class="num">${interest > 0 ? '+' + formatINR(interest) : '—'}</td>
+        <td class="num">${rateLabel(r.monthlyRateBps)}</td>
+        <td class="num">${formatINR(r.outstandingPaise)}</td>
+      </tr>`
+    })
+    .join('')
+  const html = table(
+    thc(L('Date', 'दिनांक'), true) +
+      thc(L('Party', 'पक्ष')) +
+      thc(L('Type', 'प्रकार')) +
+      thc(L('Principal', 'मूल'), true) +
+      thc(L('Interest', 'ब्याज'), true) +
+      thc(L('Rate', 'दर'), true) +
+      thc(L('Outstanding', 'बकाया'), true),
+    body || emptyRow(7),
+    `<td colspan="3">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${formatINR(totalPrincipal)}</td><td class="num">${totalInterest > 0 ? '+' + formatINR(totalInterest) : ''}</td><td></td><td class="num">${formatINR(totalOutstanding)}</td>`
+  )
+  return shell(L('Loan Register', 'ऋण रजिस्टर'), `${rows.length} ${L('loans', 'ऋण')}`, html)
+}
+
+// ---------------------------------------------------------------- Loan statement (per loan)
+
+export function loanStatementHtml(d: LoanDetail, comp: LoanComposition | null): string {
+  const events = d.events
+    .map(
+      (e) => `<tr>
+        <td class="num">${esc(fmtDate(e.date))}</td>
+        <td>${esc(e.type)}</td>
+        <td class="num">${formatINR(e.amountPaise)}</td>
+      </tr>`
+    )
+    .join('')
+  const compTable = comp
+    ? `<h2>${L('Composition', 'संरचना')} <span class="muted">(${comp.sourceYear})</span></h2>
+    ${table(
+      thc(L('Tag', 'टैग')) + thc(L('Amount', 'राशि'), true),
+      comp.lines.map((l) => `<tr><td>${esc(l.tag)}</td><td class="num">${formatINR(l.paise)}</td></tr>`).join(''),
+      `<td>${L('Total', 'कुल')}</td><td class="num">${formatINR(comp.totalPaise)}</td>`
+    )}`
+    : ''
+  const body = `<h2>${esc(d.accountName)}</h2>
+  ${cards([
+    { label: L('Principal', 'मूल'), value: formatINR(d.breakdown.principalPaise) },
+    { label: L('Accrued interest', 'संचित ब्याज'), value: formatINR(d.breakdown.accruedInterestPaise), tone: 'amber' },
+    { label: L('Outstanding', 'बकाया'), value: formatINR(d.breakdown.outstandingPaise), tone: 'accent' }
+  ])}
+  ${metaGrid([
+    metaRow(L('Category', 'श्रेणी'), esc(d.category)),
+    metaRow(L('Nature', 'प्रकृति'), esc(d.nature)),
+    metaRow(L('Date', 'दिनांक'), esc(fmtDate(d.date))),
+    metaRow(L('Rate', 'दर'), rateLabel(d.monthlyRateBps)),
+    metaRow(L('Interest from', 'ब्याज से'), esc(fmtDate(d.interestStartDate))),
+    d.mobile ? metaRow(L('Mobile', 'मोबाइल'), esc(d.mobile)) : '',
+    d.remark ? metaRow(L('Remark', 'टिप्पणी'), esc(d.remark)) : ''
+  ])}
+  <h2>${L('Events', 'घटनाएँ')}</h2>
+  ${table(
+    thc(L('Date', 'दिनांक'), true) + thc(L('Type', 'प्रकार')) + thc(L('Amount', 'राशि'), true),
+    events || emptyRow(3)
+  )}
+  ${compTable}`
+  return shell(L('Loan Statement', 'ऋण विवरण'), `${esc(d.accountName)} · ${esc(fmtDate(d.date))}`, body)
+}
+
+// ---------------------------------------------------------------- Party (filtered report)
+
+export function partyHtml(subtitle: string, rows: PartyRow[]): string {
+  const totalBalance = rows.reduce((a, r) => a + r.balancePaise, 0)
+  const totalLoan = rows.reduce((a, r) => a + r.loanOutstandingPaise, 0)
+  const body = rows
+    .map(
+      (r) => `<tr>
+        <td>${esc(r.name)}${r.sonOf ? ` <span class="muted">s/o ${esc(r.sonOf)}</span>` : ''}</td>
+        <td>${esc(r.villageCity) || '—'}</td>
+        <td>${esc(r.type.replace(/_/g, ' '))}</td>
+        <td class="num">${balancePill(r.balancePaise)}</td>
+        <td class="num">${r.packetsBrought}</td>
+        <td class="num">${r.currentStock}</td>
+        <td class="num">${money(r.standingBhadaPaise)}</td>
+        <td class="num">${money(r.loanOutstandingPaise)}</td>
+      </tr>`
+    )
+    .join('')
+  const html = table(
+    thc(L('Name', 'नाम')) +
+      thc(L('Village / City', 'गाँव / शहर')) +
+      thc(L('Type', 'प्रकार')) +
+      thc(L('Balance', 'शेष'), true) +
+      thc(L('Brought', 'आमद'), true) +
+      thc(L('Stock', 'स्टॉक'), true) +
+      thc(L('Bhada', 'भाड़ा'), true) +
+      thc(L('Loan', 'ऋण'), true),
+    body || emptyRow(8),
+    `<td colspan="3">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${balancePill(totalBalance)}</td><td></td><td></td><td></td><td class="num">${formatINR(totalLoan)}</td>`
+  )
+  return shell(L('Party Report', 'पक्ष रिपोर्ट'), subtitle || L('All parties', 'सभी पक्ष'), html)
 }

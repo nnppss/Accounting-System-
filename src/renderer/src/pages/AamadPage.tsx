@@ -13,12 +13,13 @@ import {
   Tag,
   Typography
 } from 'antd'
-import { DeleteOutlined } from '@ant-design/icons'
+import { DeleteOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { AamadListRow } from '@shared/contracts'
 import { DATE_INPUT_FORMATS, formatDate } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -28,6 +29,7 @@ import { PageBanner } from '../components/report'
 export default function AamadPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
+  const print = usePrinter()
   const queryClient = useQueryClient()
   const [kisanFilter, setKisanFilter] = useState<number | undefined>()
   const [range, setRange] = useState<[string, string] | undefined>()
@@ -157,10 +159,16 @@ export default function AamadPage(): JSX.Element {
     {
       title: t('common.actions'),
       key: 'actions',
-      width: 140,
+      width: 180,
       align: 'center' as const,
       render: (_: unknown, r: AamadListRow) => (
         <>
+          <Button
+            size="small"
+            type="text"
+            icon={<PrinterOutlined />}
+            onClick={() => print(() => window.api.print.aamadReceipt(r.id))}
+          />
           <Button size="small" type="text" onClick={() => startEdit(r.id)}>
             {t('common.edit')}
           </Button>
@@ -185,9 +193,23 @@ export default function AamadPage(): JSX.Element {
       <PageBanner
         title={t('aamad.title')}
         extra={
-          <Button type="primary" onClick={() => setOpen(true)}>
-            {t('aamad.new')}
-          </Button>
+          <Space>
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={() => {
+                const parts = [
+                  kisanFilter ? rows[0]?.kisanName : '',
+                  range ? `${range[0]} → ${range[1]}` : ''
+                ].filter(Boolean)
+                return print(() => window.api.print.aamadRegister(parts.join(' · '), rows))
+              }}
+            >
+              {t('common.print')}
+            </Button>
+            <Button type="primary" onClick={() => setOpen(true)}>
+              {t('aamad.new')}
+            </Button>
+          </Space>
         }
       />
 

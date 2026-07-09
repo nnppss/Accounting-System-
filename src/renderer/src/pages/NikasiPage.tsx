@@ -211,9 +211,24 @@ export default function NikasiPage(): JSX.Element {
       <PageBanner
         title={t('nikasi.title')}
         extra={
-          <Button type="primary" onClick={() => setOpen(true)}>
-            {t('nikasi.new')}
-          </Button>
+          <Space>
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={() => {
+                const parts = [
+                  accountFilter ? rows[0]?.deliveredToName : '',
+                  typeFilter !== 'all' ? t(`delivery.${typeFilter}`) : '',
+                  range ? `${range[0]} → ${range[1]}` : ''
+                ].filter(Boolean)
+                return print(() => window.api.print.nikasiRegister(parts.join(' · '), rows))
+              }}
+            >
+              {t('common.print')}
+            </Button>
+            <Button type="primary" onClick={() => setOpen(true)}>
+              {t('nikasi.new')}
+            </Button>
+          </Space>
         }
       />
 

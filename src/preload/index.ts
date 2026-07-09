@@ -4,6 +4,7 @@ import type {
   AamadDetail,
   AamadInput,
   AamadListResult,
+  AamadListRow,
   AamadSearchFilter,
   MapType,
   AccountDetail,
@@ -54,6 +55,7 @@ import type {
   NikasiListRow,
   PartyCriteria,
   PartyResult,
+  PartyRow,
   PayExpenseResult,
   PersonInput,
   PersonRow,
@@ -272,7 +274,30 @@ const api = {
       ipcRenderer.invoke('print:bill', accountId, asOf),
     voucher: (voucherId: number): Promise<PrintResult> => ipcRenderer.invoke('print:voucher', voucherId),
     ledger: (accountId: number): Promise<PrintResult> => ipcRenderer.invoke('print:ledger', accountId),
-    trialBalance: (): Promise<PrintResult> => ipcRenderer.invoke('print:trialBalance')
+    trialBalance: (): Promise<PrintResult> => ipcRenderer.invoke('print:trialBalance'),
+    moneyBookSummary: (accountId: number): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:moneyBookSummary', accountId),
+    moneyBookDetail: (accountId: number, month: number): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:moneyBookDetail', accountId, month),
+    dayBook: (date: string): Promise<PrintResult> => ipcRenderer.invoke('print:dayBook', date),
+    financials: (): Promise<PrintResult> => ipcRenderer.invoke('print:financials'),
+    aamadReceipt: (aamadId: number): Promise<PrintResult> => ipcRenderer.invoke('print:aamadReceipt', aamadId),
+    loanStatement: (loanId: number): Promise<PrintResult> => ipcRenderer.invoke('print:loanStatement', loanId),
+    aamadRegister: (subtitle: string, rows: AamadListRow[]): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:aamadRegister', subtitle, rows),
+    saudaRegister: (rows: SaudaListRow[]): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:saudaRegister', rows),
+    nikasiRegister: (subtitle: string, rows: NikasiListRow[]): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:nikasiRegister', subtitle, rows),
+    expenseRegister: (
+      subtitle: string,
+      rows: Array<ExpenseRow & { kind: 'salary' | 'loading' }>
+    ): Promise<PrintResult> => ipcRenderer.invoke('print:expenseRegister', subtitle, rows),
+    bardana: (subtitle: string, rows: BardanaRow[]): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:bardana', subtitle, rows),
+    loanRegister: (rows: LoanRow[]): Promise<PrintResult> => ipcRenderer.invoke('print:loanRegister', rows),
+    party: (subtitle: string, rows: PartyRow[]): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:party', subtitle, rows)
   }
 }
 

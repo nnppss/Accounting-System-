@@ -16,6 +16,7 @@ import {
   Tag,
   Typography
 } from 'antd'
+import { PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -24,6 +25,7 @@ import type { NumericFilter, NumericOp, PartyCriteria, PartyRow } from '@shared/
 import { balanceLabel, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { BalanceAmount } from '../components/Highlight'
 import { PageBanner } from '../components/report'
+import { usePrinter } from '../lib/usePrinter'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
 
@@ -128,6 +130,7 @@ export default function PartyPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const navigate = useNavigate()
+  const print = usePrinter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
 
@@ -235,7 +238,24 @@ export default function PartyPage(): JSX.Element {
 
   return (
     <div>
-      <PageBanner title={t('party.title')} />
+      <PageBanner
+        title={t('party.title')}
+        extra={
+          <Button
+            icon={<PrinterOutlined />}
+            onClick={() =>
+              print(() =>
+                window.api.print.party(
+                  Object.keys(criteria).length ? t('party.title') : '',
+                  result.data?.rows ?? []
+                )
+              )
+            }
+          >
+            {t('common.print')}
+          </Button>
+        }
+      />
 
       <Card style={{ marginBottom: 16 }}>
         <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>

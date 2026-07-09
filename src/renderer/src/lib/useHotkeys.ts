@@ -1,21 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-
-function isInputFocused(): boolean {
-  const el = document.activeElement
-  if (!el) return false
-  const tag = el.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
-  if ((el as HTMLElement).isContentEditable) return true
-  return false
-}
-
-function isModalOpen(): boolean {
-  for (const el of document.querySelectorAll('.ant-modal-wrap')) {
-    if ((el as HTMLElement).style.display !== 'none') return true
-  }
-  return false
-}
+import { isInputFocused, isOverlayOpen } from './keyGuards'
 
 /** Alt+letter section jumps, in top-nav order. Also drives the Alt-held hint overlay. */
 export const NAV_HINTS: { key: string; route: string; labelKey: string }[] = [
@@ -71,6 +56,14 @@ export function useGlobalHotkeys(toggleLang: () => void): void {
         return
       }
 
+      // Ctrl/Cmd + K → quick-entry launcher (works from anywhere, even mid-form). Lets a fast
+      // dictation blast start any document type without first navigating to its tab.
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        window.dispatchEvent(new Event('hotkey:quick'))
+        return
+      }
+
       // F1 → keyboard shortcuts help (works from anywhere, even mid-form)
       if (e.key === 'F1') {
         e.preventDefault()
@@ -78,7 +71,7 @@ export function useGlobalHotkeys(toggleLang: () => void): void {
         return
       }
 
-      if (isInputFocused() || isModalOpen()) return
+      if (isInputFocused() || isOverlayOpen()) return
 
       // ? (Shift + /) → keyboard shortcuts help (only when not typing)
       if (e.key === '?') {
@@ -91,6 +84,9 @@ export function useGlobalHotkeys(toggleLang: () => void): void {
       // arrow keys move between groups and Enter opens one. A second Esc drops back to the page.
       // (Open modals/drawers and focused inputs are handled above, so this only fires on a page.)
       if (e.key === 'Escape') {
+        // Staged: with a table row selected, this Esc only clears the selection
+        // (useTableKeyNav handles it); the next Esc jumps to the nav.
+        if (document.querySelector('.pc-row-active')) return
         const nav = document.getElementById('pc-top-nav')
         if (!nav) return
         if (nav.contains(document.activeElement)) {
@@ -128,6 +124,18 @@ export function useCreateHotkey(open: () => void): void {
     const handler = (): void => ref.current()
     window.addEventListener('hotkey:create', handler)
     return () => window.removeEventListener('hotkey:create', handler)
+  }, [])
+}
+
+/** Fires when the user asks for the quick-entry launcher (Ctrl/Cmd+K). */
+export function useQuickHotkey(open: () => void): void {
+  const ref = useRef(open)
+  ref.current = open
+
+  useEffect(() => {
+    const handler = (): void => ref.current()
+    window.addEventListener('hotkey:quick', handler)
+    return () => window.removeEventListener('hotkey:quick', handler)
   }, [])
 }
 

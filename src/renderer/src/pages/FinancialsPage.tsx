@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Card, Input, Segmented, Table } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import { Button, Card, Input, Segmented, Table } from 'antd'
+import { PrinterOutlined, SearchOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { SubgroupNature } from '@shared/enums'
 import { formatINR } from '../lib/format'
-import { deriveFinancials, type Financials, type StatementLine, type SubgroupSection } from '../lib/financials'
+import { deriveFinancials, type Financials, type StatementLine, type SubgroupSection } from '@shared/financials'
+import { usePrinter } from '../lib/usePrinter'
 import { PageBanner, SectionBar, StatusPill } from '../components/report'
 
 type View = 'income' | 'balance' | 'summary'
@@ -22,6 +24,7 @@ const fmtSide = (paise: number, side: Side): string =>
  */
 export default function FinancialsPage(): JSX.Element {
   const { t } = useTranslation()
+  const print = usePrinter()
   const [view, setView] = useState<View>('income')
   const [search, setSearch] = useState('')
   const tb = useQuery({ queryKey: ['trialBalance'], queryFn: () => window.api.ledger.trialBalance() })
@@ -63,6 +66,13 @@ export default function FinancialsPage(): JSX.Element {
                 { value: 'summary', label: t('financials.summary') }
               ]}
             />
+            <Button
+              size="small"
+              icon={<PrinterOutlined />}
+              onClick={() => print(() => window.api.print.financials())}
+            >
+              {t('common.print')}
+            </Button>
           </>
         }
       />
@@ -93,18 +103,32 @@ function StatementSection({
   totalPaise: number
   side: Side
 }): JSX.Element {
+  const navigate = useNavigate()
   return (
     <>
       <SectionBar>{title}</SectionBar>
       <Table
         className="pc-report"
         size="small"
-        rowKey="name"
+        rowKey={(l: StatementLine) => l.accountId ?? l.name}
         showHeader={false}
         pagination={false}
         dataSource={lines}
+        onRow={(l: StatementLine) =>
+          l.accountId
+            ? { onClick: () => navigate(`/accounts/${l.accountId}`), style: { cursor: 'pointer' } }
+            : {}
+        }
         columns={[
-          { dataIndex: 'name' },
+          {
+            dataIndex: 'name',
+            render: (v: string, l: StatementLine) => (
+              <span>
+                {v}
+                {l.sonOf ? <span style={{ color: '#8c8c8c' }}> · s/o {l.sonOf}</span> : null}
+              </span>
+            )
+          },
           {
             dataIndex: 'paise',
             align: 'right' as const,

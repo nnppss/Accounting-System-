@@ -1,25 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
-
-function isInputFocused(): boolean {
-  const el = document.activeElement
-  if (!el) return false
-  const tag = el.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
-  if ((el as HTMLElement).isContentEditable) return true
-  return false
-}
-
-function isModalOpen(): boolean {
-  for (const el of document.querySelectorAll('.ant-modal-wrap')) {
-    if ((el as HTMLElement).style.display !== 'none') return true
-  }
-  return false
-}
-
-/** When focus is on the top section nav, let its arrow keys drive the menu, not the table. */
-function isNavFocused(): boolean {
-  return !!document.activeElement?.closest('#pc-top-nav')
-}
+import { isInputFocused, isNavFocused, isOverlayOpen } from './keyGuards'
 
 export function useTableKeyNav<T>(
   data: T[] | undefined,
@@ -41,7 +21,7 @@ export function useTableKeyNav<T>(
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
-      if (isInputFocused() || isModalOpen() || isNavFocused()) return
+      if (isInputFocused() || isOverlayOpen() || isNavFocused()) return
       const items = dataRef.current
       if (!items || items.length === 0) return
 
@@ -87,7 +67,7 @@ export function useTableKeyNav<T>(
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
-      if (isInputFocused() || isModalOpen() || isNavFocused()) return
+      if (isInputFocused() || isOverlayOpen() || isNavFocused()) return
       if (e.key !== 'Enter') return
       const items = dataRef.current
       if (!items || activeIndex < 0 || activeIndex >= items.length) return

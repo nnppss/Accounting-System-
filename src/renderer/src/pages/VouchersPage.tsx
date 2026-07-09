@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   App as AntApp,
   Button,
@@ -35,6 +36,21 @@ export default function VouchersPage(): JSX.Element {
   const [mode, setMode] = useState<Mode>('receipt')
   const [form] = Form.useForm()
   const formNav = useFormKeyNav({ onAccept: () => form.submit() })
+  const location = useLocation()
+
+  // Quick-entry (Ctrl+K) lands here with the chosen mode; switch to it and focus the first field
+  // so the accountant can start typing without touching the type switcher.
+  useEffect(() => {
+    const m = (location.state as { voucherMode?: Mode } | null)?.voucherMode
+    if (!m) return
+    setMode(m)
+    form.resetFields()
+    requestAnimationFrame(() =>
+      formNav.containerRef.current
+        ?.querySelector<HTMLElement>('input, textarea, [tabindex]')
+        ?.focus()
+    )
+  }, [location])
 
   const parties = useQuery({ queryKey: ['accounts', 'parties'], queryFn: () => window.api.accounts.list({}) })
   const allAccounts = useQuery({

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, DatePicker, Empty, Table, Tag } from 'antd'
-import { LeftOutlined, RightOutlined } from '@ant-design/icons'
+import { LeftOutlined, PrinterOutlined, RightOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DayBookEntry, DayBookVoucher } from '@shared/contracts'
 import { DATE_INPUT_FORMATS, formatINR } from '../lib/format'
+import { isInputFocused, isNavFocused, isOverlayOpen } from '../lib/keyGuards'
+import { usePrinter } from '../lib/usePrinter'
 import { SectionBar } from './report'
 
 /**
@@ -17,6 +19,7 @@ import { SectionBar } from './report'
 export function DayBookView(): JSX.Element {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const print = usePrinter()
   const today = dayjs().format('YYYY-MM-DD')
   const [date, setDate] = useState(today)
   const day = useQuery({ queryKey: ['daybook', date], queryFn: () => window.api.daybook.get(date) })
@@ -45,8 +48,7 @@ export function DayBookView(): JSX.Element {
   // ←/→ step the day, unless the user is typing in an input (e.g. the date field itself).
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      const el = e.target as HTMLElement | null
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      if (isInputFocused() || isOverlayOpen() || isNavFocused()) return
       if (e.key === 'ArrowLeft') shift(-1)
       else if (e.key === 'ArrowRight') shift(1)
     }
@@ -118,6 +120,11 @@ export function DayBookView(): JSX.Element {
         <Button onClick={() => setDate(today)} disabled={isToday}>
           {t('dayBook.today')}
         </Button>
+        <Button
+          icon={<PrinterOutlined />}
+          onClick={() => print(() => window.api.print.dayBook(date))}
+          aria-label={t('common.print')}
+        />
       </div>
 
       {!day.isLoading && vouchers.length === 0 ? (

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, cheque, subgroup, voucher, voucherEntry } from '../data/schema'
+import { account, cheque, person, subgroup, voucher, voucherEntry } from '../data/schema'
 import { SYSTEM_ACCOUNTS } from '../data/seed'
 import type { LedgerLine, TrialBalance, TrialBalanceRow } from '../../shared/contracts'
 
@@ -103,6 +103,7 @@ export function getTrialBalance(yearId: number): TrialBalance {
     .select({
       accountId: account.id,
       accountName: account.name,
+      sonOf: person.sonOf,
       subgroupName: subgroup.name,
       nature: subgroup.nature,
       net: sql<number>`coalesce(sum(${voucherEntry.drPaise}), 0) - coalesce(sum(${voucherEntry.crPaise}), 0)`
@@ -111,6 +112,7 @@ export function getTrialBalance(yearId: number): TrialBalance {
     .innerJoin(voucher, eq(voucherEntry.voucherId, voucher.id))
     .innerJoin(account, eq(voucherEntry.accountId, account.id))
     .innerJoin(subgroup, eq(account.subgroupId, subgroup.id))
+    .leftJoin(person, eq(account.personId, person.id))
     .where(and(eq(voucher.yearId, yearId), isNull(voucher.voidedAt)))
     .groupBy(account.id)
     .all()
@@ -127,6 +129,7 @@ export function getTrialBalance(yearId: number): TrialBalance {
     rows.push({
       accountId: s.accountId,
       accountName: s.accountName,
+      sonOf: s.sonOf,
       subgroupName: s.subgroupName,
       nature: s.nature,
       drPaise,

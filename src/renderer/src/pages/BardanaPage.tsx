@@ -19,6 +19,7 @@ import {
   Tag,
   Typography
 } from 'antd'
+import { PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageBanner } from '../components/report'
 import { useTranslation } from 'react-i18next'
@@ -26,6 +27,7 @@ import dayjs from 'dayjs'
 import type { BardanaRow } from '@shared/contracts'
 import type { BardanaDirection, PaymentMode } from '@shared/enums'
 import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -44,6 +46,7 @@ function payStatusOf(r: BardanaRow): SettleMode {
 export default function BardanaPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
+  const print = usePrinter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
   const [open, setOpen] = useState(false)
@@ -226,9 +229,24 @@ export default function BardanaPage(): JSX.Element {
       <PageBanner
         title={t('bardana.title')}
         extra={
-          <Button type="primary" onClick={() => setOpen(true)}>
-            {t('bardana.new')}
-          </Button>
+          <Space>
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={() => {
+                const parts = [
+                  fDirection !== 'all' ? t(`bardana.dir.${fDirection}`) : '',
+                  fParty != null ? rows[0]?.partyName ?? '' : '',
+                  range ? `${range[0]} → ${range[1]}` : ''
+                ].filter(Boolean)
+                return print(() => window.api.print.bardana(parts.join(' · '), rows))
+              }}
+            >
+              {t('common.print')}
+            </Button>
+            <Button type="primary" onClick={() => setOpen(true)}>
+              {t('bardana.new')}
+            </Button>
+          </Space>
         }
       />
 

@@ -1,5 +1,5 @@
-import type { SubgroupNature } from '@shared/enums'
-import type { TrialBalance, TrialBalanceRow } from '@shared/contracts'
+import type { SubgroupNature } from './enums'
+import type { TrialBalance, TrialBalanceRow } from './contracts'
 
 /**
  * Derive the Income Statement, Balance Sheet and category Summary from the trial balance —
@@ -14,6 +14,10 @@ import type { TrialBalance, TrialBalanceRow } from '@shared/contracts'
 export interface StatementLine {
   name: string
   paise: number
+  /** Ledger account this line came from; absent on synthetic lines (e.g. retained earnings). */
+  accountId?: number
+  /** Guardian name, to disambiguate same-named parties. */
+  sonOf?: string | null
 }
 
 /** One subgroup block within a statement column: its ledgers + their subtotal. */
@@ -105,7 +109,7 @@ function sectionsFor(
     const paise = side === 'dr' ? debitSide : -debitSide
     if (paise === 0) continue // zero-balance ledgers don't appear
     const arr = bySub.get(r.subgroupName) ?? []
-    arr.push({ name: r.accountName, paise })
+    arr.push({ name: r.accountName, paise, accountId: r.accountId, sonOf: r.sonOf })
     bySub.set(r.subgroupName, arr)
   }
   const sections = [...bySub.entries()]

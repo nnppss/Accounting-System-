@@ -10,11 +10,13 @@ import {
   Space,
   Table
 } from 'antd'
+import { PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { SaudaListRow } from '@shared/contracts'
 import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -24,6 +26,7 @@ import { PageBanner } from '../components/report'
 export default function SaudaPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
+  const print = usePrinter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
 
@@ -123,9 +126,14 @@ export default function SaudaPage(): JSX.Element {
       <PageBanner
         title={t('sauda.title')}
         extra={
-          <Button type="primary" onClick={() => setOpen(true)}>
-            {t('sauda.new')}
-          </Button>
+          <Space>
+            <Button icon={<PrinterOutlined />} onClick={() => print(() => window.api.print.saudaRegister(rows))}>
+              {t('common.print')}
+            </Button>
+            <Button type="primary" onClick={() => setOpen(true)}>
+              {t('sauda.new')}
+            </Button>
+          </Space>
         }
       />
 

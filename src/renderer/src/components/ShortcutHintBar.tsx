@@ -80,6 +80,20 @@ const LIST_PAGES = new Set([
   'audit'
 ])
 
+/** Subset where Enter actually opens the selected row (detail/edit/ledger). */
+const ROW_OPEN_PAGES = new Set([
+  'accounts',
+  'aamad',
+  'nikasi',
+  'loans',
+  'money-book',
+  'vouchers',
+  'trial-balance',
+  'bills',
+  'party',
+  'audit'
+])
+
 function Hint({ keys, label }: { keys: ReactNode; label: string }): JSX.Element {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
@@ -144,9 +158,13 @@ export default function ShortcutHintBar(): JSX.Element {
             </>
           }
           label={t('shortcuts.bar.move')}
-        />,
-        <Hint key="open" keys={<Kbd small>Enter</Kbd>} label={t('shortcuts.bar.open')} />
+        />
       )
+      if (ROW_OPEN_PAGES.has(section)) {
+        hints.push(
+          <Hint key="open" keys={<Kbd small>Enter</Kbd>} label={t('shortcuts.bar.open')} />
+        )
+      }
     }
     hints.push(
       <span

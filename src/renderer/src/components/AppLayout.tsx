@@ -41,7 +41,7 @@ import {
   UserOutlined,
   WalletOutlined
 } from '@ant-design/icons'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -75,6 +75,7 @@ import { useGlobalHotkeys } from '../lib/useHotkeys'
 import ShortcutsHelp from './ShortcutsHelp'
 import ShortcutHintBar from './ShortcutHintBar'
 import AltNavOverlay from './AltNavOverlay'
+import QuickEntry from './QuickEntry'
 
 const { Header, Content } = Layout
 
@@ -255,6 +256,17 @@ export default function AppLayout(): JSX.Element {
 
   useGlobalHotkeys(toggleLang)
 
+  // Quick-entry (Ctrl+K) navigates to a page carrying `quickCreate`; re-fire the shared create
+  // event here so the destination page opens its "new" modal. Runs after the just-mounted page's
+  // effects (child effects run before this parent effect), so its listener is already registered.
+  // ponytail: fires whenever this location becomes active — safe because the app has no back/forward
+  // nav, so quick-entry always produces a fresh navigation. Add a per-key guard if that changes.
+  useEffect(() => {
+    if ((location.state as { quickCreate?: boolean } | null)?.quickCreate) {
+      window.dispatchEvent(new Event('hotkey:create'))
+    }
+  }, [location])
+
   // Top-right chevron menu — per the landing sketch, only change-password and logout live here.
   const userMenu: MenuProps = {
     items: [
@@ -428,6 +440,7 @@ export default function AppLayout(): JSX.Element {
         onChanged={() => session && setSession({ ...session, mustChangePassword: false })}
       />
       <ShortcutsHelp />
+      <QuickEntry />
     </Layout>
   )
 }

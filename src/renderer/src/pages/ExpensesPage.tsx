@@ -14,6 +14,7 @@ import {
   Tag,
   Typography
 } from 'antd'
+import { PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageBanner, SectionBar } from '../components/report'
 import { useTranslation } from 'react-i18next'
@@ -21,6 +22,7 @@ import dayjs from 'dayjs'
 import type { ExpenseRow, LoadingContractorYearRow } from '@shared/contracts'
 import type { AccountType, PaymentMode } from '@shared/enums'
 import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import { usePrinter } from '../lib/usePrinter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -45,6 +47,7 @@ const KIND_META: Record<
 
 export default function ExpensesPage(): JSX.Element {
   const { t } = useTranslation()
+  const print = usePrinter()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
@@ -121,6 +124,19 @@ export default function ExpensesPage(): JSX.Element {
         title={t('expenses.title')}
         extra={
           <>
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={() => {
+                const parts = [
+                  kindFilter !== 'all' ? t(`expenses.${kindFilter}`) : '',
+                  partyFilter ? rows[0]?.partyName ?? '' : '',
+                  range ? `${range[0]} → ${range[1]}` : ''
+                ].filter(Boolean)
+                return print(() => window.api.print.expenseRegister(parts.join(' · '), rows))
+              }}
+            >
+              {t('common.print')}
+            </Button>
             <Button onClick={() => setChargesOpen(true)}>{t('expenses.contractorCharges')}</Button>
             <Button type="primary" onClick={() => setOpen(true)}>
               {t('expenses.new')}

@@ -3,6 +3,7 @@ import { Card, Drawer, Segmented, Statistic, Table } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { MapType } from '@shared/contracts'
+import { isInputFocused, isNavFocused, isOverlayOpen } from '../lib/keyGuards'
 import { palette } from '../theme'
 import { PageBanner } from '../components/report'
 
@@ -35,9 +36,7 @@ export default function MapsPage(): JSX.Element {
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if (cell !== null) return // drawer open — let it handle keys
-      const el = document.activeElement
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
-      if (el?.closest('#pc-top-nav')) return // top nav focused — its arrows drive the menu
+      if (isInputFocused() || isOverlayOpen() || isNavFocused()) return
       if (rooms === 0 || floors === 0) return
       const a = activeRef.current
       switch (e.key) {

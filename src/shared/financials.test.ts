@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { deriveFinancials } from './financials'
-import type { TrialBalance } from '@shared/contracts'
+import type { TrialBalance } from './contracts'
 
 // A tiny balanced book: 15000 owner capital → cash 12000 + equipment 3000; then 5000 cash sales
 // and 2000 cash rent, leaving cash at 15000. Double-entry, so total debits == total credits.

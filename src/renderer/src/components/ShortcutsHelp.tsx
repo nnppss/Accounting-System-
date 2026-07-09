@@ -16,6 +16,7 @@ const GROUPS: { titleKey: string; rows: Row[] }[] = [
     rows: [
       { keys: <><Kbd>Alt</Kbd> + <Kbd>◌</Kbd></>, descKey: 'shortcuts.nav' },
       { keys: <><Kbd>Ctrl</Kbd> + <Kbd>N</Kbd></>, descKey: 'shortcuts.new' },
+      { keys: <><Kbd>Ctrl</Kbd> + <Kbd>K</Kbd></>, descKey: 'shortcuts.quick' },
       { keys: <><Kbd>Ctrl</Kbd> + <Kbd>G</Kbd></>, descKey: 'shortcuts.lang' },
       { keys: <><Kbd>F1</Kbd> / <Kbd>?</Kbd></>, descKey: 'shortcuts.help' },
       { keys: <Kbd>Esc</Kbd>, descKey: 'shortcuts.back' },
@@ -36,6 +37,7 @@ const GROUPS: { titleKey: string; rows: Row[] }[] = [
     titleKey: 'shortcuts.group.forms',
     rows: [
       { keys: <Kbd>Enter</Kbd>, descKey: 'shortcuts.nextField' },
+      { keys: <><Kbd>Tab</Kbd> / <Kbd>Shift</Kbd> + <Kbd>Tab</Kbd></>, descKey: 'shortcuts.tabField' },
       { keys: <><Kbd>Ctrl</Kbd> + <Kbd>Enter</Kbd></>, descKey: 'shortcuts.save' },
       { keys: <Kbd>Enter</Kbd>, descKey: 'shortcuts.addLine' },
       { keys: <Kbd>Esc</Kbd>, descKey: 'shortcuts.cancel' }

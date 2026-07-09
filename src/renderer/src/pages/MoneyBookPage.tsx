@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Drawer, Segmented, Select, Table } from 'antd'
+import { Button, Drawer, Segmented, Select, Table } from 'antd'
+import { PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { MoneyBookMonth } from '@shared/contracts'
 import { formatDate, formatINR, MONTH_NAMES } from '../lib/format'
 import { SeverityText } from '../components/Highlight'
 import { PageBanner } from '../components/report'
+import { usePrinter } from '../lib/usePrinter'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
 import { DayBookView } from '../components/DayBookView'
 
@@ -13,6 +15,7 @@ type View = 'monthly' | 'day'
 
 export default function MoneyBookPage(): JSX.Element {
   const { t } = useTranslation()
+  const print = usePrinter()
   const [view, setView] = useState<View>('monthly')
   const [accountId, setAccountId] = useState<number | undefined>()
   const [month, setMonth] = useState<number | null>(null)
@@ -124,6 +127,14 @@ export default function MoneyBookPage(): JSX.Element {
                 options={(accounts.data ?? []).map((a) => ({ value: a.id, label: a.name }))}
               />
             )}
+            {view === 'monthly' && accountId !== undefined && (
+              <Button
+                icon={<PrinterOutlined />}
+                onClick={() => print(() => window.api.print.moneyBookSummary(accountId))}
+              >
+                {t('common.print')}
+              </Button>
+            )}
           </>
         }
       />
@@ -154,6 +165,16 @@ export default function MoneyBookPage(): JSX.Element {
             open={month !== null}
             onClose={() => setMonth(null)}
             width={680}
+            extra={
+              accountId !== undefined && month !== null ? (
+                <Button
+                  icon={<PrinterOutlined />}
+                  onClick={() => print(() => window.api.print.moneyBookDetail(accountId, month))}
+                >
+                  {t('common.print')}
+                </Button>
+              ) : null
+            }
           >
             <Table
               className="pc-report"
