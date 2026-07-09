@@ -40,11 +40,10 @@ describe('db foundation', () => {
     expect(names).toHaveLength(24)
   })
 
-  it('seeds the 9 subgroups, idempotently', () => {
+  it('seeds the subgroups, idempotently', () => {
     freshDb()
     seedReferenceData() // a second call must not duplicate
     const rows = db().select().from(subgroup).all()
-    expect(rows).toHaveLength(9)
     expect(rows).toHaveLength(SUBGROUP_SEED.length)
   })
 
