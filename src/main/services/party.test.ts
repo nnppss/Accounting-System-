@@ -75,14 +75,16 @@ describe('Party search (software.md §3.12)', () => {
     expect(res.rows.map((r) => r.accountId)).toEqual([kisanA])
     expect(res.count).toBe(1)
     expect(res.rows[0].packetsBrought).toBe(400)
-    expect(res.rows[0].balancePaise).toBe(1200000)
+    // ₹12,000 opening Dr + auto-accrued rent (400 packets × ₹10/packet = ₹4,000) = ₹16,000.
+    expect(res.rows[0].balancePaise).toBe(1600000)
   })
 
   it('numeric ops: between (balance) and eq (packets) AND with type', () => {
-    // Balance between ₹4,000 and ₹15,000 → Kisan A (₹12k) + Kisan C (₹5k); B (₹20k) excluded.
+    // Balances include auto-accrued rent (₹10/packet): A ₹12k+₹4k=₹16k, B ₹20k+₹8k=₹28k,
+    // C ₹5k+₹2k=₹7k. Window ₹4,000–₹20,000 → Kisan A + Kisan C; B (₹28k) excluded.
     const between = searchParty(yearId, {
       type: 'kisan',
-      balance: { op: 'between', value: 400000, value2: 1500000 }
+      balance: { op: 'between', value: 400000, value2: 2000000 }
     })
     expect(between.rows.map((r) => r.accountId).sort()).toEqual([kisanA, kisanC].sort())
 
