@@ -53,6 +53,7 @@ function fieldFromNum(f: NumericFilter | undefined, paise: boolean): NumField {
 function buildCriteria(v: Record<string, unknown>): PartyCriteria {
   const c: PartyCriteria = {}
   if (v.type) c.type = v.type as AccountType
+  if (v.name) c.name = v.name as string
   if (v.village) c.village = v.village as string
   if (v.phone) c.phone = v.phone as string
   if (v.defaulter === 'yes') c.defaulter = true
@@ -80,6 +81,7 @@ function buildCriteria(v: Record<string, unknown>): PartyCriteria {
 function criteriaToForm(c: PartyCriteria): Record<string, unknown> {
   return {
     type: c.type,
+    name: c.name,
     village: c.village,
     phone: c.phone,
     defaulter: c.defaulter === undefined ? undefined : c.defaulter ? 'yes' : 'no',
@@ -269,6 +271,9 @@ export default function PartyPage(): JSX.Element {
         >
           <Row gutter={16}>
             <Col span={6}>
+              <Form.Item name="name" label={t('accounts.name')} style={{ marginBottom: 8 }}>
+                <Input allowClear />
+              </Form.Item>
               <Form.Item name="type" label={t('accounts.type')} style={{ marginBottom: 8 }}>
                 <Select allowClear options={typeOptions} placeholder={t('common.all')} />
               </Form.Item>

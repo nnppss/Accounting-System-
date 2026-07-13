@@ -109,7 +109,8 @@ describe('print templates', () => {
               drPaise: 200000,
               crPaise: 0,
               balancePaise: 200000,
-              mode: ''
+              mode: '',
+              counterparty: ''
             }
           ],
           postedBalancePaise: 200000,
@@ -163,7 +164,8 @@ describe('print templates', () => {
         drPaise: 10000000,
         crPaise: 0,
         balancePaise: 10000000,
-        mode: 'Cash'
+        mode: 'Cash',
+        counterparty: 'Cash'
       }
     ]
     const html = ledgerHtml('Suresh Vyapari', lines)
@@ -212,7 +214,7 @@ describe('register & report templates', () => {
     expect(sum).toContain('₹1,000.00')
 
     const rows: MoneyBookDetailRow[] = [
-      { voucherId: 1, voucherNo: 3, type: 'receipt', date: '2026-01-05', narration: 'x', counterparty: 'Ramesh', receiptPaise: 100000, paymentPaise: 0 }
+      { voucherId: 1, voucherNo: 3, type: 'receipt', date: '2026-01-05', narration: 'x', counterparty: 'Ramesh', receiptPaise: 100000, paymentPaise: 0, balancePaise: 100000 }
     ]
     const det = moneyBookDetailHtml('Cash', 2026, 1, rows)
     expect(det).toContain('Jan 2026')
@@ -271,7 +273,7 @@ describe('register & report templates', () => {
 
   it('sauda + nikasi registers', () => {
     const sauda: SaudaListRow[] = [
-      { id: 1, date: '2026-01-01', vyapariAccountId: 9, vyapariName: 'Gopal', kisanAccountId: 3, kisanName: 'Ramesh', packets: 50, ratePaise: 40000 }
+      { id: 1, date: '2026-01-01', vyapariAccountId: 9, vyapariName: 'Gopal', kisanAccountId: 3, kisanName: 'Ramesh', aamadId: 11, lotNo: '7/345', packets: 50, ratePaise: 40000 }
     ]
     const sHtml = saudaRegisterHtml(sauda)
     expect(sHtml).toContain('Sauda Register / सौदा रजिस्टर')

@@ -32,7 +32,7 @@ export function getAccountLedger(accountId: number, yearId: number): LedgerLine[
     .orderBy(asc(voucher.date), asc(voucher.no), asc(voucherEntry.id))
     .all()
 
-  const modeByVoucher = paymentModes(
+  const { modes, counterparties } = counterLegs(
     rows.map((r) => r.voucherId),
     accountId
   )
@@ -40,19 +40,31 @@ export function getAccountLedger(accountId: number, yearId: number): LedgerLine[
   let balance = 0
   return rows.map((r) => {
     balance += r.drPaise - r.crPaise
-    return { ...r, balancePaise: balance, mode: modeByVoucher.get(r.voucherId) ?? '' }
+    return {
+      ...r,
+      balancePaise: balance,
+      mode: modes.get(r.voucherId) ?? '',
+      counterparty: counterparties.get(r.voucherId) ?? ''
+    }
   })
 }
 
 /**
- * The money mode per voucher — read off its cash/bank/clearing counter-leg (the party's own entry
- * excluded). A cheque record wins (it carries the number + bank); otherwise a bank counter-leg
- * shows the bank's name and a Cash leg shows 'Cash'. Vouchers with no money leg (Bhada/Nikasi
- * journals) simply don't appear in the map, so their mode reads empty.
+ * Per-voucher facts read off the counter-legs (the account's own entry excluded):
+ *  - `modes`: how the money moved — a cheque record wins (number + bank), else a bank counter-leg
+ *    shows the bank's name and a Cash leg shows 'Cash'. Vouchers with no money leg (Bhada/Nikasi
+ *    journals) don't appear, so their mode reads empty. For the Cash/bank ledgers themselves the
+ *    counter-leg is the party, so mode is empty and `counterparty` carries the "with whom".
+ *  - `counterparties`: every OTHER account on the voucher, deduped — the party/head the money went
+ *    to or came from (fills the gap where the Cash ledger showed no party).
  */
-function paymentModes(voucherIds: number[], partyAccountId: number): Map<number, string> {
-  const out = new Map<number, string>()
-  if (voucherIds.length === 0) return out
+function counterLegs(
+  voucherIds: number[],
+  partyAccountId: number
+): { modes: Map<number, string>; counterparties: Map<number, string> } {
+  const modes = new Map<number, string>()
+  const counterparties = new Map<number, string>()
+  if (voucherIds.length === 0) return { modes, counterparties }
 
   const legs = db()
     .select({ voucherId: voucherEntry.voucherId, name: account.name, type: account.type })
@@ -60,11 +72,17 @@ function paymentModes(voucherIds: number[], partyAccountId: number): Map<number,
     .innerJoin(account, eq(voucherEntry.accountId, account.id))
     .where(and(inArray(voucherEntry.voucherId, voucherIds), ne(voucherEntry.accountId, partyAccountId)))
     .all()
+  const cpNames = new Map<number, string[]>()
   for (const leg of legs) {
-    if (out.has(leg.voucherId)) continue
-    if (leg.type === 'bank') out.set(leg.voucherId, leg.name)
-    else if (leg.name === SYSTEM_ACCOUNTS.CASH) out.set(leg.voucherId, 'Cash')
+    if (!modes.has(leg.voucherId)) {
+      if (leg.type === 'bank') modes.set(leg.voucherId, leg.name)
+      else if (leg.name === SYSTEM_ACCOUNTS.CASH) modes.set(leg.voucherId, 'Cash')
+    }
+    const list = cpNames.get(leg.voucherId) ?? []
+    if (!list.includes(leg.name)) list.push(leg.name)
+    cpNames.set(leg.voucherId, list)
   }
+  for (const [id, names] of cpNames) counterparties.set(id, names.join(', '))
 
   // Cheques carry the number/bank and take precedence over the plain 'Cheques in Clearing' leg.
   const cheques = db()
@@ -74,9 +92,9 @@ function paymentModes(voucherIds: number[], partyAccountId: number): Map<number,
     .all()
   for (const c of cheques) {
     if (c.voucherId == null) continue
-    out.set(c.voucherId, `Cheque ${c.no}${c.bank ? ` — ${c.bank}` : ''}`)
+    modes.set(c.voucherId, `Cheque ${c.no}${c.bank ? ` — ${c.bank}` : ''}`)
   }
-  return out
+  return { modes, counterparties }
 }
 
 /** Net signed balance (Dr positive) for one account in one year. */

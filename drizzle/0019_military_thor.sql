@@ -1,0 +1,1 @@
+ALTER TABLE `sauda` ADD `aamad_id` integer REFERENCES aamad(id);

@@ -49,7 +49,8 @@ describe('Phase 6 done/verify — close a worked year, roll it back, re-close', 
       date: '2026-04-15',
       deliveredToType: 'vyapari',
       deliveredToAccountId: gopal,
-      lines: [{ aamadId: lot, packets: 80, ratePaise: 40000 }]
+      // Rate is per 105 kg; 80 × 105 kg keeps proceeds = 80 × ₹400 = ₹32,000.
+      lines: [{ aamadId: lot, packets: 80, weightKg: 80 * 105, ratePaise: 40000 }]
     })
     // Hari (as a vyapari) takes a ₹20,000 direct loan on 1 Jan.
     createLoan(yearId, {

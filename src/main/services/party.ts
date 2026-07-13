@@ -241,6 +241,7 @@ export function searchParty(yearId: number, criteria: PartyCriteria = {}, asOf?:
     // identity filters
     if (criteria.type && a.type !== criteria.type) continue
     if (criteria.subgroupId && a.subgroupId !== criteria.subgroupId) continue
+    if (criteria.name && !a.name.toLowerCase().includes(criteria.name.toLowerCase())) continue
     if (criteria.defaulter !== undefined && a.isDefaulter !== criteria.defaulter) continue
     if (criteria.village && !(a.villageCity ?? '').toLowerCase().includes(criteria.village.toLowerCase()))
       continue
@@ -249,7 +250,8 @@ export function searchParty(yearId: number, criteria: PartyCriteria = {}, asOf?:
     // balance filters
     if (criteria.owes === 'us' && balancePaise <= 0) continue
     if (criteria.owes === 'them' && balancePaise >= 0) continue
-    if (!matchNum(balancePaise, criteria.balance)) continue
+    // Balance side (owes) picks the direction; the amount box is a positive magnitude.
+    if (!matchNum(Math.abs(balancePaise), criteria.balance)) continue
     // stock / sales filters
     if (!matchNum(packetsBrought, criteria.packetsBrought)) continue
     if (!matchNum(aamadCount, criteria.aamadCount)) continue

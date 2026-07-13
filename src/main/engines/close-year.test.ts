@@ -330,6 +330,36 @@ describe('cash & bank carry-forward (regression)', () => {
   })
 })
 
+describe('capital carry-forward (regression)', () => {
+  // An owner's capital account (proprietary firm = same legal person) is equity that must roll
+  // forward like any permanent account. Opening Balance Equity — the per-year plug — must NOT
+  // carry. Earlier the close filtered to asset/liability only, silently dropping all capital.
+  it('carries an owner capital account but never Opening Balance Equity', () => {
+    const capital = makeAccount('SP Singh — Capital', 'other', 'Capital Account')
+    setOpeningBalance(capital, yearId, 7500000, 'cr', '2026-01-01') // owner injected ₹75,000
+
+    closeYear(yearId)
+    const ny = nextYearId()
+
+    // The capital balance carries forward as a Cr opening…
+    const capOpen = openingRows(ny).find((r) => r.accountId === capital)!
+    expect(capOpen.amountPaise).toBe(7500000)
+    expect(capOpen.drCr).toBe('cr')
+    // …but it's never treated as an owing party.
+    expect(listLoans(ny).some((l) => l.accountId === capital)).toBe(false)
+    expect(isDefaulter(capital)).toBe(false)
+
+    // Opening Balance Equity (the plug) is rebuilt from the new openings, never carried as itself.
+    const obeId = db()
+      .select({ id: account.id })
+      .from(account)
+      .where(eq(account.name, 'Opening Balance Equity'))
+      .get()!.id
+    expect(openingRows(ny).some((r) => r.accountId === obeId)).toBe(false)
+    expect(getTrialBalance(ny).balanced).toBe(true)
+  })
+})
+
 describe('year-aware "Defaulters only" filter', () => {
   it('open year uses the live flag; closed year reads the carried-dues history', () => {
     // Before the close, the year is open → the filter is the live warning flag, and carriedDefaulter

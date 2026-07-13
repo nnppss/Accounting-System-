@@ -56,7 +56,8 @@ describe('Phase 2 done/verify — worked settlement', () => {
       deliveredToAccountId: vyapari,
       vehicleNo: 'UP14 AB 1234',
       receivedBy: 'Mohan',
-      lines: [{ aamadId: lot, packets: 150, ratePaise: RATE }]
+      // Rate is per 105 kg; 150 × 105 kg keeps proceeds = 150 × RATE.
+      lines: [{ aamadId: lot, packets: 150, weightKg: 150 * 105, ratePaise: RATE }]
     })
     expect(res.voucherId).not.toBeNull()
 

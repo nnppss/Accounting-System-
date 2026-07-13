@@ -177,18 +177,19 @@ S('2025-08-01', DHARAMVEER, NANU, 250, 400, 'Dharamveer–Nanu')
 // 6) NIKASI — STOCK-OUT SEASON (Apr → early Nov). vyapari=sale(posts); kisan=self(physical)
 // ============================================================
 log('\n=== NIKASI (stock-out season) ===')
-const sale = (date: string, v: number, lines: Array<{ k: number; room: number; floor: number; rack: number; pkts: number; rate: number; wt?: number }>, extra: { vehicle?: string; recv?: string; bhada?: number } = {}): void => {
+const sale = (date: string, v: number, lines: Array<{ k: number; room: number; floor: number; rack: number; pkts: number; rate: number }>, extra: { vehicle?: string; recv?: string; bhada?: number } = {}): void => {
   const r = createNikasi(Y, {
     date, deliveredToType: 'vyapari', deliveredToAccountId: v,
     vehicleNo: extra.vehicle, receivedBy: extra.recv, bhadaRecoveredPaise: extra.bhada ? R(extra.bhada) : undefined,
-    lines: lines.map((l) => ({ aamadId: lotOf(l.room, l.floor, l.rack), packets: l.pkts, weightKg: l.wt, ratePaise: R(l.rate) }))
+    // Rate is per 105 kg; weight = pkts × 105 keeps proceeds = pkts × rate.
+    lines: lines.map((l) => ({ aamadId: lotOf(l.room, l.floor, l.rack), packets: l.pkts, weightKg: l.pkts * 105, ratePaise: R(l.rate) }))
   }, U)
   did(`SALE ${date} bill#${r.billNo} → vch ${r.voucherId} (${lines.length} line)`)
 }
-sale('2025-04-05', MANOJ, [{ k: SAHIL, room: 1, floor: 1, rack: 1, pkts: 200, rate: 450, wt: 10000 }], { vehicle: 'UP80-AB-1234', recv: 'Ramesh', bhada: 20000 })
+sale('2025-04-05', MANOJ, [{ k: SAHIL, room: 1, floor: 1, rack: 1, pkts: 200, rate: 450 }], { vehicle: 'UP80-AB-1234', recv: 'Ramesh', bhada: 20000 })
 sale('2025-04-20', MANOJ, [ // multi-kisan single gate pass
-  { k: SAHIL, room: 1, floor: 1, rack: 2, pkts: 150, rate: 455, wt: 7500 },
-  { k: ABHISHEK, room: 2, floor: 1, rack: 10, pkts: 200, rate: 460, wt: 10000 }
+  { k: SAHIL, room: 1, floor: 1, rack: 2, pkts: 150, rate: 455 },
+  { k: ABHISHEK, room: 2, floor: 1, rack: 10, pkts: 200, rate: 460 }
 ], { vehicle: 'UP80-CD-5678', recv: 'Suresh' })
 sale('2025-05-10', SATYAPAL, [
   { k: MOHIT, room: 3, floor: 1, rack: 5, pkts: 250, rate: 500 }, // full rack → 0
@@ -198,9 +199,9 @@ sale('2025-06-15', KRISHNA, [
   { k: MOHIT, room: 3, floor: 2, rack: 5, pkts: 100, rate: 520 }, // partial
   { k: MOHIT, room: 3, floor: 3, rack: 5, pkts: 200, rate: 520 }
 ], { vehicle: 'UP80-GH-3456' })
-sale('2025-07-08', NEERU, [{ k: SAURABH, room: 5, floor: 6, rack: 160, pkts: 400, rate: 600, wt: 20000 }], { vehicle: 'UP80-IJ-7788', recv: 'Naresh', bhada: 40000 })
+sale('2025-07-08', NEERU, [{ k: SAURABH, room: 5, floor: 6, rack: 160, pkts: 400, rate: 600 }], { vehicle: 'UP80-IJ-7788', recv: 'Naresh', bhada: 40000 })
 sale('2025-08-12', DHARAMVEER, [{ k: NANU, room: 1, floor: 4, rack: 20, pkts: 250, rate: 400 }], { vehicle: 'UP80-KL-9900' })
-sale('2025-09-05', NEERU, [{ k: SAURABH, room: 5, floor: 6, rack: 159, pkts: 200, rate: 610, wt: 10000 }], { vehicle: 'UP80-MN-2211' })
+sale('2025-09-05', NEERU, [{ k: SAURABH, room: 5, floor: 6, rack: 159, pkts: 200, rate: 610 }], { vehicle: 'UP80-MN-2211' })
 sale('2025-10-15', SATYAPAL, [
   { k: SP, room: 4, floor: 1, rack: 40, pkts: 300, rate: 520 },
   { k: ABHISHEK, room: 2, floor: 2, rack: 10, pkts: 150, rate: 465 }
@@ -310,7 +311,7 @@ setDefaulter(DHARAMVEER, true, U); did('Dharamveer flagged DEFAULTER (₹60,000 
 // 15) NEGATIVE / EDGE CASES — these MUST be rejected
 // ============================================================
 log('\n=== NEGATIVE / EDGE CASES (must reject) ===')
-expectReject('over-stock nikasi (draw > available)', () => createNikasi(Y, { date: '2025-10-30', deliveredToType: 'vyapari', deliveredToAccountId: MANOJ, lines: [{ aamadId: lotOf(1, 1, 1), packets: 9999, ratePaise: R(450) }] }, U))
+expectReject('over-stock nikasi (draw > available)', () => createNikasi(Y, { date: '2025-10-30', deliveredToType: 'vyapari', deliveredToAccountId: MANOJ, lines: [{ aamadId: lotOf(1, 1, 1), packets: 9999, weightKg: 500000, ratePaise: R(450) }] }, U))
 expectReject('aamad locations exceed total', () => createAamad(Y, { date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 100, locations: [{ room: 1, floor: 1, rack: 3, packets: 150 }] }, U))
 expectReject('aamad rack out of bounds (rack 9999)', () => createAamad(Y, { date: '2025-03-01', kisanAccountId: SAHIL, totalPackets: 10, locations: [{ room: 1, floor: 1, rack: 9999, packets: 10 }] }, U))
 expectReject('loan amount zero', () => createLoan(Y, { category: 'kisan', accountId: SAHIL, date: '2025-01-01', amountPaise: 0, mode: 'cash', nature: 'direct' }, U))

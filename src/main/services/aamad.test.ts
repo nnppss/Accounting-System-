@@ -123,7 +123,7 @@ describe('Aamad (stock-in)', () => {
       date: '2026-06-01',
       deliveredToType: 'vyapari',
       deliveredToAccountId: vyapari,
-      lines: [{ aamadId: id, packets: 60, ratePaise: 50000 }]
+      lines: [{ aamadId: id, packets: 60, weightKg: 3000, ratePaise: 50000 }]
     })
 
     // 60 of the 100 packets are gone — the aamad can no longer vanish or shrink below 60.

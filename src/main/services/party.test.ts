@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { closeDb } from '../data/db'
+import { eq } from 'drizzle-orm'
+import { closeDb, db } from '../data/db'
+import { account } from '../data/schema'
 import { groupId, makeAccount, makeYear, setupDb } from '../test-utils'
 import { createAccount, createPerson, setOpeningBalance } from './accounts'
 import { createAamad } from './aamad'
@@ -104,6 +106,77 @@ describe('Party search (software.md §3.12)', () => {
 
     const byAmount = searchParty(yearId, { loanOutstanding: { op: 'gte', value: 5000000 } }, '2026-07-01')
     expect(byAmount.rows.map((r) => r.accountId)).toEqual([vyapari])
+  })
+
+  it('"We owe" (Cr balance) matches on magnitude, not signed value', () => {
+    // A vyapari we owe ₹40,000 (opening Cr) — balance is negative.
+    const owed = makeAccount('Owed V', 'vyapari', 'Sundry Debtors')
+    setOpeningBalance(owed, yearId, 4000000, 'cr', '2026-01-01')
+
+    // ≥ ₹30,000 on the "we owe" side must include it (was excluded when comparing the -₹40k signed).
+    const gte = searchParty(yearId, { owes: 'them', balance: { op: 'gte', value: 3000000 } })
+    expect(gte.rows.map((r) => r.accountId)).toEqual([owed])
+
+    // ≤ ₹30,000 must exclude it (was wrongly included when -₹40k ≤ ₹30k).
+    const lte = searchParty(yearId, { owes: 'them', balance: { op: 'lte', value: 3000000 } })
+    expect(lte.rows.map((r) => r.accountId)).not.toContain(owed)
+  })
+
+  it('sanity: identity/categorical/set filters each isolate the right parties', () => {
+    // A kisan with an attached person (village + phone), a defaulter, and a party we owe.
+    const pid = createPerson({ name: 'Ram', villageCity: 'Testville', phone: '9998887776' })
+    const kv = createAccount({ name: 'Kisan V', type: 'kisan', subgroupId: groupId('Farmer'), personId: pid })
+    const def = makeAccount('Def K', 'kisan', 'Farmer')
+    db().update(account).set({ isDefaulter: true }).where(eq(account.id, def)).run()
+    const owed = makeAccount('Owed V', 'vyapari', 'Sundry Debtors')
+    setOpeningBalance(owed, yearId, 4000000, 'cr', '2026-01-01') // Cr = we owe ₹40,000
+
+    // type
+    expect(searchParty(yearId, { type: 'vyapari' }).rows.map((r) => r.name).sort()).toEqual([
+      'Owed V',
+      'Vyapari V'
+    ])
+    // name — case-insensitive substring
+    expect(searchParty(yearId, { name: 'kisan v' }).rows.map((r) => r.accountId)).toEqual([kv])
+    // village — case-insensitive substring
+    expect(searchParty(yearId, { village: 'testv' }).rows.map((r) => r.accountId)).toEqual([kv])
+    // phone — substring
+    expect(searchParty(yearId, { phone: '888' }).rows.map((r) => r.accountId)).toEqual([kv])
+    // defaulter yes / no
+    expect(searchParty(yearId, { defaulter: true }).rows.map((r) => r.accountId)).toEqual([def])
+    expect(searchParty(yearId, { defaulter: false }).rows.some((r) => r.accountId === def)).toBe(false)
+    // owes: them (Cr) is only the party we owe; us (Dr) never includes it
+    expect(searchParty(yearId, { owes: 'them' }).rows.map((r) => r.accountId)).toEqual([owed])
+    expect(searchParty(yearId, { owes: 'us' }).rows.map((r) => r.accountId)).not.toContain(owed)
+    // hasActivity — a freshly-created account with no postings is excluded
+    expect(searchParty(yearId, { hasActivity: true }).rows.map((r) => r.accountId)).not.toContain(kv)
+  })
+
+  it('sanity: numeric metrics + combinations narrow correctly', () => {
+    // Standing bhada (₹10/packet): A ₹4k, B ₹8k, C ₹2k.
+    expect(
+      searchParty(yearId, { standingBhada: { op: 'gte', value: 300000 } }).rows.map((r) => r.accountId).sort()
+    ).toEqual([kisanA, kisanB].sort())
+    // Current stock (no nikasi yet = packets brought): C=200 is the only one in 100–300.
+    expect(
+      searchParty(yearId, { currentStock: { op: 'between', value: 100, value2: 300 } }).rows.map((r) => r.accountId)
+    ).toEqual([kisanC])
+    // No sales recorded → packetsSold ≥ 1 finds nobody.
+    expect(searchParty(yearId, { packetsSold: { op: 'gte', value: 1 } }).rows).toEqual([])
+    // Combo: kisan AND we're-owed AND |balance| ≥ ₹20k → B (₹28k); A ₹16k & C ₹7k excluded.
+    expect(
+      searchParty(yearId, { type: 'kisan', owes: 'us', balance: { op: 'gte', value: 2000000 } }).rows.map(
+        (r) => r.accountId
+      )
+    ).toEqual([kisanB])
+    // Combo: kisan AND ≤500 brought AND bhada ≥ ₹3k → A only (B too many packets, C too little bhada).
+    expect(
+      searchParty(yearId, {
+        type: 'kisan',
+        packetsBrought: { op: 'lte', value: 500 },
+        standingBhada: { op: 'gte', value: 300000 }
+      }).rows.map((r) => r.accountId)
+    ).toEqual([kisanA])
   })
 
   it('multi-role finds people who hold more than one role-account', () => {

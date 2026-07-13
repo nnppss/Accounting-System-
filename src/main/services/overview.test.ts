@@ -33,9 +33,10 @@ beforeEach(() => {
     date: '2026-05-03',
     deliveredToType: 'vyapari',
     deliveredToAccountId: vyapari,
+    // Rate is per 105 kg; N × 105 kg keeps proceeds = packets × rate.
     lines: [
-      { aamadId: lot1, packets: 40, ratePaise: 50000 },
-      { aamadId: lot2, packets: 20, ratePaise: 60000 }
+      { aamadId: lot1, packets: 40, weightKg: 40 * 105, ratePaise: 50000 },
+      { aamadId: lot2, packets: 20, weightKg: 20 * 105, ratePaise: 60000 }
     ]
   })
 })

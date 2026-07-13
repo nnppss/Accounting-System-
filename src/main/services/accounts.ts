@@ -419,14 +419,16 @@ export function getAccountDetail(accountId: number, yearId: number): AccountDeta
     .get()
   if (!row) return null
   const opening = db()
-    .select({ accountId: openingBalance.accountId })
+    .select({ amountPaise: openingBalance.amountPaise, drCr: openingBalance.drCr })
     .from(openingBalance)
     .where(and(eq(openingBalance.accountId, accountId), eq(openingBalance.yearId, yearId)))
     .get()
   return {
     ...row,
     balancePaise: getAccountBalance(accountId, yearId),
-    hasOpening: Boolean(opening)
+    hasOpening: Boolean(opening),
+    openingAmountPaise: opening?.amountPaise ?? null,
+    openingDrCr: opening?.drCr ?? null
   }
 }
 

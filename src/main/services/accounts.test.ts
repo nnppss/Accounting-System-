@@ -115,6 +115,10 @@ describe('Account Manager', () => {
     const after = getAccountDetail(acctId, yearId)
     expect(after?.hasOpening).toBe(true)
     expect(after?.balancePaise).toBe(250000)
+    // Amount + side are exposed so the edit form can pre-fill the current opening.
+    expect(after?.openingAmountPaise).toBe(250000)
+    expect(after?.openingDrCr).toBe('dr')
+    expect(before?.openingAmountPaise).toBeNull()
   })
 
   it('edits identity fields on the linked person', () => {

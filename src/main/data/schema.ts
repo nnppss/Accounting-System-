@@ -357,7 +357,7 @@ export const aamadLocation = sqliteTable(
   (t) => ({ byAamad: index('aamad_location_aamad_idx').on(t.aamadId) })
 )
 
-/** Deal record: a vyapari agrees a per-packet rate with a kisan. Drives the Nikasi rate. Physical only. */
+/** Deal record: a vyapari agrees a rate (per ~105 kg) with a kisan for a lot. Drives the Nikasi rate. Physical only. */
 export const sauda = sqliteTable(
   'sauda',
   {
@@ -372,6 +372,7 @@ export const sauda = sqliteTable(
     kisanAccountId: integer('kisan_account_id')
       .notNull()
       .references(() => account.id),
+    aamadId: integer('aamad_id').references(() => aamad.id), // the kisan's lot this deal is for (optional)
     packets: integer('packets').notNull(),
     ratePaise: integer('rate_paise').notNull(),
     createdAt

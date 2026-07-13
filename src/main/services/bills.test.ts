@@ -44,7 +44,8 @@ describe('Bills — person-wise statement (software.md §3.11)', () => {
       date: '2026-05-01',
       deliveredToType: 'vyapari',
       deliveredToAccountId: buyer,
-      lines: [{ aamadId: lot, packets: 50, ratePaise: 50000 }]
+      // Rate is per 105 kg; 50 × 105 kg keeps proceeds = 50 × ₹500 = ₹25,000.
+      lines: [{ aamadId: lot, packets: 50, weightKg: 50 * 105, ratePaise: 50000 }]
     })
     // Ram-vyapari takes a direct loan ₹10,000 on 1 Jan (interest accrues from then).
     createLoan(yearId, {

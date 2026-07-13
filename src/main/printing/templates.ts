@@ -327,7 +327,7 @@ export function gatePassHtml(n: NikasiDetail): string {
       <th>${L('Lot no.', 'लॉट सं.')}</th>
       <th class="num">${L('Packets', 'पैकेट')}</th>
       <th class="num">${L('Weight (kg)', 'वज़न')}</th>
-      <th class="num">${L('Rate', 'दर')}</th>
+      <th class="num">${L('Rate /105kg', 'दर /105किग्रा')}</th>
       <th class="num">${L('Amount', 'राशि')}</th>
     </tr></thead>
     <tbody>${rows}</tbody>
@@ -869,6 +869,7 @@ export function moneyBookDetailHtml(
         <td>${esc(r.narration) || ''}</td>
         <td class="num">${money(r.receiptPaise)}</td>
         <td class="num">${money(r.paymentPaise)}</td>
+        <td class="num">${formatINR(r.balancePaise)}</td>
       </tr>`
     )
     .join('')
@@ -880,9 +881,10 @@ export function moneyBookDetailHtml(
       thc(L('Counterparty', 'प्रतिपक्ष')) +
       thc(L('Particulars', 'विवरण')) +
       thc(L('Receipt', 'प्राप्ति'), true) +
-      thc(L('Payment', 'भुगतान'), true),
-    body || emptyRow(6),
-    `<td colspan="4">${L('Total', 'कुल')}</td><td class="num">${formatINR(totalRcpt)}</td><td class="num">${formatINR(totalPay)}</td>`
+      thc(L('Payment', 'भुगतान'), true) +
+      thc(L('Balance', 'शेष'), true),
+    body || emptyRow(7),
+    `<td colspan="4">${L('Total', 'कुल')}</td><td class="num">${formatINR(totalRcpt)}</td><td class="num">${formatINR(totalPay)}</td><td class="num">${formatINR(rows.length ? rows[rows.length - 1].balancePaise : 0)}</td>`
   )}`
   return shell(L('Money Book — Month', 'रोकड़ बही — माह'), `${esc(accountName)} · ${title}`, html)
 }
@@ -993,6 +995,7 @@ export function saudaRegisterHtml(rows: SaudaListRow[]): string {
         <td class="num">${esc(fmtDate(r.date))}</td>
         <td>${esc(r.vyapariName)}</td>
         <td>${esc(r.kisanName)}</td>
+        <td>${esc(r.lotNo) || '—'}</td>
         <td class="num">${r.packets}</td>
         <td class="num">${formatINR(r.ratePaise)}</td>
       </tr>`
@@ -1002,10 +1005,11 @@ export function saudaRegisterHtml(rows: SaudaListRow[]): string {
     thc(L('Date', 'दिनांक'), true) +
       thc(L('Vyapari', 'व्यापारी')) +
       thc(L('Kisan', 'किसान')) +
+      thc(L('Lot no.', 'लॉट सं.')) +
       thc(L('Packets', 'पैकेट'), true) +
-      thc(L('Rate', 'दर'), true),
-    body || emptyRow(5),
-    `<td colspan="3">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td></td>`
+      thc(L('Rate /105kg', 'दर /105किग्रा'), true),
+    body || emptyRow(6),
+    `<td colspan="4">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td></td>`
   )
   return shell(L('Sauda Register', 'सौदा रजिस्टर'), `${rows.length} ${L('deals', 'सौदे')}`, html)
 }

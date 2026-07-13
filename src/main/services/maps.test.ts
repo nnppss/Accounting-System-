@@ -40,7 +40,7 @@ describe('Maps', () => {
       date: '2026-05-02',
       deliveredToType: 'vyapari',
       deliveredToAccountId: vyapari,
-      lines: [{ aamadId: lot1, packets: 30, ratePaise: 50000 }]
+      lines: [{ aamadId: lot1, packets: 30, weightKg: 1500, ratePaise: 50000 }]
     })
 
     expect(cell(getMap(yearId, 'aamad'), 1, 1)).toBe(100) // aamad map is unchanged
@@ -54,7 +54,7 @@ describe('Maps', () => {
       date: '2026-05-02',
       deliveredToType: 'vyapari',
       deliveredToAccountId: vyapari,
-      lines: [{ aamadId: lot1, packets: 40, ratePaise: 50000 }]
+      lines: [{ aamadId: lot1, packets: 40, weightKg: 2000, ratePaise: 50000 }]
     })
     const racks = getRackStock(yearId, 1, 1, 'current')
     expect(racks).toHaveLength(1)
@@ -76,8 +76,8 @@ describe('Maps', () => {
       deliveredToType: 'vyapari',
       deliveredToAccountId: vyapari,
       lines: [
-        { aamadId: lot1, packets: 100, ratePaise: 50000 },
-        { aamadId: lot2, packets: 20, ratePaise: 50000 }
+        { aamadId: lot1, packets: 100, weightKg: 5000, ratePaise: 50000 },
+        { aamadId: lot2, packets: 20, weightKg: 1000, ratePaise: 50000 }
       ]
     })
     expect(kisanStockLocations(yearId, kisan)).toEqual([

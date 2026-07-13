@@ -30,6 +30,15 @@ export type {
 } from '../../shared/contracts'
 
 /**
+ * Nikasi money basis: the vyapari and kisan agree a rate per ~105 kg unit (2 packets, ~50 kg each) —
+ * e.g. ₹931 per 105 kg — so amount = (deliveredWeightKg / 105) × rate, driven by weight not packets.
+ * Rounded to whole paise.
+ */
+const NIKASI_RATE_UNIT_KG = 105
+const nikasiAmountPaise = (weightKg: number, ratePaise: number): number =>
+  Math.round((weightKg / NIKASI_RATE_UNIT_KG) * ratePaise)
+
+/**
  * Spread `packets` of one lot across the racks it occupies, in (room, floor, rack) order. Runs
  * inside the caller's tx so it sees lines inserted for earlier gate-pass lines. Each rack draw is
  * capped by BOTH the lot's own placed-minus-shipped there AND the rack's true current stock for
@@ -89,14 +98,18 @@ export function createNikasi(
   const deliveredTo = db().select().from(account).where(eq(account.id, input.deliveredToAccountId)).get()
   if (!deliveredTo) throw new Error(`Delivery account ${input.deliveredToAccountId} not found`)
 
+  const isSale = input.deliveredToType === 'vyapari'
+
   for (const l of input.lines) {
     if (!Number.isInteger(l.packets) || l.packets <= 0) {
       throw new Error('Each line must have a positive whole number of packets')
     }
     if (l.ratePaise < 0) throw new Error('Rate cannot be negative')
+    // Weight drives the sale amount, so a vyapari sale can't post without it.
+    if (isSale && !(l.weightKg && l.weightKg > 0)) {
+      throw new Error('Each sale line needs a delivered weight (the rate is per 105 kg)')
+    }
   }
-
-  const isSale = input.deliveredToType === 'vyapari'
 
   return db().transaction((tx) => {
     const billNo = nextSeries(tx, yearId, 'nikasi')
@@ -153,7 +166,7 @@ export function createNikasi(
       })
       proceedsByKisan.set(
         lot.kisanAccountId,
-        (proceedsByKisan.get(lot.kisanAccountId) ?? 0) + l.packets * l.ratePaise
+        (proceedsByKisan.get(lot.kisanAccountId) ?? 0) + nikasiAmountPaise(l.weightKg ?? 0, l.ratePaise)
       )
     }
 
@@ -271,7 +284,7 @@ export function listNikasi(yearId: number, filter: NikasiListFilter = {}): Nikas
     const agg = db()
       .select({
         packets: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)`,
-        amount: sql<number>`coalesce(sum(${nikasiLine.packets} * ${nikasiLine.ratePaise}), 0)`
+        amount: sql<number>`coalesce(round(sum(${nikasiLine.weightKg} * ${nikasiLine.ratePaise}) / 105.0), 0)`
       })
       .from(nikasiLine)
       .where(and(...lineConds))
@@ -342,7 +355,7 @@ export function getNikasi(nikasiId: number): NikasiDetail | null {
       packets: r.packets,
       weightKg: r.weightKg ?? undefined,
       ratePaise: r.ratePaise,
-      amountPaise: r.packets * r.ratePaise
+      amountPaise: nikasiAmountPaise(r.weightKg ?? 0, r.ratePaise)
     }))
   }
 }

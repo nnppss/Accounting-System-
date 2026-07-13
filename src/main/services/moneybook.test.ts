@@ -53,5 +53,7 @@ describe('Money Book', () => {
     expect(detail).toHaveLength(1)
     expect(detail[0].paymentPaise).toBe(30000)
     expect(detail[0].counterparty).toBe('Ramesh Kisan')
+    // Running balance is seeded from March's closing (80000) then nets the April payment.
+    expect(detail[0].balancePaise).toBe(50000)
   })
 })

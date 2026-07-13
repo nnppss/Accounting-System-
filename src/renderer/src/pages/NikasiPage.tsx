@@ -357,7 +357,10 @@ export default function NikasiPage(): JSX.Element {
                     <Form.Item name={[field.name, 'packets']} rules={[{ required: true }]}>
                       <InputNumber min={1} placeholder={t('nikasi.packets')} style={{ width: 90 }} />
                     </Form.Item>
-                    <Form.Item name={[field.name, 'weightKg']}>
+                    <Form.Item
+                      name={[field.name, 'weightKg']}
+                      rules={[{ required: deliveredToType !== 'kisan' }]}
+                    >
                       <InputNumber min={0} placeholder={t('nikasi.weight')} style={{ width: 100 }} />
                     </Form.Item>
                     {deliveredToType !== 'kisan' && (

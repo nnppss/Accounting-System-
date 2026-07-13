@@ -151,6 +151,18 @@ export default function AccountLedgerPage(): JSX.Element {
     setEditOpen(true)
   }
 
+  // Pre-fill from the current opening (if any) so editing shows what's there; otherwise defaults to
+  // a Dr balance dated 1 Jan of the working year.
+  const openOpening = (): void => {
+    if (!acct) return
+    openingForm.setFieldsValue({
+      amount: acct.openingAmountPaise != null ? acct.openingAmountPaise / 100 : undefined,
+      drCr: acct.openingDrCr ?? 'dr',
+      date: dayjs(year ? `${year}-01-01` : undefined)
+    })
+    setOpeningOpen(true)
+  }
+
   const setOpening = useMutation({
     mutationFn: (v: { amount: number; drCr: DrCr; date: string }) =>
       window.api.accounts.setOpening(accountId, toPaise(v.amount), v.drCr, v.date),
@@ -234,6 +246,12 @@ export default function AccountLedgerPage(): JSX.Element {
       width: 160,
       // A cash/bank/cheque leg fills this; a Bhada/Nikasi entry moves no money, so it's on credit.
       render: (m: string) => m || <Typography.Text type="secondary">{t('ledger.mode.credit')}</Typography.Text>
+    },
+    {
+      title: t('moneyBook.counterparty'),
+      dataIndex: 'counterparty',
+      width: 160,
+      render: (c: string) => c || '—'
     },
     { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? '—' },
     {
@@ -335,30 +353,38 @@ export default function AccountLedgerPage(): JSX.Element {
           </div>
         )}
 
-        {acct && !acct.isSystem && (
+        {acct && (
           <Space style={{ marginTop: 16 }} wrap>
-            <Button icon={<EditOutlined />} onClick={openEdit}>
-              {t('common.edit')}
-            </Button>
-            <Button
-              danger={!acct.isDefaulter}
-              loading={toggleDefaulter.isPending}
-              onClick={onToggleDefaulter}
-            >
-              {acct.isDefaulter ? t('accounts.clearDefaulter') : t('accounts.markDefaulter')}
-            </Button>
-            {!acct.hasOpening && (
-              <Button onClick={() => setOpeningOpen(true)}>{t('accounts.setOpening')}</Button>
+            {/* Identity/defaulter/delete are meaningless for the cold's own Cash/bank heads; the
+                opening balance and print apply to every account, system money accounts included. */}
+            {!acct.isSystem && (
+              <>
+                <Button icon={<EditOutlined />} onClick={openEdit}>
+                  {t('common.edit')}
+                </Button>
+                <Button
+                  danger={!acct.isDefaulter}
+                  loading={toggleDefaulter.isPending}
+                  onClick={onToggleDefaulter}
+                >
+                  {acct.isDefaulter ? t('accounts.clearDefaulter') : t('accounts.markDefaulter')}
+                </Button>
+              </>
             )}
+            <Button onClick={openOpening}>
+              {acct.hasOpening ? t('accounts.editOpening') : t('accounts.setOpening')}
+            </Button>
             <Button
               icon={<PrinterOutlined />}
               onClick={() => print(() => window.api.print.ledger(accountId))}
             >
               {t('common.print')}
             </Button>
-            <Button danger onClick={() => setDeleteOpen(true)}>
-              {t('common.delete')}
-            </Button>
+            {!acct.isSystem && (
+              <Button danger onClick={() => setDeleteOpen(true)}>
+                {t('common.delete')}
+              </Button>
+            )}
           </Space>
         )}
       </Card>
@@ -397,34 +423,34 @@ export default function AccountLedgerPage(): JSX.Element {
                   return (
                     <>
                       <Table.Summary.Row>
-                        <Table.Summary.Cell index={0} colSpan={5} align="right">
+                        <Table.Summary.Cell index={0} colSpan={6} align="right">
                           <strong>{t('common.total')}</strong>
                         </Table.Summary.Cell>
-                        <Table.Summary.Cell index={5} align="right">
+                        <Table.Summary.Cell index={6} align="right">
                           <strong>{formatINR(totalDr)}</strong>
                         </Table.Summary.Cell>
-                        <Table.Summary.Cell index={6} align="right">
+                        <Table.Summary.Cell index={7} align="right">
                           <strong>{formatINR(totalCr)}</strong>
                         </Table.Summary.Cell>
-                        <Table.Summary.Cell index={7} align="right">
+                        <Table.Summary.Cell index={8} align="right">
                           <BalanceAmount paise={last.balancePaise} strong />
                         </Table.Summary.Cell>
                       </Table.Summary.Row>
                       {standingInterest !== 0 && (
                         <>
                           <Table.Summary.Row>
-                            <Table.Summary.Cell index={0} colSpan={7} align="right">
+                            <Table.Summary.Cell index={0} colSpan={8} align="right">
                               {t('overview.standingInterest')}
                             </Table.Summary.Cell>
-                            <Table.Summary.Cell index={7} align="right">
+                            <Table.Summary.Cell index={8} align="right">
                               {formatINR(standingInterest)}
                             </Table.Summary.Cell>
                           </Table.Summary.Row>
                           <Table.Summary.Row>
-                            <Table.Summary.Cell index={0} colSpan={7} align="right">
+                            <Table.Summary.Cell index={0} colSpan={8} align="right">
                               <strong>{t('overview.newBalance')}</strong>
                             </Table.Summary.Cell>
-                            <Table.Summary.Cell index={7} align="right">
+                            <Table.Summary.Cell index={8} align="right">
                               <BalanceAmount paise={newBalance} strong />
                             </Table.Summary.Cell>
                           </Table.Summary.Row>

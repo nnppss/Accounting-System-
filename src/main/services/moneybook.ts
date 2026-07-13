@@ -107,6 +107,13 @@ export function getDetail(
   const inMonth = entries.filter((e) => e.date.slice(5, 7) === mm)
   if (inMonth.length === 0) return []
 
+  // Seed the running balance from everything before this month (incl. opening), so the balance
+  // after the last row equals the month's closing in the summary. For a cash/bank book a Dr adds,
+  // a Cr subtracts.
+  let running = entries
+    .filter((e) => e.date.slice(5, 7) < mm)
+    .reduce((s, e) => s + e.dr - e.cr, 0)
+
   // Counterparty = the other accounts on each voucher (everything that isn't this account).
   const voucherIds = [...new Set(inMonth.map((e) => e.voucherId))]
   const others = db()
@@ -122,14 +129,18 @@ export function getDetail(
     counterpartyByVoucher.set(o.voucherId, list)
   }
 
-  return inMonth.map((e) => ({
-    voucherId: e.voucherId,
-    voucherNo: e.voucherNo,
-    type: e.type,
-    date: e.date,
-    narration: e.narration,
-    counterparty: (counterpartyByVoucher.get(e.voucherId) ?? []).join(', '),
-    receiptPaise: e.dr,
-    paymentPaise: e.cr
-  }))
+  return inMonth.map((e) => {
+    running += e.dr - e.cr
+    return {
+      voucherId: e.voucherId,
+      voucherNo: e.voucherNo,
+      type: e.type,
+      date: e.date,
+      narration: e.narration,
+      counterparty: (counterpartyByVoucher.get(e.voucherId) ?? []).join(', '),
+      receiptPaise: e.dr,
+      paymentPaise: e.cr,
+      balancePaise: running
+    }
+  })
 }

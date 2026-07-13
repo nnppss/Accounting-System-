@@ -153,8 +153,8 @@ export function useFormKeyNav({
 
     // Allow newlines in a multiline field.
     if (target.tagName === 'TEXTAREA' && e.shiftKey) return
-    // Enter on the "add line" button itself is a click, not a move.
-    if (target.closest('[data-pc-additem]')) return
+    // Enter on a button (add-line, "+ new person", …) activates it natively, not a move.
+    if (target.closest('button')) return
 
     // Ctrl/Cmd+Enter → accept from anywhere.
     if (e.ctrlKey || e.metaKey) {

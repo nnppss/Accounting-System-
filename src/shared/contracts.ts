@@ -111,6 +111,9 @@ export interface AccountDetail {
   balancePaise: number
   /** Whether an opening balance is already set for the working year. */
   hasOpening: boolean
+  /** Current opening amount (paise) and side, when set — for pre-filling the edit form. */
+  openingAmountPaise: number | null
+  openingDrCr: DrCr | null
 }
 
 /**
@@ -201,6 +204,11 @@ export interface LedgerLine {
    * journal that only builds a credit balance).
    */
   mode: string
+  /**
+   * The other account(s) on the voucher — the party/head the money went to or came from. On the
+   * Cash/bank ledgers this is the party (the "with whom" that `mode` can't show there).
+   */
+  counterparty: string
 }
 
 export interface TrialBalanceRow {
@@ -325,6 +333,8 @@ export interface MoneyBookDetailRow {
   counterparty: string
   receiptPaise: number
   paymentPaise: number
+  /** Cash/bank holding after this transaction — the running balance seeded from the month's opening. */
+  balancePaise: number
 }
 
 /** One posting line of a day-book voucher. */
@@ -411,6 +421,8 @@ export interface SaudaInput {
   date: string
   vyapariAccountId: number
   kisanAccountId: number
+  /** The kisan's aamad lot this deal is for (optional). */
+  aamadId?: number
   packets: number
   ratePaise: number
 }
@@ -422,6 +434,8 @@ export interface SaudaListRow {
   vyapariName: string
   kisanAccountId: number
   kisanName: string
+  aamadId: number | null
+  lotNo: string | null
   packets: number
   ratePaise: number
 }
@@ -953,6 +967,7 @@ export interface PartyCriteria {
   // identity
   type?: AccountType
   subgroupId?: number
+  name?: string // substring (case-insensitive)
   village?: string // substring (case-insensitive)
   phone?: string // substring
   defaulter?: boolean

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button, Drawer, Segmented, Select, Table } from 'antd'
 import { PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { MoneyBookMonth } from '@shared/contracts'
 import { formatDate, formatINR, MONTH_NAMES } from '../lib/format'
@@ -16,6 +17,7 @@ type View = 'monthly' | 'day'
 export default function MoneyBookPage(): JSX.Element {
   const { t } = useTranslation()
   const print = usePrinter()
+  const navigate = useNavigate()
   const [view, setView] = useState<View>('monthly')
   const [accountId, setAccountId] = useState<number | undefined>()
   const [month, setMonth] = useState<number | null>(null)
@@ -86,21 +88,38 @@ export default function MoneyBookPage(): JSX.Element {
   ]
 
   const detailColumns = [
-    { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
-    { title: t('vouchers.no'), dataIndex: 'voucherNo', width: 60 },
-    { title: t('moneyBook.counterparty'), dataIndex: 'counterparty' },
+    { title: t('common.date'), dataIndex: 'date', width: 100, render: (v: string) => formatDate(v) },
+    { title: t('vouchers.no'), dataIndex: 'voucherNo', width: 50 },
+    { title: t('moneyBook.counterparty'), dataIndex: 'counterparty', width: 150 },
     { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? '—' },
     {
       title: t('moneyBook.receipts'),
       dataIndex: 'receiptPaise',
       align: 'right' as const,
+      width: 110,
       render: (v: number) => (v ? formatINR(v) : '')
     },
     {
       title: t('moneyBook.payments'),
       dataIndex: 'paymentPaise',
       align: 'right' as const,
+      width: 110,
       render: (v: number) => (v ? formatINR(v) : '')
+    },
+    {
+      title: t('common.balance'),
+      dataIndex: 'balancePaise',
+      align: 'right' as const,
+      width: 120,
+      // Cash holding after this transaction. Negative = overdrawn, a red flag.
+      render: (v: number) =>
+        v < 0 ? (
+          <SeverityText severity="danger" strong>
+            {formatINR(v)}
+          </SeverityText>
+        ) : (
+          <strong>{formatINR(v)}</strong>
+        )
     }
   ]
 
@@ -128,12 +147,23 @@ export default function MoneyBookPage(): JSX.Element {
               />
             )}
             {view === 'monthly' && accountId !== undefined && (
-              <Button
-                icon={<PrinterOutlined />}
-                onClick={() => print(() => window.api.print.moneyBookSummary(accountId))}
-              >
-                {t('common.print')}
-              </Button>
+              <>
+                {/* Opening balances for Cash/bank are set on the account's own page (at software
+                    adoption these carry the real starting balances). */}
+                <Button
+                  onClick={() =>
+                    navigate(`/accounts/${accountId}`, { state: { fromNav: '/money-book' } })
+                  }
+                >
+                  {t('accounts.openingBalance')}
+                </Button>
+                <Button
+                  icon={<PrinterOutlined />}
+                  onClick={() => print(() => window.api.print.moneyBookSummary(accountId))}
+                >
+                  {t('common.print')}
+                </Button>
+              </>
             )}
           </>
         }
@@ -164,7 +194,7 @@ export default function MoneyBookPage(): JSX.Element {
             title={month ? `${MONTH_NAMES[month - 1]} — ${t('moneyBook.title')}` : ''}
             open={month !== null}
             onClose={() => setMonth(null)}
-            width={680}
+            width={820}
             extra={
               accountId !== undefined && month !== null ? (
                 <Button
@@ -184,6 +214,7 @@ export default function MoneyBookPage(): JSX.Element {
               columns={detailColumns}
               dataSource={detail.data ?? []}
               pagination={false}
+              scroll={{ x: 'max-content' }}
             />
           </Drawer>
         </>

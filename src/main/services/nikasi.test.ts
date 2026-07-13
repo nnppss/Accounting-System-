@@ -53,10 +53,11 @@ describe('Nikasi (stock-out)', () => {
       date: '2026-05-02',
       deliveredToType: 'vyapari',
       deliveredToAccountId: vyapari,
-      lines: [{ aamadId: lot1, packets: 30, ratePaise: 50000 }]
+      // Rate is per 105 kg: 1050 kg / 105 × ₹500 = ₹5,000.
+      lines: [{ aamadId: lot1, packets: 30, weightKg: 1050, ratePaise: 50000 }]
     })
     expect(res.voucherId).not.toBeNull()
-    const proceeds = 30 * 50000 // ₹15,000
+    const proceeds = Math.round((1050 / 105) * 50000) // ₹5,000
     expect(getAccountBalance(vyapari, yearId)).toBe(proceeds) // vyapari owes the cold (Dr)
     expect(getAccountBalance(kisan, yearId)).toBe(-proceeds) // cold owes kisan (Cr)
     expect(getTrialBalance(yearId).balanced).toBe(true)
@@ -68,7 +69,7 @@ describe('Nikasi (stock-out)', () => {
         date: '2026-05-02',
         deliveredToType: 'vyapari',
         deliveredToAccountId: vyapari,
-        lines: [{ aamadId: lot1, packets: 130, ratePaise: 50000 }]
+        lines: [{ aamadId: lot1, packets: 130, weightKg: 6500, ratePaise: 50000 }]
       })
     ).toThrow(/only 100 packets are available/i)
   })
@@ -79,12 +80,12 @@ describe('Nikasi (stock-out)', () => {
       deliveredToType: 'vyapari',
       deliveredToAccountId: vyapari,
       lines: [
-        { aamadId: lot1, packets: 40, ratePaise: 50000 },
-        { aamadId: lot2, packets: 20, ratePaise: 60000 }
+        { aamadId: lot1, packets: 40, weightKg: 2100, ratePaise: 50000 },
+        { aamadId: lot2, packets: 20, weightKg: 1050, ratePaise: 60000 }
       ]
     })
-    const fromKisan = 40 * 50000 // ₹20,000
-    const fromKisan2 = 20 * 60000 // ₹12,000
+    const fromKisan = Math.round((2100 / 105) * 50000) // ₹10,000
+    const fromKisan2 = Math.round((1050 / 105) * 60000) // ₹6,000
     expect(getAccountBalance(kisan, yearId)).toBe(-fromKisan)
     expect(getAccountBalance(kisan2, yearId)).toBe(-fromKisan2)
     expect(getAccountBalance(vyapari, yearId)).toBe(fromKisan + fromKisan2)

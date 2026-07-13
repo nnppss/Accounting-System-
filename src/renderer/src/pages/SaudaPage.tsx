@@ -7,6 +7,7 @@ import {
   Form,
   InputNumber,
   Popconfirm,
+  Select,
   Space,
   Table
 } from 'antd'
@@ -39,6 +40,14 @@ export default function SaudaPage(): JSX.Element {
   const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
 
   const saudas = useQuery({ queryKey: ['sauda'], queryFn: () => window.api.sauda.list() })
+
+  // Lot picker (optional): the selected kisan's aamad lots.
+  const kisanId = Form.useWatch('kisanAccountId', form) as number | undefined
+  const lots = useQuery({
+    queryKey: ['saudaLots', kisanId],
+    queryFn: () => window.api.nikasi.lots(kisanId),
+    enabled: open && !!kisanId
+  })
 
   const rows = useMemo(() => {
     const all = (saudas.data ?? []) as SaudaListRow[]
@@ -77,6 +86,7 @@ export default function SaudaPage(): JSX.Element {
     date: dayjs.Dayjs
     vyapariAccountId: number
     kisanAccountId: number
+    aamadId?: number
     packets: number
     rate: number
   }): void =>
@@ -84,15 +94,22 @@ export default function SaudaPage(): JSX.Element {
       date: v.date.format('YYYY-MM-DD'),
       vyapariAccountId: v.vyapariAccountId,
       kisanAccountId: v.kisanAccountId,
+      aamadId: v.aamadId,
       packets: v.packets,
       ratePaise: toPaise(v.rate)
     })
+
+  // Picking another kisan invalidates the chosen lot.
+  const onValuesChange = (changed: Record<string, unknown>): void => {
+    if ('kisanAccountId' in changed) form.setFieldValue('aamadId', undefined)
+  }
 
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 70, render: (id: number) => `#${id}` },
     { title: t('common.date'), dataIndex: 'date', width: 120, render: (v: string) => formatDate(v) },
     { title: t('sauda.vyapari'), dataIndex: 'vyapariName' },
     { title: t('sauda.kisan'), dataIndex: 'kisanName' },
+    { title: t('sauda.lot'), dataIndex: 'lotNo', width: 110, render: (v: string | null) => v ?? '—' },
     { title: t('sauda.packets'), dataIndex: 'packets', align: 'right' as const, width: 110 },
     {
       title: t('sauda.rate'),
@@ -196,7 +213,7 @@ export default function SaudaPage(): JSX.Element {
         okText={t('common.create')}
       >
         <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
-        <Form form={form} layout="vertical" initialValues={{ date: dayjs() }} onFinish={onFinish}>
+        <Form form={form} layout="vertical" initialValues={{ date: dayjs() }} onFinish={onFinish} onValuesChange={onValuesChange}>
           <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
             <DatePicker format={DATE_INPUT_FORMATS} />
           </Form.Item>
@@ -209,6 +226,21 @@ export default function SaudaPage(): JSX.Element {
           </Form.Item>
           <Form.Item name="kisanAccountId" label={t('sauda.kisan')} rules={[{ required: true }]}>
             <AccountSearchSelect type="kisan" placeholder={t('sauda.kisan')} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="aamadId" label={t('sauda.lot')}>
+            <Select
+              allowClear
+              showSearch
+              disabled={!kisanId}
+              loading={lots.isFetching}
+              placeholder={t('sauda.pickLot')}
+              optionFilterProp="label"
+              style={{ width: '100%' }}
+              options={(lots.data ?? []).map((l) => ({
+                value: l.aamadId,
+                label: `${l.lotNo} — ${l.remaining} ${t('nikasi.leftPkt')}`
+              }))}
+            />
           </Form.Item>
           <Form.Item name="packets" label={t('sauda.packets')} rules={[{ required: true }]}>
             <InputNumber min={1} placeholder={t('sauda.packets')} style={{ width: '100%' }} />

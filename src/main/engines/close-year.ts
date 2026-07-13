@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lt, ne } from 'drizzle-orm'
 import { db } from '../data/db'
+import { SYSTEM_ACCOUNTS } from '../data/seed'
 import {
   account,
   financialYear,
@@ -101,14 +102,21 @@ interface PartyAccount {
 }
 
 /**
- * Balance-sheet accounts carried across the year boundary: everything of asset or liability
- * nature — cash, banks, cheques-in-clearing, and every debtor/creditor party. Income, expense and
- * capital (incl. Opening Balance Equity) are P&L / plug accounts and are intentionally NOT carried.
+ * Balance-sheet accounts carried across the year boundary: everything of asset, liability or
+ * capital nature — cash, banks, cheques-in-clearing, every debtor/creditor party, and the owners'
+ * capital accounts (their proprietary firms are the same legal person, so their injections/draws
+ * are equity that must roll forward like any permanent account). Only income and expense — the
+ * nominal accounts that close to zero each year — are NOT carried.
  *
- * We deliberately do NOT filter on `isSystem` here: **Cash** is a system account but its balance is
- * real and must roll forward, while the **bank** accounts a user creates are non-system yet must
- * never be mistaken for owing parties (that distinction is `isTradeParty`). Keying off the crude
- * `isSystem` flag was the original bug — it dropped Cash and swept banks into dues/defaulters.
+ * **Opening Balance Equity** is the one capital account we exclude: it is a per-year plug that
+ * `setOpeningBalance` rebuilds from each year's fresh openings (and which it refuses to target), so
+ * carrying it would double-count the contra of every opening entry.
+ *
+ * We deliberately do NOT filter on `isSystem` here: **Cash** and **Capital** are system accounts but
+ * their balances are real and must roll forward, while the **bank** accounts a user creates are
+ * non-system yet must never be mistaken for owing parties (that distinction is `isTradeParty`).
+ * Keying off the crude `isSystem` flag was the original bug — it dropped Cash and swept banks into
+ * dues/defaulters.
  */
 function carriedAccounts(): PartyAccount[] {
   return db()
@@ -122,7 +130,12 @@ function carriedAccounts(): PartyAccount[] {
     })
     .from(account)
     .innerJoin(subgroup, eq(account.subgroupId, subgroup.id))
-    .where(inArray(subgroup.nature, ['asset', 'liability']))
+    .where(
+      and(
+        inArray(subgroup.nature, ['asset', 'liability', 'capital']),
+        ne(account.name, SYSTEM_ACCOUNTS.OPENING_EQUITY)
+      )
+    )
     .orderBy(asc(account.id))
     .all()
 }

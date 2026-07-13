@@ -1,11 +1,12 @@
 import { aliasedTable, and, desc, eq } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, sauda } from '../data/schema'
+import { aamad, account, sauda } from '../data/schema'
 import type { SaudaInput, SaudaListRow } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
+import { lotNoOf } from './aamad'
 
 /**
- * Sauda (deal record) — a vyapari agrees a per-packet rate with a kisan (software.md §Sauda).
+ * Sauda (deal record) — a vyapari agrees a rate (per ~105 kg) with a kisan (software.md §Sauda).
  * Physical only; posts nothing. Its rate is what the Nikasi sale later bills at.
  */
 export type { SaudaInput, SaudaListRow } from '../../shared/contracts'
@@ -20,6 +21,7 @@ export function createSauda(yearId: number, input: SaudaInput, userId?: number):
       date: input.date,
       vyapariAccountId: input.vyapariAccountId,
       kisanAccountId: input.kisanAccountId,
+      aamadId: input.aamadId ?? null,
       packets: input.packets,
       ratePaise: input.ratePaise
     })
@@ -48,7 +50,7 @@ export function deleteSauda(yearId: number, id: number, userId?: number): void {
 export function listSauda(yearId: number): SaudaListRow[] {
   const vyapari = aliasedTable(account, 'vyapari')
   const kisan = aliasedTable(account, 'kisan')
-  return db()
+  const rows = db()
     .select({
       id: sauda.id,
       date: sauda.date,
@@ -56,15 +58,23 @@ export function listSauda(yearId: number): SaudaListRow[] {
       vyapariName: vyapari.name,
       kisanAccountId: sauda.kisanAccountId,
       kisanName: kisan.name,
+      aamadId: sauda.aamadId,
+      aamadNo: aamad.no,
+      totalPackets: aamad.totalPackets,
       packets: sauda.packets,
       ratePaise: sauda.ratePaise
     })
     .from(sauda)
     .innerJoin(vyapari, eq(sauda.vyapariAccountId, vyapari.id))
     .innerJoin(kisan, eq(sauda.kisanAccountId, kisan.id))
+    .leftJoin(aamad, eq(sauda.aamadId, aamad.id))
     .where(eq(sauda.yearId, yearId))
     .orderBy(desc(sauda.date), desc(sauda.id))
     .all()
+  return rows.map(({ aamadNo, totalPackets, ...r }) => ({
+    ...r,
+    lotNo: aamadNo !== null && totalPackets !== null ? lotNoOf(aamadNo, totalPackets) : null
+  }))
 }
 
 /** Most recent agreed rate for a (vyapari, kisan) pair — pre-fills the Nikasi line rate. */
