@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   Alert,
   App as AntApp,
@@ -9,7 +10,6 @@ import {
   Form,
   Input,
   List,
-  Modal,
   Space,
   Statistic,
   Tag,
@@ -221,7 +221,7 @@ function PasswordGate({
   const [form] = Form.useForm()
   const formNav = useFormKeyNav({ onAccept: () => form.submit() })
   return (
-    <Modal
+    <AutoFocusModal
       open
       title={t('close.password')}
       okText={okText}
@@ -238,6 +238,6 @@ function PasswordGate({
         </Form.Item>
       </Form>
       </div>
-    </Modal>
+    </AutoFocusModal>
   )
 }

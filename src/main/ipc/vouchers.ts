@@ -6,7 +6,8 @@ import {
   createJournal,
   createPayment,
   createReceipt,
-  listVouchers
+  listVouchers,
+  voidManualVoucher
 } from '../services/vouchers'
 import { requireOpenYear, requireSession } from '../session'
 
@@ -30,4 +31,8 @@ export function registerVouchersIpc(): void {
   ipcMain.handle('vouchers:list', (_e, type?: VoucherType) =>
     listVouchers(requireSession().yearId, type)
   )
+  ipcMain.handle('vouchers:void', (_e, voucherId: number, reason: string) => {
+    const s = requireOpenYear()
+    return voidManualVoucher(s.yearId, voucherId, reason, s.userId)
+  })
 }

@@ -13,7 +13,7 @@ import { createSauda, deleteSauda, latestRate, listSauda } from '../services/sau
 import { createNikasi, deleteNikasi, getNikasi, listNikasi, lotsWithRemaining } from '../services/nikasi'
 import { getMap, getRackStock, kisanStockLocations } from '../services/maps'
 import { getStoreConfig, setStoreConfig } from '../services/store'
-import { accrueAllRent } from '../engines/bhada'
+import { accrueAllRent, getRentReport, setRentRate } from '../engines/bhada'
 import { requireOpenYear, requireSession } from '../session'
 
 /** Phase 2 IPC — store layout, Aamad, Sauda, Nikasi, Maps, and the Bhada engine. */
@@ -89,5 +89,13 @@ export function registerStockIpc(): void {
   ipcMain.handle('bhada:accrueAll', (_e, date: string) => {
     const s = requireOpenYear()
     return accrueAllRent(s.yearId, date, s.userId)
+  })
+  ipcMain.handle('bhada:setRate', (_e, ratePaise: number, date: string) => {
+    const s = requireOpenYear()
+    return setRentRate(s.yearId, ratePaise, date, s.userId)
+  })
+  ipcMain.handle('bhada:report', () => {
+    const s = requireOpenYear()
+    return getRentReport(s.yearId)
   })
 }

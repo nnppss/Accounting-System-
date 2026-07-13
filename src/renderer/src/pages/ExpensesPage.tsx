@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
@@ -7,7 +8,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Select,
   Space,
   Table,
@@ -97,6 +97,7 @@ export default function ExpensesPage(): JSX.Element {
   }
 
   const { containerRef, rowClassName } = useTableKeyNav(rows, () => {})
+  const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
 
   const columns = [
     { title: t('vouchers.no'), dataIndex: 'voucherNo', width: 70 },
@@ -145,6 +146,7 @@ export default function ExpensesPage(): JSX.Element {
         }
       />
 
+      <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
       <Space style={{ marginBottom: 16 }} wrap>
         <Select
           style={{ width: 150 }}
@@ -198,6 +200,7 @@ export default function ExpensesPage(): JSX.Element {
           </Button>
         )}
       </Space>
+      </div>
 
       <div ref={containerRef}>
       <Table
@@ -207,7 +210,7 @@ export default function ExpensesPage(): JSX.Element {
         loading={salary.isLoading || loading.isLoading}
         columns={columns}
         dataSource={rows}
-        pagination={{ pageSize: 15 }}
+        pagination={{ defaultPageSize: 15 }}
         rowClassName={rowClassName}
         summary={(data) => {
           const total = data.reduce((s, r) => s + r.amountPaise, 0)
@@ -274,7 +277,7 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
   })
 
   return (
-    <Modal
+    <AutoFocusModal
       title={t('expenses.new')}
       open={open}
       onCancel={onClose}
@@ -334,7 +337,7 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
         </Form.Item>
       </Form>
       </div>
-    </Modal>
+    </AutoFocusModal>
   )
 }
 
@@ -429,7 +432,7 @@ function ChargesModal({
     onError: (e: Error) => message.error(e.message)
   })
   return (
-    <Modal
+    <AutoFocusModal
       open
       title={`${t('expenses.yearCharges')} — ${row.accountName}`}
       onCancel={onClose}
@@ -461,6 +464,6 @@ function ChargesModal({
         </Form.Item>
       </Form>
       </div>
-    </Modal>
+    </AutoFocusModal>
   )
 }

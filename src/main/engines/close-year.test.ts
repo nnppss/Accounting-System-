@@ -5,8 +5,9 @@ import { account, financialYear, openingBalance } from '../data/schema'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
 import { createAamad } from '../services/aamad'
 import { accrueRent } from './bhada'
-import { createLoan, getLoanComposition, listLoans } from '../services/loans'
-import { setOpeningBalance } from '../services/accounts'
+import { createLoan, getLoanComposition, listLoans, recordPayment } from '../services/loans'
+import { listAccounts, setDefaulter, setOpeningBalance } from '../services/accounts'
+import { accruedForPayment } from './interest'
 import { recordCheque } from './cheque-clearing'
 import { getAccountBalance, getTrialBalance } from '../services/ledger'
 import { getMap } from '../services/maps'
@@ -326,5 +327,36 @@ describe('cash & bank carry-forward (regression)', () => {
     // Bank dues don't inflate the dues/indirect-loan totals — still just the 2 real owing parties.
     expect(getCloseStatus(yearId)!.summary.indirectLoans).toBe(2)
     expect(getTrialBalance(ny).balanced).toBe(true)
+  })
+})
+
+describe('year-aware "Defaulters only" filter', () => {
+  it('open year uses the live flag; closed year reads the carried-dues history', () => {
+    // Before the close, the year is open → the filter is the live warning flag, and carriedDefaulter
+    // is never set. Flag the creditor by hand and confirm that's what surfaces.
+    setDefaulter(creditor, true)
+    const open = listAccounts(yearId, { defaultersOnly: true })
+    expect(open.map((r) => r.id)).toEqual([creditor])
+    expect(open[0].carriedDefaulter).toBeUndefined()
+    setDefaulter(creditor, false)
+
+    closeYear(yearId)
+
+    // Closed year → the year's truth: exactly the two parties whose dues the close carried out,
+    // regardless of anyone's live flag. Both still owe, so both read 'active'.
+    const rows = listAccounts(yearId, { defaultersOnly: true })
+    expect(rows.map((r) => r.id).sort()).toEqual([kisan, vyapari].sort())
+    expect(rows.every((r) => r.carriedDefaulter === 'active')).toBe(true)
+
+    // Repay the kisan's carried dues in full (interest to today included) → still a defaulter FOR
+    // 2026, but now flagged 'repaid'; the vyapari, untouched, stays 'active'.
+    const ny = nextYearId()
+    const carried = listLoans(ny).find((l) => l.accountId === kisan)!
+    const today = new Date().toISOString().slice(0, 10)
+    recordPayment(carried.id, accruedForPayment(carried.id, today).outstandingPaise, today, 'cash', undefined)
+
+    const after = listAccounts(yearId, { defaultersOnly: true })
+    expect(after.find((r) => r.id === kisan)?.carriedDefaulter).toBe('repaid')
+    expect(after.find((r) => r.id === vyapari)?.carriedDefaulter).toBe('active')
   })
 })

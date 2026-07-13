@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Alert,
@@ -9,7 +10,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Radio,
   Select,
   Space,
@@ -106,6 +106,9 @@ export default function AccountsPage(): JSX.Element {
   const [personForm] = Form.useForm()
   const accountNav = useFormKeyNav({ open: newOpen, onAccept: () => accountForm.submit() })
   const personNav = useFormKeyNav({ open: personOpen, onAccept: () => personForm.submit() })
+  // Land the cursor in the filter bar on open; Enter/Tab flow across Type→Name→…, and Enter on
+  // the last filter blurs so the table's arrow-key navigation takes over.
+  const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
 
   const invalidate = (): void => {
     queryClient.invalidateQueries({ queryKey: ['accounts'] })
@@ -243,10 +246,15 @@ export default function AccountsPage(): JSX.Element {
       render: (name: string, r: AccountListRow) => (
         <Space>
           <a>{name}</a>
-          {r.isDefaulter && (
-            <SeverityTag severity="danger" icon>
-              {t('accounts.defaulter')}
-            </SeverityTag>
+          {r.carriedDefaulter === 'repaid' ? (
+            // Closed-year historical view: defaulted that year, but the carried dues are now cleared.
+            <Tag>{t('accounts.defaulterRepaid')}</Tag>
+          ) : (
+            (r.carriedDefaulter === 'active' || (!r.carriedDefaulter && r.isDefaulter)) && (
+              <SeverityTag severity="danger" icon>
+                {t('accounts.defaulter')}
+              </SeverityTag>
+            )
           )}
         </Space>
       )
@@ -283,6 +291,7 @@ export default function AccountsPage(): JSX.Element {
       />
 
       <Card size="small" style={{ marginBottom: 16 }}>
+        <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
         <Space wrap size="middle" align="end">
           <Labeled label={t('accounts.type')}>
             <Select
@@ -350,6 +359,7 @@ export default function AccountsPage(): JSX.Element {
             </Button>
           )}
         </Space>
+        </div>
       </Card>
 
       {hasQuery ? (
@@ -360,9 +370,18 @@ export default function AccountsPage(): JSX.Element {
             loading={accounts.isFetching}
             columns={columns}
             dataSource={tableData}
-            pagination={{ pageSize: 20 }}
+            pagination={{ defaultPageSize: 20 }}
             rowClassName={(r, i) =>
-              [severityRowClass(r.isDefaulter ? 'danger' : null), keyNavRowClass(r, i)].filter(Boolean).join(' ')
+              [
+                severityRowClass(
+                  r.carriedDefaulter === 'active' || (!r.carriedDefaulter && r.isDefaulter)
+                    ? 'danger'
+                    : null
+                ),
+                keyNavRowClass(r, i)
+              ]
+                .filter(Boolean)
+                .join(' ')
             }
             onRow={(r) => ({
               onClick: () => navigate(`/accounts/${r.id}`),
@@ -379,7 +398,7 @@ export default function AccountsPage(): JSX.Element {
       )}
 
       {/* New account */}
-      <Modal
+      <AutoFocusModal
         title={t('accounts.new')}
         open={newOpen}
         onCancel={() => setNewOpen(false)}
@@ -499,10 +518,10 @@ export default function AccountsPage(): JSX.Element {
           </Space>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
 
       {/* New person */}
-      <Modal
+      <AutoFocusModal
         title={t('accounts.newPerson')}
         open={personOpen}
         onCancel={() => setPersonOpen(false)}
@@ -534,7 +553,7 @@ export default function AccountsPage(): JSX.Element {
           </Form.Item>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
     </div>
   )
 }

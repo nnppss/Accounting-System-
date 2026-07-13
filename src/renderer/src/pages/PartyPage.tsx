@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
@@ -8,7 +9,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Row,
   Select,
   Space,
@@ -370,12 +370,12 @@ export default function PartyPage(): JSX.Element {
           loading={result.isLoading}
           columns={columns}
           dataSource={result.data?.rows ?? []}
-          pagination={{ pageSize: 20 }}
+          pagination={{ defaultPageSize: 20 }}
           rowClassName={rowClassName}
         />
       </div>
 
-      <Modal
+      <AutoFocusModal
         title={t('party.savePreset')}
         open={saveOpen}
         onCancel={() => setSaveOpen(false)}
@@ -390,7 +390,7 @@ export default function PartyPage(): JSX.Element {
           onChange={(e) => setSaveName(e.target.value)}
           onPressEnter={() => savePreset.mutate(saveName)}
         />
-      </Modal>
+      </AutoFocusModal>
     </div>
   )
 }

@@ -1,9 +1,16 @@
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import { db } from '../data/db'
 import { aamad, account, financialYear, voucher, voucherEntry } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
-import type { AccrueAllResult, AccrueResult, StandingBhada } from '../../shared/contracts'
+import type {
+  AccrueAllResult,
+  AccrueResult,
+  RentPaymentTurn,
+  RentReport,
+  StandingBhada
+} from '../../shared/contracts'
 import { post, voidVoucher } from '../services/posting'
+import { writeAudit } from '../audit/audit'
 
 /**
  * Bhada (rent) engine — architecture.md §7. Storage rent is a flat per-packet rate for the year
@@ -81,6 +88,33 @@ export function accrueRent(
   return { voucherId: res.voucherId, packets, amountPaise }
 }
 
+/**
+ * Change the year's per-packet rent rate mid-year and re-price the whole system. The rate can be
+ * revised any time (e.g. decided in Feb/Mar, or changed from 100→120/packet in April): we update
+ * the flat rate, then re-accrue every kisan, whose accrual is idempotent (voids the prior at the
+ * old rate, re-posts at the new). Live views compute packets × rate off financial_year, so they
+ * pick up the change automatically; only the ledger vouchers need this re-post.
+ */
+export function setRentRate(
+  yearId: number,
+  ratePaise: number,
+  date: string,
+  userId?: number
+): AccrueAllResult {
+  const yr = db().select().from(financialYear).where(eq(financialYear.id, yearId)).get()
+  if (!yr) throw new Error(`Financial year ${yearId} not found`)
+  db().update(financialYear).set({ rentRatePaise: ratePaise }).where(eq(financialYear.id, yearId)).run()
+  writeAudit({
+    userId,
+    action: 'update',
+    entity: 'financial_year',
+    entityId: yearId,
+    before: { rentRatePaise: yr.rentRatePaise },
+    after: { rentRatePaise: ratePaise }
+  })
+  return accrueAllRent(yearId, date, userId)
+}
+
 /** Accrue rent for every kisan who stored stock this year. */
 export function accrueAllRent(yearId: number, date: string, userId?: number): AccrueAllResult {
   const kisans = db()
@@ -131,5 +165,77 @@ export function getStandingBhada(kisanAccountId: number, yearId: number): Standi
     ratePaise: yr.rentRatePaise,
     accruedRentPaise,
     standingPaise: accruedRentPaise
+  }
+}
+
+/**
+ * Year-wide rent report. Rent-tagged entries on party (non-system) accounts ARE the kisan rent
+ * ledger: the accrual debits the kisan (billed), a rent receipt credits him (paid). So per kisan
+ * billed = ΣDr, paid = ΣCr, due = the difference (= standing bhada). Totals sum across kisans; the
+ * cold's total billed equals the Cr on Rent Income, total collected equals the rent cash received.
+ */
+export function getRentReport(yearId: number): RentReport {
+  const rentParty = and(
+    eq(voucher.yearId, yearId),
+    eq(voucherEntry.tag, 'rent'),
+    eq(account.isSystem, false),
+    isNull(voucher.voidedAt)
+  )
+
+  const rows = db()
+    .select({
+      accountId: voucherEntry.accountId,
+      name: account.name,
+      billed: sql<number>`coalesce(sum(${voucherEntry.drPaise}), 0)`,
+      paid: sql<number>`coalesce(sum(${voucherEntry.crPaise}), 0)`
+    })
+    .from(voucherEntry)
+    .innerJoin(voucher, eq(voucherEntry.voucherId, voucher.id))
+    .innerJoin(account, eq(voucherEntry.accountId, account.id))
+    .where(rentParty)
+    .groupBy(voucherEntry.accountId)
+    .all()
+
+  // Every rent-tagged credit on a kisan account is one payment "turn".
+  const payRows = db()
+    .select({
+      accountId: voucherEntry.accountId,
+      date: voucher.date,
+      voucherNo: voucher.no,
+      amountPaise: voucherEntry.crPaise
+    })
+    .from(voucherEntry)
+    .innerJoin(voucher, eq(voucherEntry.voucherId, voucher.id))
+    .innerJoin(account, eq(voucherEntry.accountId, account.id))
+    .where(and(rentParty, gt(voucherEntry.crPaise, 0)))
+    .orderBy(voucher.date)
+    .all()
+
+  const turns = new Map<number, RentPaymentTurn[]>()
+  for (const p of payRows) {
+    const list = turns.get(p.accountId) ?? []
+    list.push({ date: p.date, voucherNo: p.voucherNo, amountPaise: p.amountPaise })
+    turns.set(p.accountId, list)
+  }
+
+  const kisans = rows
+    .map((r) => ({
+      accountId: r.accountId,
+      name: r.name,
+      billedPaise: r.billed,
+      paidPaise: r.paid,
+      duePaise: r.billed - r.paid,
+      payments: turns.get(r.accountId) ?? []
+    }))
+    .sort((a, b) => b.duePaise - a.duePaise)
+
+  const totalBilledPaise = kisans.reduce((s, k) => s + k.billedPaise, 0)
+  const totalCollectedPaise = kisans.reduce((s, k) => s + k.paidPaise, 0)
+  return {
+    yearId,
+    totalBilledPaise,
+    totalCollectedPaise,
+    totalDuePaise: totalBilledPaise - totalCollectedPaise,
+    kisans
   }
 }

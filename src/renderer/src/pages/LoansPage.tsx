@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
@@ -8,7 +9,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Select,
   Space,
   Table,
@@ -52,6 +52,7 @@ export default function LoansPage(): JSX.Element {
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
 
   const [accountFilter, setAccountFilter] = useState<number | undefined>()
   const [categoryFilter, setCategoryFilter] = useState<'all' | LoanCategory>('all')
@@ -214,6 +215,7 @@ export default function LoansPage(): JSX.Element {
         }
       />
 
+      <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect
           allowClear
@@ -265,6 +267,7 @@ export default function LoansPage(): JSX.Element {
           </Button>
         )}
       </Space>
+      </div>
 
       <div ref={containerRef}>
         <Table
@@ -274,7 +277,7 @@ export default function LoansPage(): JSX.Element {
           loading={loans.isLoading}
           columns={columns}
           dataSource={rows}
-          pagination={{ pageSize: 15 }}
+          pagination={{ defaultPageSize: 15 }}
           rowClassName={(row, i) =>
             [severityRowClass(interestSeverity(row.outstandingPaise - row.principalPaise)), keyNavRowClass(row, i)].filter(Boolean).join(' ')
           }
@@ -285,7 +288,7 @@ export default function LoansPage(): JSX.Element {
         />
       </div>
 
-      <Modal
+      <AutoFocusModal
         title={t('loans.new')}
         open={open}
         onCancel={() => setOpen(false)}
@@ -400,7 +403,7 @@ export default function LoansPage(): JSX.Element {
           </Form.Item>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
 
       <LoanDetailDrawer
         loan={detailLoan}
@@ -712,7 +715,7 @@ function PayModal({
   })
 
   return (
-    <Modal
+    <AutoFocusModal
       open
       title={`${t('loans.pay')} — ${loan.accountName}`}
       onCancel={onClose}
@@ -753,6 +756,6 @@ function PayModal({
         )}
       </Form>
       </div>
-    </Modal>
+    </AutoFocusModal>
   )
 }

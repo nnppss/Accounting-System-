@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isInputFocused, isOverlayOpen } from './keyGuards'
 
-/** Alt+letter section jumps, in top-nav order. Also drives the Alt-held hint overlay. */
+/** Alt+letter section jumps, in top-nav order. Also drives the Alt-held hint overlay and the
+ * per-item hint shown in the nav dropdowns. Keys are the section's first letter where free, else
+ * a letter inside the word (bar[D]ana, bac[K]up, part[Y]) or a clear stand-in (I=intake/aamad,
+ * W=wallet/money-book, Z=close-out). */
 export const NAV_HINTS: { key: string; route: string; labelKey: string }[] = [
   { key: 'h', route: '/home', labelKey: 'nav.home' },
   { key: 'a', route: '/accounts', labelKey: 'nav.accounts' },
@@ -11,18 +14,20 @@ export const NAV_HINTS: { key: string; route: string; labelKey: string }[] = [
   { key: 'm', route: '/maps', labelKey: 'nav.maps' },
   { key: 'n', route: '/nikasi', labelKey: 'nav.nikasi' },
   { key: 's', route: '/sauda', labelKey: 'nav.sauda' },
-  { key: 'b', route: '/bardana', labelKey: 'nav.bardana' },
+  { key: 'd', route: '/bardana', labelKey: 'nav.bardana' },
   { key: 'e', route: '/expenses', labelKey: 'nav.expenses' },
   { key: 'l', route: '/loans', labelKey: 'nav.loans' },
-  { key: 'q', route: '/cheques', labelKey: 'nav.cheques' },
-  { key: 'k', route: '/money-book', labelKey: 'nav.moneyBook' },
+  { key: 'c', route: '/cheques', labelKey: 'nav.cheques' },
+  { key: 'w', route: '/money-book', labelKey: 'nav.moneyBook' },
   { key: 'v', route: '/vouchers', labelKey: 'nav.vouchers' },
   { key: 't', route: '/trial-balance', labelKey: 'nav.trialBalance' },
-  { key: 'r', route: '/bills', labelKey: 'nav.bills' },
-  { key: 'f', route: '/party', labelKey: 'nav.party' },
+  { key: 'f', route: '/financials', labelKey: 'nav.financials' },
+  { key: 'b', route: '/bills', labelKey: 'nav.bills' },
+  { key: 'r', route: '/rent', labelKey: 'nav.rent' },
+  { key: 'y', route: '/party', labelKey: 'nav.party' },
   { key: 'o', route: '/store', labelKey: 'nav.store' },
-  { key: 'd', route: '/backup', labelKey: 'nav.backup' },
-  { key: 'y', route: '/close', labelKey: 'nav.close' },
+  { key: 'k', route: '/backup', labelKey: 'nav.backup' },
+  { key: 'z', route: '/close', labelKey: 'nav.close' },
   { key: 'u', route: '/audit', labelKey: 'nav.audit' }
 ]
 

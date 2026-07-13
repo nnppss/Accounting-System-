@@ -132,7 +132,7 @@ export default function BackupPage(): JSX.Element {
           columns={columns}
           dataSource={backups.data ?? []}
           loading={backups.isLoading}
-          pagination={{ pageSize: 15, hideOnSinglePage: true }}
+          pagination={{ defaultPageSize: 15, hideOnSinglePage: true }}
           locale={{ emptyText: t('backup.empty') }}
         />
       </Card>

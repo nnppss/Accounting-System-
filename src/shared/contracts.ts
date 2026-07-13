@@ -175,6 +175,10 @@ export interface AccountListRow {
   isDefaulter: boolean
   isSystem: boolean
   balancePaise: number
+  /** Only set when the "Defaulters only" filter runs over a CLOSED year: the historical fact of who
+   *  defaulted for that year (dues carried out by its year-end close), and whether they've since
+   *  repaid. `isDefaulter` above stays the live warning; this is the year's truth. */
+  carriedDefaulter?: 'active' | 'repaid'
 }
 
 // ---- ledger / trial balance ----
@@ -271,6 +275,8 @@ export interface VoucherListRow {
   narration: string | null
   isAuto: boolean
   totalPaise: number
+  /** Distinct non-'general' entry tags on this voucher, for a badge in the list. */
+  tags: EntryTag[]
 }
 
 export interface VoucherEntryView {
@@ -539,6 +545,33 @@ export interface StandingBhada {
   ratePaise: number
   accruedRentPaise: number
   standingPaise: number
+}
+
+/** One rent payment a kisan made (a rent-tagged receipt). */
+export interface RentPaymentTurn {
+  date: string
+  voucherNo: number
+  amountPaise: number
+}
+
+export interface RentReportKisan {
+  accountId: number
+  name: string
+  /** Full-year rent accrued to this kisan. */
+  billedPaise: number
+  /** Rent he has paid, across all turns. */
+  paidPaise: number
+  duePaise: number
+  payments: RentPaymentTurn[]
+}
+
+/** Year-wide rent: what the cold should earn, what it collected, per-kisan breakdown. */
+export interface RentReport {
+  yearId: number
+  totalBilledPaise: number
+  totalCollectedPaise: number
+  totalDuePaise: number
+  kisans: RentReportKisan[]
 }
 
 // ---- Phase 2 operation results ----

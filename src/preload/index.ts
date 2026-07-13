@@ -14,6 +14,7 @@ import type {
   AccountListRow,
   AccountOverview,
   AccrueAllResult,
+  RentReport,
   AuditFacets,
   AuditFilter,
   AuditLogRow,
@@ -132,7 +133,9 @@ const api = {
     payment: (arg: ReceiptArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:payment', arg),
     contra: (arg: ContraArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:contra', arg),
     journal: (arg: JournalArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:journal', arg),
-    list: (type?: VoucherType): Promise<VoucherListRow[]> => ipcRenderer.invoke('vouchers:list', type)
+    list: (type?: VoucherType): Promise<VoucherListRow[]> => ipcRenderer.invoke('vouchers:list', type),
+    void: (voucherId: number, reason: string): Promise<void> =>
+      ipcRenderer.invoke('vouchers:void', voucherId, reason)
   },
   ledger: {
     trialBalance: (): Promise<TrialBalance> => ipcRenderer.invoke('ledger:trialBalance')
@@ -186,7 +189,10 @@ const api = {
   },
   bhada: {
     accrueAll: (date: string): Promise<AccrueAllResult> =>
-      ipcRenderer.invoke('bhada:accrueAll', date)
+      ipcRenderer.invoke('bhada:accrueAll', date),
+    setRate: (ratePaise: number, date: string): Promise<AccrueAllResult> =>
+      ipcRenderer.invoke('bhada:setRate', ratePaise, date),
+    report: (): Promise<RentReport> => ipcRenderer.invoke('bhada:report')
   },
   loans: {
     create: (input: LoanInput): Promise<CreateLoanResult> => ipcRenderer.invoke('loans:create', input),

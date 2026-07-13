@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
@@ -9,7 +10,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Row,
   Select,
@@ -52,6 +52,7 @@ export default function BardanaPage(): JSX.Element {
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
   const mode = Form.useWatch('mode', form) as PaymentMode | undefined
   const direction = Form.useWatch('direction', form) as BardanaDirection | undefined
   const prebooked = (Form.useWatch('prebooked', form) as boolean | undefined) ?? false
@@ -282,6 +283,7 @@ export default function BardanaPage(): JSX.Element {
         </Col>
       </Row>
 
+      <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
       <Space style={{ marginBottom: 16 }} wrap>
         <Select
           style={{ width: 150 }}
@@ -338,6 +340,7 @@ export default function BardanaPage(): JSX.Element {
           </Button>
         )}
       </Space>
+      </div>
 
       <div ref={containerRef}>
         <Table
@@ -347,12 +350,12 @@ export default function BardanaPage(): JSX.Element {
           loading={list.isLoading}
           columns={columns}
           dataSource={rows}
-          pagination={{ pageSize: 15 }}
+          pagination={{ defaultPageSize: 15 }}
           rowClassName={rowClassName}
         />
       </div>
 
-      <Modal
+      <AutoFocusModal
         title={t('bardana.new')}
         open={open}
         onCancel={() => setOpen(false)}
@@ -505,7 +508,7 @@ export default function BardanaPage(): JSX.Element {
           )}
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
     </div>
   )
 }

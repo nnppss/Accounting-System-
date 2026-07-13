@@ -6,6 +6,7 @@ import {
   accountSeries,
   bardana,
   cheque,
+  financialYear,
   loan,
   nikasi,
   nikasiLine,
@@ -30,6 +31,7 @@ import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import { writeAudit } from '../audit/audit'
 import { post, voidVoucher } from './posting'
 import { getAccountBalance } from './ledger'
+import { outstandingAsOf } from '../engines/interest'
 
 /** Account Manager service (software.md §2; phase1.md §5.4). DTOs come from the shared contract. */
 export type {
@@ -258,7 +260,32 @@ export function listAccounts(yearId: number, filter: AccountListFilter = {}): Ac
   if (filter.villageCity) conds.push(like(person.villageCity, `%${filter.villageCity.trim()}%`))
   if (filter.state) conds.push(like(person.state, `%${filter.state.trim()}%`))
   if (filter.phone) conds.push(like(person.phone, `%${filter.phone.trim()}%`))
-  if (filter.defaultersOnly) conds.push(eq(account.isDefaulter, true))
+
+  // The defaulter filter is year-aware. In an OPEN year it's the live warning flag (clears the
+  // instant a party repays, everywhere). In a CLOSED year it means the historical fact "who
+  // defaulted FOR this year" — exactly the parties whose dues that year's close carried out as
+  // indirect loans (the remark below is what close-year.ts writes). Whether they've since repaid
+  // is that loan's outstanding, surfaced per-row as carriedDefaulter below.
+  let carriedLoanByAccount: Map<number, number> | null = null
+  if (filter.defaultersOnly) {
+    const yr = db()
+      .select({ year: financialYear.year, status: financialYear.status })
+      .from(financialYear)
+      .where(eq(financialYear.id, yearId))
+      .get()
+    if (yr?.status === 'closed') {
+      const carried = db()
+        .select({ accountId: loan.accountId, loanId: loan.id })
+        .from(loan)
+        .where(eq(loan.remark, `Carried-forward dues — ${yr.year} year-end close`))
+        .all()
+      if (carried.length === 0) return []
+      carriedLoanByAccount = new Map(carried.map((c) => [c.accountId, c.loanId]))
+      conds.push(inArray(account.id, [...carriedLoanByAccount.keys()]))
+    } else {
+      conds.push(eq(account.isDefaulter, true))
+    }
+  }
 
   if (filter.systemOnly) {
     conds.push(eq(account.isSystem, true))
@@ -300,7 +327,15 @@ export function listAccounts(yearId: number, filter: AccountListFilter = {}): Ac
     .all()
   const balanceByAccount = new Map(balances.map((b) => [b.accountId, b.net]))
 
-  return accounts.map((a) => ({ ...a, balancePaise: balanceByAccount.get(a.id) ?? 0 }))
+  const asOf = new Date().toISOString().slice(0, 10)
+  return accounts.map((a) => {
+    const row: AccountListRow = { ...a, balancePaise: balanceByAccount.get(a.id) ?? 0 }
+    const loanId = carriedLoanByAccount?.get(a.id)
+    if (loanId != null) {
+      row.carriedDefaulter = outstandingAsOf(loanId, asOf).outstandingPaise > 0 ? 'active' : 'repaid'
+    }
+    return row
+  })
 }
 
 /**

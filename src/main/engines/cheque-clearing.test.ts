@@ -1,8 +1,12 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { closeDb } from '../data/db'
+import { closeDb, db, rawSqlite } from '../data/db'
+import { cheque } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
-import { getAccountBalance, getTrialBalance } from '../services/ledger'
+import { getAccountBalance, getAccountLedger, getTrialBalance } from '../services/ledger'
 import { getSummary } from '../services/moneybook'
 import { listCheques } from '../services/cheques'
 import { createLoan, getLoan, listLoans, recordPayment } from '../services/loans'
@@ -45,6 +49,19 @@ describe('Cheque-clearing engine', () => {
     expect(getAccountBalance(clearing, yearId)).toBe(0)
     expect(listCheques(yearId, 'cleared')).toHaveLength(1)
     expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+
+  it('drops the "(in clearing)" note from the entry narration once cleared', () => {
+    const { chequeId } = recordCheque(yearId, {
+      direction: 'given',
+      partyAccountId: vyapari,
+      bankAccountId: bank,
+      amountPaise: SUM,
+      no: 'C-9'
+    })
+    expect(getAccountLedger(vyapari, yearId)[0].narration).toBe('Cheque C-9 given (in clearing)')
+    clearCheque(chequeId, '2026-02-10')
+    expect(getAccountLedger(vyapari, yearId)[0].narration).toBe('Cheque C-9 given')
   })
 
   it('a bounce reverses cleanly — the party owes again and no bank money moved', () => {
@@ -173,5 +190,24 @@ describe('Loans disbursed/repaid by cheque', () => {
     expect(getAccountBalance(vyapari, yearId)).toBe(SUM)
     expect(getAccountBalance(clearing, yearId)).toBe(0)
     expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+})
+
+describe('0018 backfill migration', () => {
+  it('strips "(in clearing)" from cheques that were cleared before the fix', () => {
+    // Simulate a pre-fix cleared cheque: record it (stale "(in clearing)" narration), then flip
+    // status to cleared *without* clearCheque so the narration stays stale.
+    const { chequeId } = recordCheque(yearId, {
+      direction: 'given',
+      partyAccountId: vyapari,
+      bankAccountId: bank,
+      amountPaise: SUM,
+      no: 'OLD-1'
+    })
+    db().update(cheque).set({ status: 'cleared' }).where(eq(cheque.id, chequeId)).run()
+    expect(getAccountLedger(vyapari, yearId)[0].narration).toBe('Cheque OLD-1 given (in clearing)')
+
+    rawSqlite().exec(readFileSync(join(process.cwd(), 'drizzle/0018_backfill_cheque_clearing_narration.sql'), 'utf8'))
+    expect(getAccountLedger(vyapari, yearId)[0].narration).toBe('Cheque OLD-1 given')
   })
 })

@@ -8,9 +8,12 @@ i18n.use(initReactI18next).init({
     en: { translation: en },
     hi: { translation: hi }
   },
-  lng: 'en',
+  // Remember the accountant's language across launches instead of resetting to English.
+  lng: localStorage.getItem('pc-lang') ?? 'en',
   fallbackLng: 'en',
   interpolation: { escapeValue: false }
 })
+
+i18n.on('languageChanged', (lang) => localStorage.setItem('pc-lang', lang))
 
 export default i18n

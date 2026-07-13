@@ -9,6 +9,7 @@ import type {
   AamadSearchFilter
 } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
+import { accrueRent } from '../engines/bhada'
 import { currentStockAtRack } from './maps'
 import { assertLocationInBounds } from './store'
 
@@ -56,7 +57,7 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
   // year, not the entry date, so early-next-year entries still join this season's series).
   const fy = db().select().from(financialYear).where(eq(financialYear.id, yearId)).get()
   if (!fy) throw new Error(`Financial year ${yearId} not found`)
-  return db().transaction((tx) => {
+  const id = db().transaction((tx) => {
     const existing = tx.select({ no: aamad.no }).from(aamad).where(eq(aamad.yearId, yearId)).all()
     const serial = existing.reduce((m, r) => Math.max(m, serialOf(r.no)), 0) + 1
     const no = `${fy.year}-${serial}`
@@ -79,6 +80,9 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
     writeAudit({ userId, action: 'create', entity: 'aamad', entityId: header.id, after: input }, tx)
     return header.id
   })
+  // Stored packets changed → keep this kisan's rent current (no-op until a rate is set).
+  accrueRent(input.kisanAccountId, yearId, input.date, userId)
+  return id
 }
 
 /**
@@ -157,6 +161,12 @@ export function updateAamad(yearId: number, id: number, input: AamadInput, userI
       tx
     )
   })
+  // Re-accrue the (new) kisan; if the aamad moved to a different kisan, re-accrue the old one too
+  // so the rent that left his books is removed.
+  accrueRent(input.kisanAccountId, yearId, input.date, userId)
+  if (before.kisanAccountId !== input.kisanAccountId) {
+    accrueRent(before.kisanAccountId, yearId, input.date, userId)
+  }
 }
 
 /**
@@ -165,7 +175,7 @@ export function updateAamad(yearId: number, id: number, input: AamadInput, userI
  * of the stock covers. Scoped to the year and done in one transaction; the change is audited.
  */
 export function deleteAamad(yearId: number, id: number, userId?: number): void {
-  db().transaction((tx) => {
+  const removed = db().transaction((tx) => {
     const header = tx
       .select()
       .from(aamad)
@@ -195,7 +205,10 @@ export function deleteAamad(yearId: number, id: number, userId?: number): void {
       `Aamad ${header.no} cannot be deleted`
     )
     writeAudit({ userId, action: 'delete', entity: 'aamad', entityId: id, before: header }, tx)
+    return { kisanAccountId: header.kisanAccountId, date: header.date }
   })
+  // Stored packets dropped → re-accrue this kisan at his remaining quantity.
+  accrueRent(removed.kisanAccountId, yearId, removed.date, userId)
 }
 
 export function listAamad(yearId: number, filter: AamadSearchFilter = {}): AamadListResult {

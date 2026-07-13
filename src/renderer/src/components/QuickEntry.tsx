@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Modal, Select } from 'antd'
+import { Select } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuickHotkey } from '../lib/useHotkeys'
+import AutoFocusModal from './AutoFocusModal'
 
 /**
  * Ctrl/Cmd+K quick-entry launcher. During a fast dictation blast the next slip could be any
@@ -44,9 +45,15 @@ export default function QuickEntry(): JSX.Element {
   }
 
   return (
-    <Modal open={open} onCancel={() => setOpen(false)} footer={null} destroyOnClose title={t('quick.title')} width={460}>
+    <AutoFocusModal
+      open={open}
+      onCancel={() => setOpen(false)}
+      footer={null}
+      destroyOnClose
+      title={t('quick.title')}
+      width={460}
+    >
       <Select
-        autoFocus
         open
         showSearch
         placeholder={t('quick.placeholder')}
@@ -61,6 +68,6 @@ export default function QuickEntry(): JSX.Element {
         onSelect={(k) => pick(k as string)}
         getPopupContainer={(n) => n.parentElement as HTMLElement}
       />
-    </Modal>
+    </AutoFocusModal>
   )
 }

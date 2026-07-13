@@ -113,7 +113,7 @@ export default function BillsPage(): JSX.Element {
           loading={subjects.isLoading}
           columns={columns}
           dataSource={rows}
-          pagination={{ pageSize: 20 }}
+          pagination={{ defaultPageSize: 20 }}
           rowClassName={rowClassName}
           onRow={(r) => ({ onClick: () => open(r), style: { cursor: 'pointer' } })}
         />

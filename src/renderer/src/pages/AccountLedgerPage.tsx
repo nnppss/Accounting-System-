@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
@@ -7,7 +8,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Radio,
   Space,
   Table,
@@ -223,10 +223,10 @@ export default function AccountLedgerPage(): JSX.Element {
       render: (_: unknown, r: LedgerLine) => voucherLabel(r)
     },
     {
-      title: 'Tag',
+      title: t('vouchers.tag'),
       dataIndex: 'tag',
       width: 90,
-      render: (tag: string) => (tag === 'general' ? '' : <Tag>{tag}</Tag>)
+      render: (tag: string) => (tag === 'general' ? '' : <Tag>{t(`tag.${tag}`)}</Tag>)
     },
     {
       title: t('ledger.mode'),
@@ -441,7 +441,7 @@ export default function AccountLedgerPage(): JSX.Element {
       />
 
       {/* Set opening balance */}
-      <Modal
+      <AutoFocusModal
         title={`${t('accounts.openingBalance')} — ${acct?.name ?? ''}`}
         open={openingOpen}
         onCancel={() => setOpeningOpen(false)}
@@ -472,10 +472,10 @@ export default function AccountLedgerPage(): JSX.Element {
           </Form.Item>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
 
       {/* Delete account — confirmation + password gate */}
-      <Modal
+      <AutoFocusModal
         title={t('accounts.deleteTitle')}
         open={deleteOpen}
         onCancel={() => {
@@ -495,10 +495,10 @@ export default function AccountLedgerPage(): JSX.Element {
             <Input.Password autoFocus onPressEnter={() => deleteForm.submit()} />
           </Form.Item>
         </Form>
-      </Modal>
+      </AutoFocusModal>
 
       {/* Edit identity — village/state/phone/s-o. Type & subgroup are fixed at creation. */}
-      <Modal
+      <AutoFocusModal
         title={`${t('accounts.editIdentity')} — ${acct?.name ?? ''}`}
         open={editOpen}
         onCancel={() => setEditOpen(false)}
@@ -535,7 +535,7 @@ export default function AccountLedgerPage(): JSX.Element {
           </Form.Item>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
     </div>
   )
 }

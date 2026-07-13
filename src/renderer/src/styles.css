@@ -64,6 +64,13 @@ body {
   box-shadow: 0 0 0 2px rgba(122, 0, 93, 0.18) !important;
 }
 
+/* AntD v5 buttons draw a hard 4px offset outline on :focus-visible (looks like a distorted
+   double-ring after a click). Replace it with the same soft berry ring as the inputs above. */
+.ant-btn:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(122, 0, 93, 0.18) !important;
+}
+
 /* Top section nav: tame AntD's default horizontal-menu chrome. AntD animates a bottom-border
    `::after` on hover and gives the submenu title a rounded hover box that gets sliced by the
    nav's borderBottom. Kill both, then add back one clean teal underline for the active group. */
@@ -87,6 +94,19 @@ body {
 #pc-top-nav.ant-menu-horizontal > .ant-menu-submenu-selected .ant-menu-submenu-title {
   color: var(--pc-primary);
   box-shadow: inset 0 -2px 0 0 var(--pc-primary);
+}
+
+/* Nav dropdown items with an `extra` key chip: antd makes the label span inline-flex at width
+   100%, which (added to the 28px icon) overflows the item's single-line ellipsis box — and an
+   atomic inline that overflows an ellipsis line is suppressed WHOLE, painting the item blank.
+   Make the span fit and drop the ellipsis so the text always paints.
+   ponytail: 28px = 18px icon + 10px gap from theme.ts Menu tokens — keep in sync. */
+.ant-menu-submenu-popup .ant-menu-title-content-with-extra {
+  width: calc(100% - 28px) !important;
+}
+.ant-menu-submenu-popup li.ant-menu-item {
+  overflow: visible !important;
+  text-overflow: clip !important;
 }
 
 /* Keyboard focus on the top section nav (reached by pressing Esc): mark the group the arrow keys

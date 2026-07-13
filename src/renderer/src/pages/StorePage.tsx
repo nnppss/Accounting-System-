@@ -5,15 +5,13 @@ import {
   DatePicker,
   Form,
   InputNumber,
-  Space,
-  Statistic,
   Typography
 } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import { useSession } from '../store/session'
-import { DATE_INPUT_FORMATS, formatINR } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatINR, toPaise } from '../lib/format'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { PageBanner } from '../components/report'
 
@@ -43,11 +41,14 @@ export default function StorePage(): JSX.Element {
   })
 
   const accrueAll = useMutation({
-    mutationFn: (date: string) => window.api.bhada.accrueAll(date),
+    mutationFn: (v: { rate: number; date: string }) =>
+      window.api.bhada.setRate(toPaise(v.rate), v.date),
     onSuccess: (r) => {
       message.success(t('bhada.accrued', { count: r.kisans, amount: formatINR(r.totalPaise) }))
+      queryClient.invalidateQueries({ queryKey: ['years'] })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       queryClient.invalidateQueries({ queryKey: ['trialBalance'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
     },
     onError: (e: Error) => message.error(e.message)
   })
@@ -87,11 +88,23 @@ export default function StorePage(): JSX.Element {
         </Typography.Paragraph>
       </Card>
 
-      <Card title={t('bhada.title')} style={{ maxWidth: 520 }}>
-        <Space size="large" align="end" wrap>
-          <Statistic title={t('bhada.rate')} value={formatINR(rentRate)} />
+      <Card title={t('bhada.title')} style={{ maxWidth: 640 }}>
+        {years.data && (
           <div ref={accrueNav.containerRef} onKeyDownCapture={accrueNav.onKeyDownCapture}>
-          <Form form={accrueForm} layout="inline" initialValues={{ date: dayjs() }} onFinish={(v) => accrueAll.mutate((v.date as dayjs.Dayjs).format('YYYY-MM-DD'))}>
+          <Form
+            form={accrueForm}
+            layout="inline"
+            initialValues={{ rate: rentRate / 100, date: dayjs() }}
+            onFinish={(v) =>
+              accrueAll.mutate({
+                rate: v.rate as number,
+                date: (v.date as dayjs.Dayjs).format('YYYY-MM-DD')
+              })
+            }
+          >
+            <Form.Item name="rate" label={t('bhada.rate')} rules={[{ required: true }]}>
+              <InputNumber min={0} step={1} addonAfter="₹/pkt" />
+            </Form.Item>
             <Form.Item name="date" label={t('bhada.date')} rules={[{ required: true }]}>
               <DatePicker format={DATE_INPUT_FORMATS} />
             </Form.Item>
@@ -102,7 +115,10 @@ export default function StorePage(): JSX.Element {
             </Form.Item>
           </Form>
           </div>
-        </Space>
+        )}
+        <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+          {t('bhada.rateNote')}
+        </Typography.Paragraph>
       </Card>
     </div>
   )

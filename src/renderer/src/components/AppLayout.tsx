@@ -8,11 +8,11 @@ import {
   Input,
   Layout,
   Menu,
-  Modal,
   Space,
   Typography
 } from 'antd'
 import type { MenuProps } from 'antd'
+import AutoFocusModal from './AutoFocusModal'
 import {
   AppstoreOutlined,
   AuditOutlined,
@@ -41,7 +41,7 @@ import {
   UserOutlined,
   WalletOutlined
 } from '@ant-design/icons'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -53,6 +53,7 @@ import PeoplePage from '../pages/PeoplePage'
 import VouchersPage from '../pages/VouchersPage'
 import TrialBalancePage from '../pages/TrialBalancePage'
 import FinancialsPage from '../pages/FinancialsPage'
+import RentReportPage from '../pages/RentReportPage'
 import MoneyBookPage from '../pages/MoneyBookPage'
 import AamadPage from '../pages/AamadPage'
 import MapsPage from '../pages/MapsPage'
@@ -71,13 +72,47 @@ import StorePage from '../pages/StorePage'
 import BackupPage from '../pages/BackupPage'
 import HomePage from '../pages/HomePage'
 import { palette } from '../theme'
-import { useGlobalHotkeys } from '../lib/useHotkeys'
+import { NAV_HINTS, useGlobalHotkeys } from '../lib/useHotkeys'
+import { Kbd } from './Kbd'
 import ShortcutsHelp from './ShortcutsHelp'
 import ShortcutHintBar from './ShortcutHintBar'
 import AltNavOverlay from './AltNavOverlay'
 import QuickEntry from './QuickEntry'
 
 const { Header, Content } = Layout
+
+// route → Alt-shortcut letter, so each nav item can advertise its own hotkey.
+const NAV_KEY = new Map(NAV_HINTS.map((h) => [h.route, h.key.toUpperCase()]))
+
+type NavNode = { key: string; label: ReactNode; children?: unknown[] }
+
+/** Dropdown item: name on the left, Alt-key chip pinned to the right via antd's native `extra`
+ * (renders as .ant-menu-item-extra with margin-inline-start:auto). Keeping the label a plain
+ * string avoids the popup-collapse bug a custom flex wrapper hit. */
+function dropdownLabel(node: NavNode): unknown {
+  const k = NAV_KEY.get(node.key)
+  if (!k) return node
+  return { ...node, extra: <Kbd small>{k}</Kbd> }
+}
+
+/** Decorate the top nav: group headers get their children right-aligned; the lone top-level leaf
+ * (Home) shows its key inline so its tab doesn't stretch across the bar. */
+function withHint(node: NavNode): unknown {
+  if (node.children) {
+    return { ...node, children: node.children.map((c) => dropdownLabel(c as NavNode)) }
+  }
+  const k = NAV_KEY.get(node.key)
+  if (!k) return node
+  return {
+    ...node,
+    label: (
+      <>
+        <span style={{ marginInlineEnd: 10 }}>{node.label}</span>
+        <Kbd small>{k}</Kbd>
+      </>
+    )
+  }
+}
 
 /** Self-service password change for the signed-in accountant; the current password is re-verified
  * in the main process. On success the parent clears the default-password nudge. */
@@ -107,7 +142,7 @@ function ChangePasswordModal({
   })
 
   return (
-    <Modal
+    <AutoFocusModal
       open={open}
       title={t('password.change')}
       okText={t('password.change')}
@@ -152,7 +187,7 @@ function ChangePasswordModal({
           <Input.Password autoComplete="new-password" />
         </Form.Item>
       </Form>
-    </Modal>
+    </AutoFocusModal>
   )
 }
 
@@ -229,6 +264,7 @@ export default function AppLayout(): JSX.Element {
       label: t('nav.group.reports'),
       children: [
         { key: '/bills', icon: <FileTextOutlined />, label: t('nav.bills') },
+        { key: '/rent', icon: <FileTextOutlined />, label: t('nav.rent') },
         { key: '/party', icon: <FilterOutlined />, label: t('nav.party') }
       ]
     },
@@ -382,7 +418,7 @@ export default function AppLayout(): JSX.Element {
           id="pc-top-nav"
           mode="horizontal"
           selectedKeys={[selectedKey]}
-          items={items}
+          items={items.map(withHint) as MenuProps['items']}
           onClick={({ key }) => navigate(key)}
           style={{ borderBottom: 'none', background: 'transparent' }}
         />
@@ -422,6 +458,7 @@ export default function AppLayout(): JSX.Element {
             <Route path="/vouchers" element={<VouchersPage />} />
             <Route path="/trial-balance" element={<TrialBalancePage />} />
             <Route path="/financials" element={<FinancialsPage />} />
+            <Route path="/rent" element={<RentReportPage />} />
             <Route path="/money-book" element={<MoneyBookPage />} />
             <Route path="/close" element={<ClosePage />} />
             <Route path="/audit" element={<AuditPage />} />

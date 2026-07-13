@@ -53,6 +53,17 @@ function createWindow(): void {
 
   buildMenu()
 
+  // Ctrl/Cmd +/−/0 zoom. The shipped app has no OS menu (see buildMenu), so the usual zoom
+  // accelerators don't exist — register them here for accountants on small/high-DPI monitors.
+  // ponytail: zoom resets on relaunch; persist the level if anyone asks.
+  win.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown' || !(input.control || input.meta)) return
+    const wc = win.webContents
+    if (input.key === '=' || input.key === '+') wc.setZoomLevel(Math.min(wc.getZoomLevel() + 0.5, 3))
+    else if (input.key === '-') wc.setZoomLevel(Math.max(wc.getZoomLevel() - 0.5, -3))
+    else if (input.key === '0') wc.setZoomLevel(0)
+  })
+
   win.on('ready-to-show', () => win.show())
 
   // Hardening: the app is a self-contained SPA. Never let the renderer spawn child windows or

@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
   DatePicker,
   Form,
   InputNumber,
-  Modal,
   Popconfirm,
   Space,
   Table
@@ -36,6 +36,7 @@ export default function SaudaPage(): JSX.Element {
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
 
   const saudas = useQuery({ queryKey: ['sauda'], queryFn: () => window.api.sauda.list() })
 
@@ -137,6 +138,7 @@ export default function SaudaPage(): JSX.Element {
         }
       />
 
+      <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect
           type="vyapari"
@@ -171,6 +173,7 @@ export default function SaudaPage(): JSX.Element {
           </Button>
         )}
       </Space>
+      </div>
 
       <div ref={containerRef}>
         <Table
@@ -179,12 +182,12 @@ export default function SaudaPage(): JSX.Element {
           loading={saudas.isLoading}
           columns={columns}
           dataSource={rows}
-          pagination={{ pageSize: 20 }}
+          pagination={{ defaultPageSize: 20 }}
           rowClassName={rowClassName}
         />
       </div>
 
-      <Modal
+      <AutoFocusModal
         title={t('sauda.new')}
         open={open}
         onCancel={() => setOpen(false)}
@@ -221,7 +224,7 @@ export default function SaudaPage(): JSX.Element {
           </Form.Item>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
     </div>
   )
 }

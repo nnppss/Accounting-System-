@@ -80,7 +80,7 @@ export default function LoginPage(): JSX.Element {
           form={loginForm}
           layout="vertical"
           onFinish={(v) => loginMut.mutate(v)}
-          initialValues={{ username: 'admin', year: new Date().getFullYear() }}
+          initialValues={{ username: 'admin' }}
         >
           <Form.Item name="year" label={t('login.year')} rules={[{ required: true }]}>
             <InputNumber style={{ width: '100%' }} min={2000} max={2100} controls={false} />

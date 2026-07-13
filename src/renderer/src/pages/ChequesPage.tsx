@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
@@ -7,7 +8,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Row,
   Select,
@@ -45,6 +45,7 @@ export default function ChequesPage(): JSX.Element {
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
 
   // ---- filters ----
   const [fDirection, setFDirection] = useState<'all' | ChequeDirection>('all')
@@ -208,6 +209,7 @@ export default function ChequesPage(): JSX.Element {
         }
       />
 
+      <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
       <Space style={{ marginBottom: 16 }} wrap>
         <Select
           style={{ width: 130 }}
@@ -267,6 +269,7 @@ export default function ChequesPage(): JSX.Element {
           </Button>
         )}
       </Space>
+      </div>
 
       <div ref={containerRef}>
         <Table
@@ -276,7 +279,7 @@ export default function ChequesPage(): JSX.Element {
           loading={cheques.isLoading}
           columns={columns}
           dataSource={rows}
-          pagination={{ pageSize: 15 }}
+          pagination={{ defaultPageSize: 15 }}
           rowClassName={(row, i) =>
             [
               row.status === 'bounced'
@@ -292,7 +295,7 @@ export default function ChequesPage(): JSX.Element {
         />
       </div>
 
-      <Modal
+      <AutoFocusModal
         title={t('cheques.new')}
         open={open}
         onCancel={() => setOpen(false)}
@@ -353,41 +356,55 @@ export default function ChequesPage(): JSX.Element {
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="no" label={t('cheques.no')} rules={[{ required: true }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="bank" label={t('cheques.bank')}>
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="date" label={t('cheques.issueDate')}>
-                <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="receiveDate" label={t('cheques.receiveDate')}>
-                <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="clearanceDate" label={t('cheques.clearanceDate')}>
-                <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
+          {/* An issued cheque draws on our own bank account (selected above), so there's no separate
+              drawee bank; a received cheque draws on the party's bank, which is worth noting. Likewise
+              an issue cheque only has an issue date, a received one only a receive date. */}
+          <Form.Item noStyle shouldUpdate={(p, c) => p.direction !== c.direction}>
+            {({ getFieldValue }) => {
+              const given = getFieldValue('direction') === 'given'
+              return (
+                <>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item name="no" label={t('cheques.no')} rules={[{ required: true }]}>
+                        <Input />
+                      </Form.Item>
+                    </Col>
+                    {!given && (
+                      <Col span={12}>
+                        <Form.Item name="bank" label={t('cheques.bank')} preserve={false}>
+                          <Input />
+                        </Form.Item>
+                      </Col>
+                    )}
+                  </Row>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      {given ? (
+                        <Form.Item name="date" label={t('cheques.issueDate')} preserve={false}>
+                          <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
+                        </Form.Item>
+                      ) : (
+                        <Form.Item name="receiveDate" label={t('cheques.receiveDate')} preserve={false}>
+                          <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
+                        </Form.Item>
+                      )}
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item name="clearanceDate" label={t('cheques.clearanceDate')}>
+                        <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </>
+              )
+            }}
+          </Form.Item>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
 
-      <Modal
+      <AutoFocusModal
         title={t('cheques.clear')}
         open={clearTarget !== null}
         onCancel={() => setClearTarget(null)}
@@ -405,7 +422,7 @@ export default function ChequesPage(): JSX.Element {
             style={{ width: '100%' }}
           />
         </Form.Item>
-      </Modal>
+      </AutoFocusModal>
     </div>
   )
 }

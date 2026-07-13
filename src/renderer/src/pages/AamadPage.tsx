@@ -1,11 +1,11 @@
 import { useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
   DatePicker,
   Form,
   InputNumber,
-  Modal,
   Popconfirm,
   Space,
   Statistic,
@@ -38,6 +38,7 @@ export default function AamadPage(): JSX.Element {
   useCreateHotkey(() => setOpen(true))
   const [form] = Form.useForm()
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
 
   const closeModal = (): void => {
     setOpen(false)
@@ -213,6 +214,7 @@ export default function AamadPage(): JSX.Element {
         }
       />
 
+      <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect
           type="kisan"
@@ -229,6 +231,7 @@ export default function AamadPage(): JSX.Element {
         <Statistic title={t('aamad.count')} value={aamads.data?.count ?? 0} />
         <Statistic title={t('aamad.totalPackets')} value={aamads.data?.totalPackets ?? 0} />
       </Space>
+      </div>
 
       <div ref={containerRef}>
         <Table
@@ -237,12 +240,12 @@ export default function AamadPage(): JSX.Element {
           loading={aamads.isLoading}
           columns={columns}
           dataSource={rows}
-          pagination={{ pageSize: 20 }}
+          pagination={{ defaultPageSize: 20 }}
           rowClassName={rowClassName}
         />
       </div>
 
-      <Modal
+      <AutoFocusModal
         title={t(editingId === null ? 'aamad.new' : 'aamad.edit')}
         open={open}
         onCancel={closeModal}
@@ -345,7 +348,7 @@ export default function AamadPage(): JSX.Element {
           </Form.Item>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
     </div>
   )
 }

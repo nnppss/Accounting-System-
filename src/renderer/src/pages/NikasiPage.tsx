@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
@@ -8,7 +9,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
   Segmented,
   Select,
@@ -40,6 +40,7 @@ export default function NikasiPage(): JSX.Element {
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
   const [detailId, setDetailId] = useState<number | null>(null)
   const deliveredToType = Form.useWatch('deliveredToType', form) as DeliveryTarget | undefined
   const deliveredToAccountId = Form.useWatch('deliveredToAccountId', form) as number | undefined
@@ -232,6 +233,7 @@ export default function NikasiPage(): JSX.Element {
         }
       />
 
+      <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect
           allowClear
@@ -267,6 +269,7 @@ export default function NikasiPage(): JSX.Element {
           </Button>
         )}
       </Space>
+      </div>
 
       <div ref={containerRef}>
         <Table
@@ -275,13 +278,13 @@ export default function NikasiPage(): JSX.Element {
           loading={nikasis.isLoading}
           columns={columns}
           dataSource={rows}
-          pagination={{ pageSize: 15 }}
+          pagination={{ defaultPageSize: 15 }}
           rowClassName={rowClassName}
           onRow={(r) => ({ onClick: () => setDetailId(r.id), style: { cursor: 'pointer' } })}
         />
       </div>
 
-      <Modal
+      <AutoFocusModal
         title={t('nikasi.new')}
         open={open}
         onCancel={() => setOpen(false)}
@@ -385,7 +388,7 @@ export default function NikasiPage(): JSX.Element {
           </Form.List>
         </Form>
         </div>
-      </Modal>
+      </AutoFocusModal>
 
       <Drawer
         title={detail.data ? `${t('nikasi.billNo')} ${detail.data.billNo}` : ''}

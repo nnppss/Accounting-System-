@@ -112,6 +112,16 @@ export function clearCheque(chequeId: number, clearanceDate: string, userId?: nu
     entries
   })
   db().update(cheque).set({ status: 'cleared', clearanceDate }).where(eq(cheque.id, chequeId)).run()
+  // The "(in clearing)" note on the entry voucher is now stale — the money has moved. Drop just that
+  // suffix (recordCheque and loan disbursement/repayment both add it) so the party ledger reads e.g.
+  // "Cheque 123456 given" instead of "… (in clearing)".
+  if (entry.narration?.endsWith('(in clearing)')) {
+    db()
+      .update(voucher)
+      .set({ narration: entry.narration.replace(/ \(in clearing\)$/, '') })
+      .where(eq(voucher.id, entry.id))
+      .run()
+  }
   // A loan disbursed by cheque earns interest only from the day the money actually left the bank.
   // ponytail: if interest was already posted off the provisional date (rare — a 1-Jan or payment
   // before clearance), re-run capitaliseLoan to true it up.

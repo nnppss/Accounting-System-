@@ -129,11 +129,13 @@ function carriedAccounts(): PartyAccount[] {
 
 /**
  * A carried account that is a genuine **trade party** — a real debtor/creditor whose closing dues
- * may roll into an indirect loan and a defaulter flag. Excludes cash & bank (the cold's own funds)
- * and system accounts like Cheques-in-Clearing, which carry their balance but are never "owing".
+ * may roll into an indirect loan and a defaulter flag. Only the party subgroups qualify: the
+ * cold's own funds (Cash and Bank), fixed assets, secured loans, etc. carry their balance but are
+ * never "owing" — a building with a Dr balance must not become a defaulter with an indirect loan.
  */
+const TRADE_PARTY_SUBGROUPS = new Set(['Farmer', 'Sundry Debtors', 'Sundry Creditors'])
 function isTradeParty(a: { isSystem: boolean; subgroupName: string }): boolean {
-  return !a.isSystem && a.subgroupName !== 'Cash and Bank'
+  return !a.isSystem && TRADE_PARTY_SUBGROUPS.has(a.subgroupName)
 }
 
 /**

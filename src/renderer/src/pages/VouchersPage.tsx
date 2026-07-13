@@ -8,19 +8,20 @@ import {
   Form,
   Input,
   InputNumber,
+  Modal,
   Segmented,
   Select,
   Space,
   Table,
   Tag
 } from 'antd'
-import { DeleteOutlined, PrinterOutlined } from '@ant-design/icons'
+import { DeleteOutlined, PrinterOutlined, StopOutlined } from '@ant-design/icons'
 import { PageBanner, SectionBar } from '../components/report'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { VoucherListRow } from '@shared/contracts'
-import type { VoucherType } from '@shared/enums'
+import type { EntryTag, VoucherType } from '@shared/enums'
 import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -34,7 +35,10 @@ export default function VouchersPage(): JSX.Element {
   const print = usePrinter()
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<Mode>('receipt')
+  const [voidTarget, setVoidTarget] = useState<VoucherListRow | null>(null)
+  const [voidReason, setVoidReason] = useState('')
   const [form] = Form.useForm()
+  const method = Form.useWatch('method', form)
   const formNav = useFormKeyNav({ onAccept: () => form.submit() })
   const location = useLocation()
 
@@ -67,6 +71,13 @@ export default function VouchersPage(): JSX.Element {
   const partyOptions = (parties.data ?? []).map((a) => ({ value: a.id, label: partyLabel(a) }))
   const allOptions = (allAccounts.data ?? []).map((a) => ({ value: a.id, label: partyLabel(a) }))
   const cashOptions = (cashBanks.data ?? []).map((a) => ({ value: a.id, label: a.name }))
+  // Cheques always clear into a bank, never Cash.
+  const bankOptions = (cashBanks.data ?? []).filter((a) => a.name !== 'Cash').map((a) => ({ value: a.id, label: a.name }))
+  // 'opening' is a close-year artifact, not something entered by hand.
+  const tagOptions = (['general', 'rent', 'loan', 'interest', 'trade'] as const).map((v) => ({
+    value: v,
+    label: t(`tag.${v}`)
+  }))
 
   const onPosted = (no: number): void => {
     message.success(t('vouchers.posted', { no }))
@@ -82,22 +93,30 @@ export default function VouchersPage(): JSX.Element {
     mutationFn: async (values: Record<string, unknown>) => {
       const date = (values.date as dayjs.Dayjs).format('YYYY-MM-DD')
       const narration = values.narration as string | undefined
-      if (mode === 'receipt') {
-        return window.api.vouchers.receipt({
+      if (mode === 'receipt' || mode === 'payment') {
+        // Paid/received by cheque → record a pending cheque (direction follows the voucher type);
+        // the accountant clears/bounces it later from the Cheques page.
+        if (values.method === 'cheque') {
+          const received = mode === 'receipt'
+          return window.api.cheques.record({
+            direction: received ? 'received' : 'given',
+            partyAccountId: values.partyAccountId as number,
+            bankAccountId: values.cashBankAccountId as number,
+            amountPaise: toPaise(values.amount as number),
+            no: values.no as string,
+            bank: (values.bank as string) || undefined,
+            date: received ? undefined : date,
+            receiveDate: received ? date : undefined
+          })
+        }
+        const fn = mode === 'receipt' ? window.api.vouchers.receipt : window.api.vouchers.payment
+        return fn({
           date,
           narration,
           partyAccountId: values.partyAccountId as number,
           cashBankAccountId: values.cashBankAccountId as number,
-          amountPaise: toPaise(values.amount as number)
-        })
-      }
-      if (mode === 'payment') {
-        return window.api.vouchers.payment({
-          date,
-          narration,
-          partyAccountId: values.partyAccountId as number,
-          cashBankAccountId: values.cashBankAccountId as number,
-          amountPaise: toPaise(values.amount as number)
+          amountPaise: toPaise(values.amount as number),
+          tag: values.tag as EntryTag | undefined
         })
       }
       if (mode === 'contra') {
@@ -109,18 +128,43 @@ export default function VouchersPage(): JSX.Element {
           amountPaise: toPaise(values.amount as number)
         })
       }
-      const lines = (values.lines as Array<{ accountId: number; dr?: number; cr?: number }>) ?? []
+      const lines =
+        (values.lines as Array<{ accountId: number; dr?: number; cr?: number; tag?: EntryTag }>) ?? []
       return window.api.vouchers.journal({
         date,
         narration,
         entries: lines.map((l) => ({
           accountId: l.accountId,
           drPaise: toPaise(l.dr),
-          crPaise: toPaise(l.cr)
+          crPaise: toPaise(l.cr),
+          tag: l.tag
         }))
       })
     },
-    onSuccess: (r) => onPosted(r.voucherNo),
+    onSuccess: (r) => {
+      // A recorded cheque has no voucher number; a posted voucher does.
+      if ('voucherNo' in r) {
+        onPosted(r.voucherNo)
+        return
+      }
+      message.success(t('cheques.recorded'))
+      form.resetFields()
+      queryClient.invalidateQueries({ queryKey: ['vouchers'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['cheques'] })
+    },
+    onError
+  })
+
+  const voidMut = useMutation({
+    mutationFn: (v: { id: number; reason: string }) => window.api.vouchers.void(v.id, v.reason),
+    onSuccess: () => {
+      message.success(t('vouchers.voided'))
+      setVoidTarget(null)
+      setVoidReason('')
+      queryClient.invalidateQueries({ queryKey: ['vouchers'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+    },
     onError
   })
 
@@ -142,7 +186,20 @@ export default function VouchersPage(): JSX.Element {
       )
     },
     { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
-    { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? '—' },
+    {
+      title: t('common.narration'),
+      dataIndex: 'narration',
+      render: (n: string | null, r: VoucherListRow) => (
+        <>
+          {n ?? '—'}
+          {r.tags.map((tag) => (
+            <Tag key={tag} color="purple" style={{ marginLeft: 8 }}>
+              {t(`tag.${tag}`)}
+            </Tag>
+          ))}
+        </>
+      )
+    },
     {
       title: t('common.total'),
       dataIndex: 'totalPaise',
@@ -152,14 +209,29 @@ export default function VouchersPage(): JSX.Element {
     },
     {
       title: '',
-      key: 'print',
-      width: 70,
+      key: 'actions',
+      width: 110,
       render: (_: unknown, r: VoucherListRow) => (
-        <Button
-          size="small"
-          icon={<PrinterOutlined />}
-          onClick={() => print(() => window.api.print.voucher(r.id))}
-        />
+        <Space>
+          <Button
+            size="small"
+            icon={<PrinterOutlined />}
+            onClick={() => print(() => window.api.print.voucher(r.id))}
+          />
+          {/* Auto (module-raised) vouchers are reversed from their own screen, not here. */}
+          {!r.isAuto && (
+            <Button
+              size="small"
+              danger
+              icon={<StopOutlined />}
+              title={t('vouchers.void')}
+              onClick={() => {
+                setVoidReason('')
+                setVoidTarget(r)
+              }}
+            />
+          )}
+        </Space>
       )
     }
   ]
@@ -189,7 +261,7 @@ export default function VouchersPage(): JSX.Element {
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ date: dayjs(), lines: [{}, {}] }}
+          initialValues={{ date: dayjs(), method: 'direct', lines: [{}, {}] }}
           onFinish={(v) => post.mutate(v)}
         >
           <Space size="large" style={{ display: 'flex' }} align="start" wrap>
@@ -205,16 +277,56 @@ export default function VouchersPage(): JSX.Element {
 
           {(mode === 'receipt' || mode === 'payment') && (
             <>
+              <Form.Item name="method" label={t('vouchers.method')} rules={[{ required: true }]}>
+                <Select
+                  style={{ width: 200 }}
+                  options={[
+                    { value: 'direct', label: t('vouchers.cashBank') },
+                    { value: 'cheque', label: t('cheques.title') }
+                  ]}
+                />
+              </Form.Item>
               <Form.Item name="partyAccountId" label={t('vouchers.party')} rules={[{ required: true }]}>
                 <Select options={partyOptions} showSearch optionFilterProp="label" />
               </Form.Item>
-              <Form.Item
-                name="cashBankAccountId"
-                label={t('vouchers.cashBank')}
-                rules={[{ required: true }]}
-              >
-                <Select options={cashOptions} showSearch optionFilterProp="label" />
-              </Form.Item>
+              {method === 'cheque' ? (
+                <>
+                  <Form.Item
+                    name="cashBankAccountId"
+                    label={t('cheques.bankAccount')}
+                    rules={[{ required: true }]}
+                    preserve={false}
+                  >
+                    <Select options={bankOptions} showSearch optionFilterProp="label" />
+                  </Form.Item>
+                  <Space size="large" wrap>
+                    <Form.Item name="no" label={t('cheques.no')} rules={[{ required: true }]}>
+                      <Input style={{ width: 160 }} />
+                    </Form.Item>
+                    {/* Drawee bank = the party's own bank, only meaningful on a cheque we receive.
+                        On a cheque we issue, the drawee is our own bank account selected above. */}
+                    {mode === 'receipt' && (
+                      <Form.Item name="bank" label={t('cheques.bank')}>
+                        <Input style={{ width: 200 }} />
+                      </Form.Item>
+                    )}
+                  </Space>
+                </>
+              ) : (
+                <>
+                  <Form.Item
+                    name="cashBankAccountId"
+                    label={t('vouchers.cashBank')}
+                    rules={[{ required: true }]}
+                    preserve={false}
+                  >
+                    <Select options={cashOptions} showSearch optionFilterProp="label" />
+                  </Form.Item>
+                  <Form.Item name="tag" label={t('vouchers.tag')}>
+                    <Select options={tagOptions} allowClear placeholder={t('tag.general')} />
+                  </Form.Item>
+                </>
+              )}
             </>
           )}
 
@@ -267,6 +379,9 @@ export default function VouchersPage(): JSX.Element {
                       <Form.Item name={[field.name, 'cr']}>
                         <InputNumber min={0} precision={2} placeholder={t('common.cr')} addonBefore="₹" />
                       </Form.Item>
+                      <Form.Item name={[field.name, 'tag']} style={{ width: 130 }}>
+                        <Select options={tagOptions} allowClear placeholder={t('tag.general')} />
+                      </Form.Item>
                       {fields.length > 2 && (
                         <DeleteOutlined onClick={() => remove(field.name)} />
                       )}
@@ -302,10 +417,35 @@ export default function VouchersPage(): JSX.Element {
           loading={vouchers.isLoading}
           columns={columns}
           dataSource={vouchers.data ?? []}
-          pagination={{ pageSize: 15 }}
+          pagination={{ defaultPageSize: 15 }}
           rowClassName={rowClassName}
         />
       </div>
+
+      <Modal
+        open={voidTarget !== null}
+        title={voidTarget ? t('vouchers.voidTitle', { no: voidTarget.no }) : ''}
+        okText={t('vouchers.void')}
+        okButtonProps={{ danger: true }}
+        confirmLoading={voidMut.isPending}
+        onCancel={() => setVoidTarget(null)}
+        onOk={() => {
+          if (!voidReason.trim()) {
+            message.error(t('vouchers.voidReasonRequired'))
+            return
+          }
+          if (voidTarget) voidMut.mutate({ id: voidTarget.id, reason: voidReason })
+        }}
+      >
+        <p style={{ marginBottom: 12 }}>{t('vouchers.voidHint')}</p>
+        <Input.TextArea
+          rows={3}
+          autoFocus
+          placeholder={t('vouchers.voidReason')}
+          value={voidReason}
+          onChange={(e) => setVoidReason(e.target.value)}
+        />
+      </Modal>
     </div>
   )
 }
