@@ -31,6 +31,7 @@ import { useAccountsFilter, type AccountFilters } from '../store/accountsFilter'
 import { useSession } from '../store/session'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { useTablePage } from '../lib/useTablePage'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 
 /** Debounce a value so we don't fire a query on every keystroke. */
@@ -135,6 +136,7 @@ export default function AccountsPage(): JSX.Element {
     tableData,
     (r) => navigate(`/accounts/${r.id}`)
   )
+  const tablePage = useTablePage('accounts')
   const subgroups = useQuery({ queryKey: ['subgroups'], queryFn: () => window.api.accounts.subgroups() })
   // Type-ahead only: don't fetch the full person master on open — wait for a search term.
   const persons = useQuery({
@@ -370,7 +372,7 @@ export default function AccountsPage(): JSX.Element {
             loading={accounts.isFetching}
             columns={columns}
             dataSource={tableData}
-            pagination={{ defaultPageSize: 20 }}
+            pagination={{ defaultPageSize: 20, current: tablePage.current, onChange: tablePage.onChange }}
             rowClassName={(r, i) =>
               [
                 severityRowClass(

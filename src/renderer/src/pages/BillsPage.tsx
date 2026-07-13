@@ -10,6 +10,7 @@ import { formatINR } from '../lib/format'
 import { BalanceAmount } from '../components/Highlight'
 import { useBillsView, type BillMode } from '../store/billsView'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { useTablePage } from '../lib/useTablePage'
 
 /**
  * Bills & Salaries index (software.md §3.11) — one row per person (grouping roles) or standalone
@@ -42,6 +43,7 @@ export default function BillsPage(): JSX.Element {
 
   const open = (s: BillSubject): void => navigate(`/bills/${s.primaryAccountId}`)
   const { containerRef, rowClassName } = useTableKeyNav(rows, open)
+  const tablePage = useTablePage('bills')
 
   const valueColumn =
     mode === 'salary'
@@ -113,7 +115,7 @@ export default function BillsPage(): JSX.Element {
           loading={subjects.isLoading}
           columns={columns}
           dataSource={rows}
-          pagination={{ defaultPageSize: 20 }}
+          pagination={{ defaultPageSize: 20, current: tablePage.current, onChange: tablePage.onChange }}
           rowClassName={rowClassName}
           onRow={(r) => ({ onClick: () => open(r), style: { cursor: 'pointer' } })}
         />

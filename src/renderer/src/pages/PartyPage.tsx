@@ -28,6 +28,7 @@ import { PageBanner } from '../components/report'
 import { usePrinter } from '../lib/usePrinter'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
+import { useTablePage } from '../lib/useTablePage'
 
 type NumField = { op?: NumericOp; value?: number; value2?: number } | undefined
 
@@ -146,6 +147,7 @@ export default function PartyPage(): JSX.Element {
   const { containerRef, rowClassName } = useTableKeyNav(result.data?.rows, (r) =>
     navigate(`/bills/${r.accountId}`, { state: { fromNav: '/party' } })
   )
+  const tablePage = useTablePage('party')
   const presets = useQuery({ queryKey: ['party', 'presets'], queryFn: () => window.api.party.savedFilters() })
 
   const savePreset = useMutation({
@@ -370,7 +372,7 @@ export default function PartyPage(): JSX.Element {
           loading={result.isLoading}
           columns={columns}
           dataSource={result.data?.rows ?? []}
-          pagination={{ defaultPageSize: 20 }}
+          pagination={{ defaultPageSize: 20, current: tablePage.current, onChange: tablePage.onChange }}
           rowClassName={rowClassName}
         />
       </div>
