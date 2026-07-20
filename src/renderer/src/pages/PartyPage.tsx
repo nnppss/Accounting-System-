@@ -16,7 +16,7 @@ import {
   Tag,
   Typography
 } from 'antd'
-import { PrinterOutlined } from '@ant-design/icons'
+import { FileExcelOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -26,6 +26,7 @@ import { balanceLabel, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { BalanceAmount } from '../components/Highlight'
 import { PageBanner } from '../components/report'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
 import { useTablePage } from '../lib/useTablePage'
@@ -134,6 +135,7 @@ export default function PartyPage(): JSX.Element {
   const { message } = AntApp.useApp()
   const navigate = useNavigate()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
 
@@ -245,19 +247,65 @@ export default function PartyPage(): JSX.Element {
       <PageBanner
         title={t('party.title')}
         extra={
-          <Button
-            icon={<PrinterOutlined />}
-            onClick={() =>
-              print(() =>
-                window.api.print.party(
-                  Object.keys(criteria).length ? t('party.title') : '',
-                  result.data?.rows ?? []
+          <>
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={() =>
+                print(() =>
+                  window.api.print.party(
+                    Object.keys(criteria).length ? t('party.title') : '',
+                    result.data?.rows ?? []
+                  )
                 )
-              )
-            }
-          >
-            {t('common.print')}
-          </Button>
+              }
+            >
+              {t('common.print')}
+            </Button>
+            <Button
+              icon={<FileExcelOutlined />}
+              onClick={() =>
+                exportXlsx(
+                  'party-report.xlsx',
+                  t('party.title'),
+                  [
+                    'Name',
+                    's/o',
+                    'Village',
+                    'Phone',
+                    'Type',
+                    'Subgroup',
+                    'Balance',
+                    'Packets Brought',
+                    'Aamads',
+                    'Current Stock',
+                    'Packets Sold',
+                    'Standing Rent',
+                    'Loan Outstanding',
+                    'Bardana Qty'
+                  ],
+                  (result.data?.rows ?? []).map((r) => [
+                    r.name,
+                    r.sonOf ?? '',
+                    r.villageCity ?? '',
+                    r.phone ?? '',
+                    r.type,
+                    r.subgroupName,
+                    paiseToRupees(r.balancePaise),
+                    r.packetsBrought,
+                    r.aamadCount,
+                    r.currentStock,
+                    r.packetsSold,
+                    paiseToRupees(r.standingBhadaPaise),
+                    paiseToRupees(r.loanOutstandingPaise),
+                    r.bardanaQty
+                  ]),
+                  [6, 11, 12] // Balance, Standing Rent, Loan Outstanding
+                )
+              }
+            >
+              {t('common.excel')}
+            </Button>
+          </>
         }
       />
 

@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Button, Input, Table } from 'antd'
-import { PrinterOutlined, SearchOutlined } from '@ant-design/icons'
+import { FileExcelOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TrialBalanceRow } from '@shared/contracts'
-import { formatINR } from '../lib/format'
+import { formatINR, paiseToRupees } from '../lib/format'
 import { groupBySubgroup } from '@shared/financials'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
 import { PageBanner, SectionBar, StatusPill } from '../components/report'
 
@@ -15,6 +16,7 @@ export default function TrialBalancePage(): JSX.Element {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const [search, setSearch] = useState('')
   const tb = useQuery({ queryKey: ['trialBalance'], queryFn: () => window.api.ledger.trialBalance() })
 
@@ -94,6 +96,29 @@ export default function TrialBalancePage(): JSX.Element {
               onClick={() => print(() => window.api.print.trialBalance())}
             >
               {t('common.print')}
+            </Button>
+            <Button
+              size="small"
+              icon={<FileExcelOutlined />}
+              onClick={() =>
+                exportXlsx(
+                  'trial-balance.xlsx',
+                  t('trialBalance.title'),
+                  [t('trialBalance.account'), 's/o', 'Subgroup', t('common.dr'), t('common.cr')],
+                  groups
+                    .flatMap((g) => g.rows)
+                    .map((r) => [
+                      r.accountName,
+                      r.sonOf ?? '',
+                      r.subgroupName,
+                      paiseToRupees(r.drPaise),
+                      paiseToRupees(r.crPaise)
+                    ]),
+                  [3, 4] // Dr, Cr
+                )
+              }
+            >
+              {t('common.excel')}
             </Button>
           </>
         }

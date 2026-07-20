@@ -10,7 +10,8 @@ import type { LedgerLine, TrialBalance, TrialBalanceRow } from '../../shared/con
  */
 export type { LedgerLine, TrialBalance, TrialBalanceRow } from '../../shared/contracts'
 
-/** Every non-voided entry for one account in one year, oldest first, with a running balance. */
+/** Every non-voided entry for one account in one year, newest first, each row carrying the
+ *  running balance as of that transaction (computed chronologically, then displayed reversed). */
 export function getAccountLedger(accountId: number, yearId: number): LedgerLine[] {
   const rows = db()
     .select({
@@ -38,15 +39,17 @@ export function getAccountLedger(accountId: number, yearId: number): LedgerLine[
   )
 
   let balance = 0
-  return rows.map((r) => {
-    balance += r.drPaise - r.crPaise
-    return {
-      ...r,
-      balancePaise: balance,
-      mode: modes.get(r.voucherId) ?? '',
-      counterparty: counterparties.get(r.voucherId) ?? ''
-    }
-  })
+  return rows
+    .map((r) => {
+      balance += r.drPaise - r.crPaise
+      return {
+        ...r,
+        balancePaise: balance,
+        mode: modes.get(r.voucherId) ?? '',
+        counterparty: counterparties.get(r.voucherId) ?? ''
+      }
+    })
+    .reverse()
 }
 
 /**

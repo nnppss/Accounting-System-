@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
@@ -13,13 +13,14 @@ import {
   Tag,
   Typography
 } from 'antd'
-import { DeleteOutlined, PrinterOutlined } from '@ant-design/icons'
+import { DeleteOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { AamadListRow } from '@shared/contracts'
 import { DATE_INPUT_FORMATS, formatDate } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -30,6 +31,7 @@ export default function AamadPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const queryClient = useQueryClient()
   const [kisanFilter, setKisanFilter] = useState<number | undefined>()
   const [range, setRange] = useState<[string, string] | undefined>()
@@ -37,13 +39,27 @@ export default function AamadPage(): JSX.Element {
   const [editingId, setEditingId] = useState<number | null>(null)
   useCreateHotkey(() => setOpen(true))
   const [form] = Form.useForm()
-  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  // Set by "Save & new" so the success handler clears the form instead of closing it.
+  const again = useRef(false)
+  const submit = (addAnother: boolean) => (): void => {
+    again.current = addAnother
+    form.submit()
+  }
+  const formNav = useFormKeyNav({ open, onAccept: submit(false) })
   const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
 
   const closeModal = (): void => {
     setOpen(false)
     setEditingId(null)
     form.resetFields()
+  }
+
+  // Keep the date — a run of entries is nearly always for the same day.
+  const clearForNext = (): void => {
+    const date = form.getFieldValue('date')
+    form.resetFields()
+    form.setFieldValue('date', date)
+    formNav.focusFirst()
   }
 
   const aamads = useQuery({
@@ -69,7 +85,8 @@ export default function AamadPage(): JSX.Element {
     },
     onSuccess: (_data, { id }) => {
       message.success(t(id === null ? 'aamad.created' : 'aamad.updated'))
-      closeModal()
+      if (again.current) clearForNext()
+      else closeModal()
       queryClient.invalidateQueries({ queryKey: ['aamad'] })
       queryClient.invalidateQueries({ queryKey: ['maps'] })
     },
@@ -140,7 +157,16 @@ export default function AamadPage(): JSX.Element {
       render: (_: unknown, r: AamadListRow) => `${r.no.slice(r.no.indexOf('-') + 1)}/${r.totalPackets}`
     },
     { title: t('common.date'), dataIndex: 'date', width: 120, render: (v: string) => formatDate(v) },
-    { title: t('aamad.kisan'), dataIndex: 'kisanName' },
+    {
+      title: t('aamad.kisan'),
+      dataIndex: 'kisanName',
+      render: (_: unknown, r: AamadListRow) => (
+        <>
+          {r.kisanName}
+          {r.kisanSonOf && <Typography.Text type="secondary"> s/o {r.kisanSonOf}</Typography.Text>}
+        </>
+      )
+    },
     {
       title: t('aamad.totalPackets'),
       dataIndex: 'totalPackets',
@@ -207,6 +233,27 @@ export default function AamadPage(): JSX.Element {
             >
               {t('common.print')}
             </Button>
+            <Button
+              icon={<FileExcelOutlined />}
+              onClick={() =>
+                exportXlsx(
+                  'aamad-register.xlsx',
+                  t('aamad.title'),
+                  ['No', 'Date', 'Kisan', 's/o', 'Total Packets', 'Out', 'Stored'],
+                  rows.map((r) => [
+                    r.no,
+                    formatDate(r.date),
+                    r.kisanName,
+                    r.kisanSonOf ?? '',
+                    r.totalPackets,
+                    r.outPackets,
+                    r.totalPackets - r.outPackets
+                  ])
+                )
+              }
+            >
+              {t('common.excel')}
+            </Button>
             <Button type="primary" onClick={() => setOpen(true)}>
               {t('aamad.new')}
             </Button>
@@ -249,7 +296,8 @@ export default function AamadPage(): JSX.Element {
         title={t(editingId === null ? 'aamad.new' : 'aamad.edit')}
         open={open}
         onCancel={closeModal}
-        onOk={() => form.submit()}
+        onOk={submit(false)}
+        onOkAndNew={editingId === null ? submit(true) : undefined}
         confirmLoading={save.isPending}
         okText={t(editingId === null ? 'common.create' : 'common.save')}
         width={640}

@@ -63,6 +63,15 @@ describe('Account Manager', () => {
     expect(getTrialBalance(yearId).balanced).toBe(true)
   })
 
+  it('clears the opening (and keeps TB balanced) when re-entered as 0', () => {
+    const kisan = makeAccount('Ramesh Kisan', 'kisan', 'Farmer')
+    setOpeningBalance(kisan, yearId, 250000, 'dr', '2026-01-01')
+    setOpeningBalance(kisan, yearId, 0, 'dr', '2026-01-01')
+    expect(getAccountBalance(kisan, yearId)).toBe(0)
+    expect(getAccountDetail(kisan, yearId)?.hasOpening).toBe(false)
+    expect(getTrialBalance(yearId).balanced).toBe(true)
+  })
+
   it('filters accounts by linked person village, state and phone', () => {
     const personId = createPerson({
       name: 'Ramesh',

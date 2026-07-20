@@ -20,6 +20,7 @@ import {
   ArrowLeftOutlined,
   CloseOutlined,
   EditOutlined,
+  FileExcelOutlined,
   PrinterOutlined
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -27,12 +28,13 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { DrCr } from '@shared/enums'
-import type { AccountIdentityInput, LedgerLine } from '@shared/contracts'
-import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import type { AccountIdentityInput, AccountInterestRow, LedgerLine } from '@shared/contracts'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { BalanceAmount, BalanceSentence } from '../components/Highlight'
 import { SuggestInput } from '../components/SuggestInput'
 import { PageBanner, SectionBar, StatusPill } from '../components/report'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import { useAccountsFilter } from '../store/accountsFilter'
 import { useSession } from '../store/session'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -61,6 +63,7 @@ export default function AccountLedgerPage(): JSX.Element {
   const resetFilters = useAccountsFilter((s) => s.reset)
   const year = useSession((s) => s.session?.year)
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const { id } = useParams()
   const accountId = Number(id)
   // If this ledger was opened from another section (e.g. Party), go back there so the dashboard
@@ -86,17 +89,21 @@ export default function AccountLedgerPage(): JSX.Element {
     queryKey: ['ledger', accountId],
     queryFn: () => window.api.accounts.ledger(accountId)
   })
-  // Same key as the Overview tab, so this is served from cache. Gives us the accrued-but-unposted
-  // loan interest (newBalance − balance) to show as a standing-interest total under the ledger.
-  const overview = useQuery({
-    queryKey: ['overview', accountId],
-    queryFn: () => window.api.accounts.overview(accountId)
+  // The interest on this party's loans that hasn't been posted yet, per loan — the standing-interest
+  // total under the ledger, and the rows the accountant edits when he fixes it.
+  const interest = useQuery({
+    queryKey: ['accountInterest', accountId],
+    queryFn: () => window.api.loans.accountInterest(accountId)
   })
+  const interestRows = interest.data ?? []
+  const [fixInterestOpen, setFixInterestOpen] = useState(false)
   const acct = detail.data
 
   const invalidate = (): void => {
     queryClient.invalidateQueries({ queryKey: ['account', accountId] })
     queryClient.invalidateQueries({ queryKey: ['ledger', accountId] })
+    queryClient.invalidateQueries({ queryKey: ['overview', accountId] })
+    queryClient.invalidateQueries({ queryKey: ['accountInterest', accountId] })
     queryClient.invalidateQueries({ queryKey: ['accounts'] })
   }
 
@@ -374,11 +381,50 @@ export default function AccountLedgerPage(): JSX.Element {
             <Button onClick={openOpening}>
               {acct.hasOpening ? t('accounts.editOpening') : t('accounts.setOpening')}
             </Button>
+            {/* Prints whichever tab is open — the Overview snapshot or the full ledger. */}
             <Button
               icon={<PrinterOutlined />}
-              onClick={() => print(() => window.api.print.ledger(accountId))}
+              onClick={() =>
+                print(() =>
+                  tab === 'overview'
+                    ? window.api.print.overview(accountId)
+                    : window.api.print.ledger(accountId)
+                )
+              }
             >
               {t('common.print')}
+            </Button>
+            <Button
+              icon={<FileExcelOutlined />}
+              onClick={() =>
+                exportXlsx(
+                  `ledger-${acct.name.replace(/[^\w]+/g, '-').toLowerCase()}.xlsx`,
+                  acct.name,
+                  [
+                    t('common.date'),
+                    'Voucher',
+                    t('ledger.mode'),
+                    t('moneyBook.counterparty'),
+                    t('common.narration'),
+                    t('common.dr'),
+                    t('common.cr'),
+                    t('common.balance')
+                  ],
+                  (ledger.data ?? []).map((r) => [
+                    formatDate(r.date),
+                    r.voucherNo,
+                    r.mode,
+                    r.counterparty,
+                    r.narration ?? '',
+                    r.drPaise ? paiseToRupees(r.drPaise) : '',
+                    r.crPaise ? paiseToRupees(r.crPaise) : '',
+                    paiseToRupees(r.balancePaise)
+                  ]),
+                  [5, 6, 7] // Dr, Cr, Balance
+                )
+              }
+            >
+              {t('common.excel')}
             </Button>
             {!acct.isSystem && (
               <Button danger onClick={() => setDeleteOpen(true)}>
@@ -414,10 +460,11 @@ export default function AccountLedgerPage(): JSX.Element {
                 dataSource={ledger.data ?? []}
                 pagination={false}
                 summary={(rows) => {
-                  const last = rows[rows.length - 1] as LedgerLine | undefined
-                  if (!last) return null
-                  const newBalance = overview.data?.money.newBalancePaise ?? last.balancePaise
-                  const standingInterest = newBalance - last.balancePaise
+                  // Rows are newest-first, so the current balance is on the first row.
+                  const current = rows[0] as LedgerLine | undefined
+                  if (!current) return null
+                  const standingInterest = interestRows.reduce((s, r) => s + r.interestPaise, 0)
+                  const newBalance = current.balancePaise + standingInterest
                   const totalDr = rows.reduce((s, r) => s + (r as LedgerLine).drPaise, 0)
                   const totalCr = rows.reduce((s, r) => s + (r as LedgerLine).crPaise, 0)
                   return (
@@ -433,17 +480,22 @@ export default function AccountLedgerPage(): JSX.Element {
                           <strong>{formatINR(totalCr)}</strong>
                         </Table.Summary.Cell>
                         <Table.Summary.Cell index={8} align="right">
-                          <BalanceAmount paise={last.balancePaise} strong />
+                          <BalanceAmount paise={current.balancePaise} strong />
                         </Table.Summary.Cell>
                       </Table.Summary.Row>
-                      {standingInterest !== 0 && (
+                      {/* Shown for anyone with a loan, even at ₹0 — it is the way in to fixing it. */}
+                      {interestRows.length > 0 && (
                         <>
                           <Table.Summary.Row>
                             <Table.Summary.Cell index={0} colSpan={8} align="right">
                               {t('overview.standingInterest')}
                             </Table.Summary.Cell>
                             <Table.Summary.Cell index={8} align="right">
-                              {formatINR(standingInterest)}
+                              <Tooltip title={t('interest.fixHint')}>
+                                <Button type="link" style={{ padding: 0 }} onClick={() => setFixInterestOpen(true)}>
+                                  {formatINR(standingInterest)}
+                                </Button>
+                              </Tooltip>
                             </Table.Summary.Cell>
                           </Table.Summary.Row>
                           <Table.Summary.Row>
@@ -465,6 +517,21 @@ export default function AccountLedgerPage(): JSX.Element {
           }
         ]}
       />
+
+      {fixInterestOpen && (
+        <FixInterestModal
+          rows={interestRows}
+          accountId={accountId}
+          name={acct?.name ?? ''}
+          onClose={() => setFixInterestOpen(false)}
+          onDone={() => {
+            setFixInterestOpen(false)
+            invalidate()
+            queryClient.invalidateQueries({ queryKey: ['loans'] })
+            queryClient.invalidateQueries({ queryKey: ['bill'] })
+          }}
+        />
+      )}
 
       {/* Set opening balance */}
       <AutoFocusModal
@@ -563,5 +630,91 @@ export default function AccountLedgerPage(): JSX.Element {
         </div>
       </AutoFocusModal>
     </div>
+  )
+}
+
+/**
+ * Fix the interest by hand. The engine's figure is a calculation; what the cold and the party
+ * agreed is a fact — round ₹1,529 down to ₹1,500, or add for a delay. Whatever is typed here is
+ * posted as the interest up to the chosen date and is never recalculated; interest runs again from
+ * that date.
+ *
+ * One field for the party, not one per loan: the cold settles interest with the man, not with each
+ * of his loans ("Nitesh's interest is ₹10,800 to 31 Dec"). His loans can run at different rates
+ * from different dates, so `fixPartyInterest` splits the figure back across them pro-rata to what
+ * each earned — the accountant never sees that, and the ledger gets a single interest row.
+ */
+function FixInterestModal({
+  rows,
+  accountId,
+  name,
+  onClose,
+  onDone
+}: {
+  rows: AccountInterestRow[]
+  accountId: number
+  name: string
+  onClose: () => void
+  onDone: () => void
+}): JSX.Element {
+  const { t } = useTranslation()
+  const { message } = AntApp.useApp()
+  const year = useSession((s) => s.session?.year)
+  const [form] = Form.useForm()
+  const formNav = useFormKeyNav({ open: true, onAccept: () => form.submit() })
+  // What the engine makes it: everything already fixed, plus whatever is still ticking, across
+  // every loan he has. This is the figure in the box, and what he types over.
+  const currentPaise = rows.reduce((s, r) => s + r.fixedPaise + r.interestPaise, 0)
+
+  const fix = useMutation({
+    mutationFn: async (v: { date: dayjs.Dayjs; interest: number }) => {
+      const total = toPaise(v.interest)
+      if (total === currentPaise) return false // unchanged — leave the engine's own figure alone
+      await window.api.loans.fixPartyInterest(accountId, v.date.format('YYYY-MM-DD'), total)
+      return true
+    },
+    onSuccess: (changed) => {
+      message.success(changed ? t('interest.fixedTotal') : t('interest.unchanged'))
+      onDone()
+    },
+    onError: (e: Error) => message.error(e.message)
+  })
+
+  return (
+    <AutoFocusModal
+      open
+      title={`${t('interest.fixTitle')} — ${name}`}
+      onCancel={onClose}
+      onOk={() => form.submit()}
+      confirmLoading={fix.isPending}
+      okText={t('common.save')}
+    >
+      <Typography.Paragraph type="secondary">{t('interest.fixHelp')}</Typography.Paragraph>
+      <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            // Year-end: the cold settles interest up to 31 Dec and that is what the date normally
+            // means here — "₹10,800 till the year is out". Any date can be typed over it.
+            date: dayjs(`${year ?? dayjs().year()}-12-31`),
+            interest: currentPaise / 100
+          }}
+          onFinish={(v) => fix.mutate(v)}
+        >
+          <Form.Item
+            name="interest"
+            label={t('loans.interest')}
+            rules={[{ required: true }]}
+            extra={rows.length > 1 ? t('interest.acrossLoans', { count: rows.length }) : undefined}
+          >
+            <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="date" label={t('interest.till')} rules={[{ required: true }]}>
+            <DatePicker format={DATE_INPUT_FORMATS} style={{ width: '100%' }} />
+          </Form.Item>
+        </Form>
+      </div>
+    </AutoFocusModal>
   )
 }

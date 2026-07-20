@@ -32,14 +32,13 @@ describe('Phase 5 done/verify — Bills + Party over a multi-role person', () =>
     })
     const buyer = makeAccount('Gopal Vyapari', 'vyapari', 'Sundry Debtors')
 
-    // Kisan stores 200, charged full-year rent (₹2,000), sells 80 @ ₹400 (= ₹32,000 proceeds).
+    // Kisan stores 200, sells 80 @ ₹400 (= ₹32,000 proceeds), and is charged full-year rent (₹2,000).
     const lot = createAamad(yearId, {
       date: '2026-01-08',
       kisanAccountId: kisan,
       totalPackets: 200,
       locations: [{ room: 1, floor: 1, rack: 1, packets: 200 }]
     })
-    accrueRent(kisan, yearId, '2026-06-30')
     createNikasi(yearId, {
       date: '2026-04-15',
       deliveredToType: 'vyapari',
@@ -47,6 +46,8 @@ describe('Phase 5 done/verify — Bills + Party over a multi-role person', () =>
       // Rate is per 105 kg; 80 × 105 kg keeps proceeds = 80 × ₹400 = ₹32,000.
       lines: [{ aamadId: lot, packets: 80, weightKg: 80 * 105, ratePaise: 40000 }]
     })
+    // Rent: 80 accrued on the nikasi, the other 120 billed by the year-end catch-up → full ₹2,000.
+    accrueRent(kisan, yearId, '2026-12-31', undefined, 'stored')
     expect(getTrialBalance(yearId).balanced).toBe(true)
 
     // Vyapari side: a ₹20,000 direct loan on 1 Jan.

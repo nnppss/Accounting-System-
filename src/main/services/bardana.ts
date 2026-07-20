@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, bardana, voucher } from '../data/schema'
+import { account, bardana, person, voucher } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type { BardanaAccount, BardanaInput, BardanaRow, CreateBardanaResult } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
@@ -190,19 +190,24 @@ export function deleteBardana(yearId: number, id: number, userId?: number): void
 /** Every bardana transaction for the year, newest first (optionally a single direction). */
 export function listBardana(yearId: number, direction?: BardanaRow['direction']): BardanaRow[] {
   const rows = db()
-    .select({ bardana, partyName: account.name })
+    .select({ bardana, partyName: account.name, partySonOf: person.sonOf })
     .from(bardana)
     .leftJoin(account, eq(bardana.partyAccountId, account.id))
+    .leftJoin(person, eq(account.personId, person.id))
     .where(eq(bardana.yearId, yearId))
     .orderBy(desc(bardana.date), desc(bardana.id))
     .all()
   // Resolve bank names in a second pass (small data; keeps the join simple).
   return rows
     .filter((r) => !direction || r.bardana.direction === direction)
-    .map((r) => rowFrom(r.bardana, r.partyName))
+    .map((r) => rowFrom(r.bardana, r.partyName, r.partySonOf))
 }
 
-function rowFrom(b: typeof bardana.$inferSelect, partyName: string | null): BardanaRow {
+function rowFrom(
+  b: typeof bardana.$inferSelect,
+  partyName: string | null,
+  partySonOf: string | null
+): BardanaRow {
   const bankName = b.bankAccountId
     ? (db().select({ name: account.name }).from(account).where(eq(account.id, b.bankAccountId)).get()?.name ?? null)
     : null
@@ -212,6 +217,7 @@ function rowFrom(b: typeof bardana.$inferSelect, partyName: string | null): Bard
     date: b.date,
     partyAccountId: b.partyAccountId,
     partyName,
+    partySonOf,
     ratePaise: b.ratePaise,
     qty: b.qty,
     amountPaise: b.amountPaise,

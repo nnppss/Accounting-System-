@@ -1,12 +1,13 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { closeDb, db } from '../data/db'
-import { nikasiLine } from '../data/schema'
+import { nikasiLine, voucher, voucherEntry } from '../data/schema'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
 import { createAamad } from './aamad'
-import { createNikasi } from './nikasi'
+import { createNikasi, getNikasi, lotsWithRemaining } from './nikasi'
 import { currentStockAtRack } from './maps'
 import { getAccountBalance, getTrialBalance } from './ledger'
+import { getAccountOverview } from './overview'
 
 let yearId: number
 let kisan: number
@@ -151,4 +152,128 @@ describe('Nikasi (stock-out)', () => {
     expect(a.billNo).toBe(1)
     expect(b.billNo).toBe(2)
   })
+
+  it('the lot picker separates what is owed from what is in racks', () => {
+    // Booked by total, never placed into racks — nothing here can ship.
+    const unplaced = createAamad(yearId, {
+      date: '2026-02-12',
+      kisanAccountId: kisan,
+      totalPackets: 200,
+      locations: []
+    })
+    createNikasi(yearId, {
+      date: '2026-05-01',
+      deliveredToType: 'kisan',
+      deliveredToAccountId: kisan,
+      lines: [{ aamadId: lot1, packets: 30, ratePaise: 0 }]
+    })
+    const byId = new Map(lotsWithRemaining(yearId, kisan).map((l) => [l.aamadId, l]))
+    expect(byId.get(unplaced)).toMatchObject({ remaining: 200, inRacks: 0 })
+    // A placed lot's two numbers move together, so the picker shows just the one.
+    expect(byId.get(lot1)).toMatchObject({ remaining: 70, inRacks: 70 })
+  })
+
+  /**
+   * The real truck. Ajay's two ordinary lots were sold at one rate and went over the scale as ONE
+   * reading (21,040 kg) — no lot has a weight of its own. His variety lot was a separate deal, so a
+   * separate weighing. Bhooi Singh's packets were weighed on their own at his own rate. All of it
+   * left on one vehicle, and the vehicle's load is the sum.
+   */
+  it('lots weighed together at one rate settle as one weighing', () => {
+    const ajay2 = createAamad(yearId, {
+      date: '2026-02-12',
+      kisanAccountId: kisan,
+      totalPackets: 200,
+      locations: [{ room: 1, floor: 2, rack: 1, packets: 200 }]
+    })
+    const variety = createAamad(yearId, {
+      date: '2026-02-13',
+      kisanAccountId: kisan,
+      totalPackets: 60,
+      locations: [{ room: 2, floor: 1, rack: 1, packets: 60 }]
+    })
+
+    const res = createNikasi(yearId, {
+      date: '2026-04-02',
+      vehicleNo: 'UP32 AB 1234',
+      deliveredToType: 'vyapari',
+      deliveredToAccountId: vyapari,
+      lines: [
+        // Ajay's two lots: one scale reading of 21040 kg at ₹900, hung off the first of them.
+        { aamadId: lot1, packets: 90, weightKg: 21040, ratePaise: 90000 },
+        { aamadId: ajay2, packets: 200, ratePaise: 90000 },
+        // Ajay's variety lot — its own deal, so its own weighing.
+        { aamadId: variety, packets: 40, weightKg: 2000, ratePaise: 95000 },
+        // Bhooi Singh, weighed separately at his own rate.
+        { aamadId: lot2, packets: 78, weightKg: 4040, ratePaise: 87100 }
+      ]
+    })
+
+    const det = getNikasi(res.nikasiId)!
+    // Three weighings off one truck, not four lots.
+    expect(det.weighments).toHaveLength(3)
+    const together = det.weighments.find((w) => w.ratePaise === 90000)!
+    expect(together.lots.map((l) => l.lotNo).sort()).toEqual(['1/100', '3/200'])
+    expect(together.packets).toBe(290)
+    expect(together.weightKg).toBe(21040) // the one reading, rebuilt — never split over the lots
+    expect(together.amountPaise).toBe(Math.round((21040 / 105) * 90000))
+    expect(det.totalWeightKg).toBe(21040 + 2000 + 4040) // the whole vehicle
+
+    // Ajay is credited once, for both his weighings; Bhooi Singh for his own.
+    const ajayOwed = Math.round((21040 / 105) * 90000) + Math.round((2000 / 105) * 95000)
+    const bhooiOwed = Math.round((4040 / 105) * 87100)
+    expect(getAccountBalance(kisan, yearId)).toBe(-ajayOwed + rentOf(kisan))
+    expect(getAccountBalance(kisan2, yearId)).toBe(-bhooiOwed + rentOf(kisan2))
+    expect(getAccountBalance(vyapari, yearId)).toBe(ajayOwed + bhooiOwed)
+    expect(getTrialBalance(yearId).balanced).toBe(true)
+
+    // Ajay's one ledger row spells out the truck and each weighing — the shared one names both its
+    // lots against the single weight, which is exactly what a per-lot line could never say.
+    const nar = db()
+      .select({ n: voucher.narration })
+      .from(voucher)
+      .innerJoin(voucherEntry, eq(voucherEntry.voucherId, voucher.id))
+      .where(and(eq(voucherEntry.accountId, kisan), eq(voucher.sourceModule, 'nikasi')))
+      .get()!.n!
+    expect(nar).toContain(`Nikasi #${res.billNo}`)
+    expect(nar).toContain('UP32 AB 1234')
+    expect(nar).toContain('Lots 1/100 + 3/200: 290 pkt, 21040 kg @ ₹900.00 per 105kg')
+    expect(nar).toContain('Lot 4/60: 40 pkt, 2000 kg @ ₹950.00 per 105kg')
+    expect(nar).toContain('Total 330 pkt, 23040 kg')
+  })
+
+  it('a sale needs a weight per weighing, not per lot', () => {
+    const ajay2 = createAamad(yearId, {
+      date: '2026-02-12',
+      kisanAccountId: kisan,
+      totalPackets: 200,
+      locations: [{ room: 1, floor: 2, rack: 1, packets: 200 }]
+    })
+    // One reading covering both lots is enough — the second needs no weight of its own.
+    expect(() =>
+      createNikasi(yearId, {
+        date: '2026-04-02',
+        deliveredToType: 'vyapari',
+        deliveredToAccountId: vyapari,
+        lines: [
+          { aamadId: lot1, packets: 10, weightKg: 5000, ratePaise: 90000 },
+          { aamadId: ajay2, packets: 10, ratePaise: 90000 }
+        ]
+      })
+    ).not.toThrow()
+    // But a weighing with no weight at all can't be priced, so it's refused by name.
+    expect(() =>
+      createNikasi(yearId, {
+        date: '2026-04-02',
+        deliveredToType: 'vyapari',
+        deliveredToAccountId: vyapari,
+        lines: [{ aamadId: lot1, packets: 10, ratePaise: 90000 }]
+      })
+    ).toThrow(/Ramesh Kisan.*need a delivered weight/)
+  })
 })
+
+/** Rent accrues on shipped packets, so a shipping kisan's balance carries it alongside proceeds. */
+function rentOf(accountId: number): number {
+  return getAccountOverview(accountId, yearId).money.rentPaise
+}

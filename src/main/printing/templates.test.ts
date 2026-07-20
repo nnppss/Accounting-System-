@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   AamadDetail,
   AamadListRow,
+  AccountOverview,
   BardanaAccount,
   BardanaRow,
   Bill,
@@ -35,11 +36,15 @@ import {
   moneyBookDetailHtml,
   moneyBookSummaryHtml,
   nikasiRegisterHtml,
+  overviewAamadHtml,
+  overviewHtml,
+  overviewNikasiHtml,
   partyHtml,
   saudaRegisterHtml,
   trialBalanceHtml,
   voucherHtml
 } from './templates'
+import type { OverviewAamadLot, OverviewGatePass } from './templates'
 
 /**
  * The print templates are pure (DTO → HTML string), so they're tested directly — no DB, no
@@ -58,19 +63,20 @@ describe('print templates', () => {
       deliveredToName: 'Gopal',
       receivedBy: 'Ramu',
       bhadaRecoveredPaise: 50000,
+      remark: null,
       voucherNo: 7,
-      lines: [
+      weighments: [
         {
-          aamadId: 11,
-          lotNo: '7/345',
           fromKisanAccountId: 3,
           fromKisanName: 'Ramesh',
-          packets: 80,
-          weightKg: 4000,
           ratePaise: 40000,
-          amountPaise: 3200000
+          weightKg: 4000,
+          packets: 80,
+          amountPaise: 3200000,
+          lots: [{ aamadId: 11, lotNo: '7/345', packets: 80 }]
         }
-      ]
+      ],
+      totalWeightKg: 4000
     }
     const html = gatePassHtml(n)
     expect(html).toContain('Gate Pass / गेट पास')
@@ -79,6 +85,42 @@ describe('print templates', () => {
     expect(html).toContain('7/345')
     expect(html).toContain('₹32,000.00') // line amount = total
     expect(html.startsWith('<!DOCTYPE html>')).toBe(true)
+  })
+
+  it('gate pass: prints the remark, and drops rate/amount when a kisan takes his own stock', () => {
+    const base: NikasiDetail = {
+      id: 2,
+      billNo: 43,
+      date: '2026-04-16',
+      vehicleNo: null,
+      deliveredToType: 'kisan',
+      deliveredToAccountId: 3,
+      deliveredToName: 'Ramesh',
+      receivedBy: null,
+      bhadaRecoveredPaise: 0,
+      remark: '15 packets spoilt — only 100 weighed',
+      voucherNo: null,
+      weighments: [
+        {
+          fromKisanAccountId: 3,
+          fromKisanName: 'Ramesh',
+          ratePaise: 0,
+          weightKg: 2000,
+          packets: 100,
+          amountPaise: 0,
+          lots: [{ aamadId: 11, lotNo: '7/345', packets: 100 }]
+        }
+      ],
+      totalWeightKg: 2000
+    }
+    const html = gatePassHtml(base)
+    expect(html).toContain('15 packets spoilt')
+    expect(html).toContain('By kisan / किसान अनुसार')
+    // He bought nothing, so the sale columns are absent — as on screen.
+    expect(html).not.toContain('Rate /105kg')
+    expect(html).not.toContain('Goods value')
+    // The vyapari sale still gets them.
+    expect(gatePassHtml({ ...base, deliveredToType: 'vyapari' })).toContain('Rate /105kg')
   })
 
   it('renders a person-wise bill with a section per role and the combined net', () => {
@@ -173,6 +215,118 @@ describe('print templates', () => {
     expect(html).toContain('Suresh Vyapari')
     expect(html).toContain('Closing balance / अंतिम शेष')
     expect(html).toContain('₹1,00,000.00 Dr')
+    // The screen's columns: the document that made the voucher, how the money moved, and with whom.
+    expect(html).toContain('Loan / ऋण')
+    expect(html).toContain('Paid / भुगतान')
+    expect(html).toContain('Cash')
+    // No loans on this party → no interest restatement, same as the Ledger tab.
+    expect(html).not.toContain('Balance + interest')
+  })
+
+  it('ledger statement restates the balance with interest the ledger has not been charged yet', () => {
+    const lines: LedgerLine[] = [
+      {
+        voucherId: 1,
+        voucherNo: 1,
+        type: 'payment',
+        sourceModule: 'loan',
+        date: '2026-01-01',
+        narration: 'Loan given',
+        tag: 'loan',
+        drPaise: 10000000,
+        crPaise: 0,
+        balancePaise: 10000000,
+        mode: 'Cash',
+        counterparty: 'Cash'
+      }
+    ]
+    const html = ledgerHtml('Suresh Vyapari', lines, null, 150000)
+    expect(html).toContain('Standing interest (to date) / अब तक का ब्याज')
+    expect(html).toContain('₹1,500.00')
+    expect(html).toContain('₹1,01,500.00 Dr') // balance + interest
+  })
+
+  it('renders the account overview snapshot, dropping the tiles that are zero', () => {
+    const o: AccountOverview = {
+      accountId: 3,
+      stock: {
+        aamadPackets: 500,
+        aamadCount: 2,
+        nikasiOutPackets: 300,
+        nikasiOutWeightKg: 15000,
+        balancePackets: 200,
+        purchasedPackets: 0,
+        purchasedWeightKg: 0
+      },
+      money: {
+        openingPaise: 0,
+        rentPaise: 250000,
+        loanPaise: 10000000,
+        interestPaise: 150000,
+        tradePaise: 0,
+        otherPaise: 0,
+        balancePaise: 10250000,
+        newBalancePaise: 10400000
+      },
+      rentRatePaise: 5000
+    }
+    const html = overviewHtml('Ramesh', o)
+    expect(html).toContain('Account Overview / खाता अवलोकन')
+    expect(html).toContain('Ramesh')
+    expect(html).toContain('500') // aamad in
+    expect(html).toContain('2 aamad / आमद')
+    expect(html).toContain('15,000 kg / किग्रा')
+    expect(html).toContain('Rent / किराया')
+    expect(html).toContain('₹1,04,000.00 Dr') // balance + interest
+    // Nothing was purchased and there is no opening — those tiles are absent, as on screen.
+    expect(html).not.toContain('Purchased')
+    expect(html).not.toContain('Opening')
+  })
+
+  it('overview aamad drill: a row per lot with its racks, what went out, and the rent it carries', () => {
+    const lots: OverviewAamadLot[] = [
+      {
+        id: 11, no: '2026-18', date: '2026-03-02', kisanAccountId: 3, kisanName: 'Ramesh',
+        kisanSonOf: 'Mohan Lal', totalPackets: 215, assignedPackets: 215, outPackets: 120,
+        locations: [{ id: 1, room: 1, floor: 2, rack: 3, packets: 115 }, { id: 2, room: 1, floor: 2, rack: 4, packets: 100 }]
+      },
+      {
+        id: 13, no: '2026-19', date: '2026-03-11', kisanAccountId: 3, kisanName: 'Ramesh',
+        kisanSonOf: 'Mohan Lal', totalPackets: 85, assignedPackets: 0, outPackets: 0, locations: []
+      }
+    ]
+    const html = overviewAamadHtml('Ramesh', lots, 5000) // ₹50/packet
+    expect(html).toContain('Aamad — packets brought in / आमद — लाए गए पैकेट')
+    expect(html).toContain('18/215') // lot label
+    expect(html).toContain('R1/F2/3')
+    expect(html).toContain('Not placed / स्थान नहीं') // a lot with no rack assigned yet
+    expect(html).toContain('₹15,000.00') // 300 packets × ₹50 = total rent
+    expect(html).toContain('₹10,750.00') // lot 18's own rent: 215 × ₹50
+  })
+
+  it('overview nikasi drill: a block per gate pass with its weighing register', () => {
+    const passes: OverviewGatePass[] = [
+      {
+        id: 2, billNo: 43, date: '2026-04-16', deliveredToType: 'vyapari', deliveredToAccountId: 9,
+        deliveredToName: 'Gopal', deliveredToSonOf: 'Hari Om', vehicleNo: 'UP25 1234',
+        totalPackets: 200, totalWeightKg: 21040, totalAmountPaise: 18034200, isPosted: true,
+        weighments: [
+          {
+            fromKisanAccountId: 3, fromKisanName: 'Ramesh', ratePaise: 90000, weightKg: 21040,
+            packets: 200, amountPaise: 18034200,
+            lots: [{ aamadId: 11, lotNo: '18/215', packets: 120 }, { aamadId: 12, lotNo: '17/200', packets: 80 }]
+          }
+        ]
+      }
+    ]
+    const html = overviewNikasiHtml('Nikasi / निकासी', 'Ramesh', passes, 5000)
+    expect(html).toContain('Gate pass / गेट पास #43')
+    expect(html).toContain('Gopal <span class="muted">s/o Hari Om</span>')
+    expect(html).toContain('18/215')
+    expect(html).toContain('21,040') // weight, Indian grouping
+    expect(html).toContain('105.20') // avg kg per packet
+    expect(html).toContain('₹10,000.00') // rent: 200 × ₹50
+    expect(html).toContain('₹1,80,342.00')
   })
 
   it('renders a trial balance with totals and a balanced flag', () => {
@@ -214,7 +368,7 @@ describe('register & report templates', () => {
     expect(sum).toContain('₹1,000.00')
 
     const rows: MoneyBookDetailRow[] = [
-      { voucherId: 1, voucherNo: 3, type: 'receipt', date: '2026-01-05', narration: 'x', counterparty: 'Ramesh', receiptPaise: 100000, paymentPaise: 0, balancePaise: 100000 }
+      { voucherId: 1, voucherNo: 3, type: 'receipt', date: '2026-01-05', narration: 'x', counterparties: [{ id: 2, name: 'Ramesh' }], receiptPaise: 100000, paymentPaise: 0, balancePaise: 100000 }
     ]
     const det = moneyBookDetailHtml('Cash', 2026, 1, rows)
     expect(det).toContain('Jan 2026')
@@ -225,31 +379,40 @@ describe('register & report templates', () => {
   it('day book', () => {
     const db: DayBook = {
       date: '2026-01-05',
-      vouchers: [
+      sections: [
         {
-          voucherId: 1,
-          voucherNo: 3,
-          type: 'receipt',
-          sourceModule: null,
-          narration: 'x',
-          entries: [
-            { accountId: 1, accountName: 'Cash', drPaise: 100000, crPaise: 0, tag: 'general' },
-            { accountId: 2, accountName: 'Ramesh', drPaise: 0, crPaise: 100000, tag: 'general' }
+          accountId: 1,
+          accountName: 'Cash',
+          openingPaise: 0,
+          closingPaise: 100000,
+          rows: [
+            {
+              voucherId: 1,
+              voucherNo: 3,
+              type: 'receipt',
+              date: '2026-01-05',
+              narration: 'x',
+              counterparties: [{ id: 2, name: 'Ramesh' }],
+              receiptPaise: 100000,
+              paymentPaise: 0,
+              balancePaise: 100000
+            }
           ]
         }
       ],
-      totalDrPaise: 100000,
-      totalCrPaise: 100000
+      totalReceiptPaise: 100000,
+      totalPaymentPaise: 0
     }
     const html = dayBookHtml(db)
     expect(html).toContain('Day Book / दैनिक बही')
+    expect(html).toContain('Cash')
     expect(html).toContain('Ramesh')
     expect(html).toContain('₹1,000.00')
   })
 
   it('aamad register + receipt', () => {
     const rows: AamadListRow[] = [
-      { id: 1, no: 'A-7', date: '2026-01-01', kisanAccountId: 3, kisanName: 'Ramesh', totalPackets: 80, assignedPackets: 80 }
+      { id: 1, no: 'A-7', date: '2026-01-01', kisanAccountId: 3, kisanName: 'Ramesh', kisanSonOf: null, totalPackets: 80, assignedPackets: 80, outPackets: 0 }
     ]
     const reg = aamadRegisterHtml('Ramesh', rows)
     expect(reg).toContain('Aamad Register / आमद रजिस्टर')
@@ -262,6 +425,7 @@ describe('register & report templates', () => {
       date: '2026-01-01',
       kisanAccountId: 3,
       kisanName: 'Ramesh',
+      kisanSonOf: null,
       totalPackets: 80,
       assignedPackets: 80,
       locations: [{ id: 1, room: 1, floor: 2, rack: 3, packets: 80 }]
@@ -273,7 +437,7 @@ describe('register & report templates', () => {
 
   it('sauda + nikasi registers', () => {
     const sauda: SaudaListRow[] = [
-      { id: 1, date: '2026-01-01', vyapariAccountId: 9, vyapariName: 'Gopal', kisanAccountId: 3, kisanName: 'Ramesh', aamadId: 11, lotNo: '7/345', packets: 50, ratePaise: 40000 }
+      { id: 1, date: '2026-01-01', vyapariAccountId: 9, vyapariName: 'Gopal', vyapariSonOf: null, kisanAccountId: 3, kisanName: 'Ramesh', kisanSonOf: null, aamadId: 11, lotNo: '7/345', packets: 50, ratePaise: 40000, liftedPackets: 50, shortfallPackets: 0, suggestedShortfallPaise: null, settlementVoucherId: null, settlementPaise: null }
     ]
     const sHtml = saudaRegisterHtml(sauda)
     expect(sHtml).toContain('Sauda Register / सौदा रजिस्टर')
@@ -281,7 +445,7 @@ describe('register & report templates', () => {
     expect(sHtml).toContain('₹400.00')
 
     const nik: NikasiListRow[] = [
-      { id: 1, billNo: 42, date: '2026-01-01', deliveredToType: 'vyapari', deliveredToAccountId: 9, deliveredToName: 'Gopal', vehicleNo: 'UP25', totalPackets: 80, totalAmountPaise: 3200000, isPosted: true }
+      { id: 1, billNo: 42, date: '2026-01-01', deliveredToType: 'vyapari', deliveredToAccountId: 9, deliveredToName: 'Gopal', deliveredToSonOf: null, vehicleNo: 'UP25', totalPackets: 80, totalWeightKg: 4000, totalAmountPaise: 3200000, isPosted: true }
     ]
     const nHtml = nikasiRegisterHtml('Gopal', nik)
     expect(nHtml).toContain('Nikasi Register / निकासी रजिस्टर')
@@ -308,7 +472,7 @@ describe('register & report templates', () => {
 
   it('expense register (combined salary + loading)', () => {
     const rows: Array<ExpenseRow & { kind: 'salary' | 'loading' }> = [
-      { voucherId: 1, voucherNo: 3, date: '2026-01-01', partyAccountId: 5, partyName: 'Staff A', amountPaise: 500000, narration: 'salary', kind: 'salary' }
+      { voucherId: 1, voucherNo: 3, date: '2026-01-01', partyAccountId: 5, partyName: 'Staff A', partySonOf: null, amountPaise: 500000, narration: 'salary', kind: 'salary' }
     ]
     const html = expenseRegisterHtml('', rows)
     expect(html).toContain('Expense Register / व्यय रजिस्टर')
@@ -327,7 +491,7 @@ describe('register & report templates', () => {
       profitPaise: 50000
     }
     const rows: BardanaRow[] = [
-      { id: 1, direction: 'purchase', date: '2026-01-01', partyAccountId: 5, partyName: 'Supplier', ratePaise: 1000, qty: 100, amountPaise: 100000, paidPaise: 100000, mode: 'cash', bankAccountId: null, bankName: null, prebooked: false }
+      { id: 1, direction: 'purchase', date: '2026-01-01', partyAccountId: 5, partyName: 'Supplier', partySonOf: null, ratePaise: 1000, qty: 100, amountPaise: 100000, paidPaise: 100000, mode: 'cash', bankAccountId: null, bankName: null, prebooked: false }
     ]
     const html = bardanaHtml('', acct, rows)
     expect(html).toContain('Bardana Account / बारदाना खाता')
@@ -339,7 +503,7 @@ describe('register & report templates', () => {
 
   it('bardana shows credit + due for an unpaid deal', () => {
     const acct: BardanaAccount = { purchases: [], issues: [], totalPurchasesPaise: 0, totalSalesPaise: 100000, stockCount: 0, reservedQty: 0, profitPaise: 100000 }
-    const credit: BardanaRow = { id: 2, direction: 'issue', date: '2026-02-01', partyAccountId: 6, partyName: 'Buyer', ratePaise: 1000, qty: 100, amountPaise: 100000, paidPaise: 0, mode: 'cash', bankAccountId: null, bankName: null, prebooked: false }
+    const credit: BardanaRow = { id: 2, direction: 'issue', date: '2026-02-01', partyAccountId: 6, partyName: 'Buyer', partySonOf: null, ratePaise: 1000, qty: 100, amountPaise: 100000, paidPaise: 0, mode: 'cash', bankAccountId: null, bankName: null, prebooked: false }
     const html = bardanaHtml('', acct, [credit])
     expect(html).toContain('Credit') // fully unpaid
   })

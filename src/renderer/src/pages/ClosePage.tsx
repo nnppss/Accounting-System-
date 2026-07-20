@@ -38,6 +38,11 @@ function exceptionDetail(t: TFunction, ex: CloseException): string {
       })
     case 'leftover_stock':
       return t('close.exd.leftover_stock', { packets: ex.packets ?? 0 })
+    case 'unsettled_sauda':
+      return t('close.exd.unsettled_sauda', {
+        packets: ex.packets ?? 0,
+        kisan: ex.counterpartyName ?? ''
+      })
     case 'credit_balance':
     case 'unbalanced':
       return t(`close.exd.${ex.kind}`)

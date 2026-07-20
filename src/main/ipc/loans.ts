@@ -5,11 +5,15 @@ import {
   createLoan,
   getLoan,
   getLoanComposition,
+  listAccountInterest,
   listLoans,
-  recordPayment
+  listPartyLoanEvents,
+  recordPayment,
+  undoPayment
 } from '../services/loans'
 import { listCheques } from '../services/cheques'
 import { bounceCheque, clearCheque, recordCheque } from '../engines/cheque-clearing'
+import { fixLoanInterest, fixPartyInterest } from '../engines/interest'
 import { requireOpenYear, requireSession } from '../session'
 
 /** Phase 3 IPC — Loans + the interest engine, and the cheque-clearing lifecycle. */
@@ -22,6 +26,9 @@ export function registerLoansIpc(): void {
   ipcMain.handle('loans:list', (_e, asOf?: string) => listLoans(requireSession().yearId, asOf))
   ipcMain.handle('loans:get', (_e, loanId: number, asOf?: string) => getLoan(loanId, asOf))
   ipcMain.handle('loans:composition', (_e, loanId: number) => getLoanComposition(loanId))
+  ipcMain.handle('loans:partyEvents', (_e, accountId: number) =>
+    listPartyLoanEvents(accountId, requireSession().yearId)
+  )
   ipcMain.handle(
     'loans:pay',
     (
@@ -43,6 +50,24 @@ export function registerLoansIpc(): void {
         requireOpenYear().userId,
         chequeNo ? { no: chequeNo, bank: chequeBank } : undefined
       )
+  )
+  ipcMain.handle('loans:undoPayment', (_e, eventId: number) =>
+    undoPayment(eventId, requireOpenYear().userId)
+  )
+  // The interest sitting on a party's loans, and the accountant's override of it.
+  ipcMain.handle('loans:accountInterest', (_e, accountId: number, asOf?: string) =>
+    listAccountInterest(accountId, requireSession().yearId, asOf)
+  )
+  ipcMain.handle('loans:fixInterest', (_e, loanId: number, atDate: string, interestPaise: number) =>
+    fixLoanInterest(loanId, atDate, interestPaise, requireOpenYear().userId)
+  )
+  // The party's whole interest as one agreed figure — what the Fix-interest screen calls.
+  ipcMain.handle(
+    'loans:fixPartyInterest',
+    (_e, accountId: number, atDate: string, totalInterestPaise: number) => {
+      const s = requireOpenYear()
+      return fixPartyInterest(accountId, s.yearId, atDate, totalInterestPaise, s.userId)
+    }
   )
 
   // Cheques

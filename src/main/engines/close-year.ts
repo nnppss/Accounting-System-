@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt, ne } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, lt, ne, sql } from 'drizzle-orm'
 import { db } from '../data/db'
 import { SYSTEM_ACCOUNTS } from '../data/seed'
 import {
+  aamad,
   account,
   financialYear,
   loan,
@@ -25,9 +26,11 @@ import { createYear } from '../auth/auth'
 import { getAccountBalance, getTrialBalance } from '../services/ledger'
 import { setDefaulter, setOpeningBalance } from '../services/accounts'
 import { createLoan } from '../services/loans'
+import { accrueAllRent, getStoredPackets } from './bhada'
 import { capitaliseLoan, accruedForPayment } from './interest'
 import { listCheques } from '../services/cheques'
 import { getMap } from '../services/maps'
+import { listSauda } from '../services/sauda'
 import { voidVoucher } from '../services/posting'
 
 /**
@@ -170,6 +173,45 @@ function projectedInterestByAccount(yearId: number, onDate: string): Map<number,
   return byAccount
 }
 
+/**
+ * Extra rent the year-end catch-up will add to each kisan's balance: during the year rent accrues
+ * on shipped packets only; at close it re-accrues (voids the old, posts fresh) at the full STORED
+ * quantity. The net balance change is therefore `stored × rate − rent currently on his books`
+ * (= (stored − shipped) × rate in normal flow, and 0 if he's already been billed the full amount).
+ * The preview adds this so its projected closing balances match the real close.
+ */
+function projectedRentByAccount(yearId: number): Map<number, number> {
+  const yr = db().select().from(financialYear).where(eq(financialYear.id, yearId)).get()
+  if (!yr) return new Map()
+  const kisans = db()
+    .selectDistinct({ id: aamad.kisanAccountId })
+    .from(aamad)
+    .where(eq(aamad.yearId, yearId))
+    .all()
+  const byAccount = new Map<number, number>()
+  for (const k of kisans) {
+    const target = getStoredPackets(k.id, yearId) * yr.rentRatePaise
+    const currentRent = db()
+      .select({
+        net: sql<number>`coalesce(sum(${voucherEntry.drPaise}), 0) - coalesce(sum(${voucherEntry.crPaise}), 0)`
+      })
+      .from(voucherEntry)
+      .innerJoin(voucher, eq(voucherEntry.voucherId, voucher.id))
+      .where(
+        and(
+          eq(voucherEntry.accountId, k.id),
+          eq(voucher.yearId, yearId),
+          eq(voucher.sourceModule, 'bhada'),
+          isNull(voucher.voidedAt)
+        )
+      )
+      .get()
+    const delta = target - (currentRent?.net ?? 0)
+    if (delta !== 0) byAccount.set(k.id, delta)
+  }
+  return byAccount
+}
+
 /** The exceptions list (software.md §3.13): pending cheques, credit balances, leftover stock, odd state. */
 function buildExceptions(
   yearId: number,
@@ -205,6 +247,22 @@ function buildExceptions(
       kind: 'leftover_stock',
       amountPaise: undefined,
       packets: leftoverPackets
+    })
+  }
+
+  // Deals a vyapari never fully lifted and nobody has charged him for. Only a warning: the close
+  // must not post these itself, because a deal can also be dropped by mutual consent and the cold
+  // would be inventing a receivable. The accountant settles them on the Sauda page, or leaves them.
+  for (const s of listSauda(yearId)) {
+    if (s.shortfallPackets === 0 || s.settlementVoucherId !== null) continue
+    exceptions.push({
+      kind: 'unsettled_sauda',
+      accountId: s.vyapariAccountId,
+      accountName: s.vyapariName,
+      counterpartyName: s.kisanName,
+      amountPaise: s.suggestedShortfallPaise ?? undefined,
+      packets: s.shortfallPackets,
+      saudaId: s.id
     })
   }
 
@@ -249,6 +307,7 @@ export function previewClose(yearId: number): ClosePreview {
   if (!yr) throw new Error(`Financial year ${yearId} not found`)
   const onDate = nextJan1(yr.year)
   const interestByAccount = projectedInterestByAccount(yearId, onDate)
+  const rentByAccount = projectedRentByAccount(yearId)
 
   const closings = carriedAccounts()
     .map((a) => ({
@@ -257,7 +316,10 @@ export function previewClose(yearId: number): ClosePreview {
       type: a.type,
       isSystem: a.isSystem,
       subgroupName: a.subgroupName,
-      balancePaise: getAccountBalance(a.id, yearId) + (interestByAccount.get(a.id) ?? 0)
+      balancePaise:
+        getAccountBalance(a.id, yearId) +
+        (interestByAccount.get(a.id) ?? 0) +
+        (rentByAccount.get(a.id) ?? 0)
     }))
     .filter((c) => c.balancePaise !== 0)
 
@@ -329,6 +391,13 @@ export function closeYear(yearId: number, userId?: number): CloseResult {
       plan.createdNextYear = true
     }
     const nextYearId = next.id
+
+    // 0. Year-end rent catch-up: rent accrued piecemeal on shipped packets all year; now bill the
+    //    full STORED quantity so stock that never shipped is charged before balances roll forward
+    //    (the kisan owes rent no matter what — any unpaid remainder carries forward as a due).
+    //    ponytail: idempotent re-accrual, so a rolled-back or failed close self-corrects on re-close
+    //    (or the kisan's next nikasi); not worth threading into the rollback plan.
+    accrueAllRent(yearId, onDate, userId, 'stored')
 
     // 1. Capitalise every loan's interest at the boundary (closing balances become final).
     let interestCapitalisedPaise = 0

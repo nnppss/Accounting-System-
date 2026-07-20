@@ -59,8 +59,9 @@ function sectionFor(
   yearId: number,
   asOf: string
 ): BillSection {
+  // getAccountLedger returns newest-first, so the current balance is on the first row.
   const ledgerLines = getAccountLedger(acct.id, yearId)
-  const postedBalancePaise = ledgerLines.length ? ledgerLines[ledgerLines.length - 1].balancePaise : 0
+  const postedBalancePaise = ledgerLines.length ? ledgerLines[0].balancePaise : 0
   const loans = loanLinesFor(acct.id, yearId, asOf)
   const unpostedInterestPaise = loans.reduce((s, l) => s + l.unpostedInterestPaise, 0)
   const standingBhadaPaise = acct.type === 'kisan' ? getStandingBhada(acct.id, yearId).standingPaise : 0

@@ -1,4 +1,4 @@
-import { Card, Input, Table } from 'antd'
+import { Card, Input, Table, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
@@ -33,7 +33,16 @@ export default function RentReportPage(): JSX.Element {
   )
 
   const columns = [
-    { title: t('rent.kisan'), dataIndex: 'name' },
+    {
+      title: t('rent.kisan'),
+      dataIndex: 'name',
+      render: (_: unknown, k: RentReportKisan) => (
+        <>
+          {k.name}
+          {k.sonOf && <Typography.Text type="secondary"> s/o {k.sonOf}</Typography.Text>}
+        </>
+      )
+    },
     {
       title: t('rent.billed'),
       dataIndex: 'billedPaise',

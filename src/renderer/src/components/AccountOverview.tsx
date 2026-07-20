@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react'
-import { Button, Card, Col, Descriptions, Empty, Row, Space, Statistic, Table, Typography } from 'antd'
-import { CloseOutlined } from '@ant-design/icons'
+import { Button, Card, Col, Descriptions, Empty, Row, Space, Statistic, Table, Tooltip, Typography } from 'antd'
+import { CloseOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import type { AccountOverview as Overview, NikasiListFilter } from '@shared/contracts'
 import { formatDate, formatINR } from '../lib/format'
 import { BalanceAmount } from './Highlight'
+import { usePrinter } from '../lib/usePrinter'
 import { SectionBar } from './report'
 
 type Drill = 'aamad' | 'nikasiOut' | 'purchased' | 'loan' | null
@@ -23,6 +24,7 @@ export function AccountOverview({
   onShowLedger: () => void
 }): JSX.Element {
   const { t } = useTranslation()
+  const print = usePrinter()
   const [drill, setDrill] = useState<Drill>(null)
 
   const overview = useQuery({
@@ -54,16 +56,30 @@ export function AccountOverview({
             <Tile
               label={t('overview.nikasiOut')}
               value={s.nikasiOutPackets}
+              sub={
+                s.nikasiOutWeightKg > 0
+                  ? t('overview.weightKg', { kg: s.nikasiOutWeightKg.toLocaleString('en-IN') })
+                  : undefined
+              }
               onClick={() => setDrill('nikasiOut')}
             />
           )}
           {s.aamadPackets > 0 && (
-            <Tile label={t('overview.stockBalance')} value={s.balancePackets} />
+            <Tile
+              label={t('overview.stockBalance')}
+              value={s.balancePackets}
+              onClick={() => setDrill('aamad')}
+            />
           )}
           {s.purchasedPackets > 0 && (
             <Tile
               label={t('overview.purchased')}
               value={s.purchasedPackets}
+              sub={
+                s.purchasedWeightKg > 0
+                  ? t('overview.weightKg', { kg: s.purchasedWeightKg.toLocaleString('en-IN') })
+                  : undefined
+              }
               onClick={() => setDrill('purchased')}
             />
           )}
@@ -123,7 +139,17 @@ export function AccountOverview({
             <Typography.Title level={5} style={{ margin: 0 }}>
               {t(`overview.drill.${drill}`)}
             </Typography.Title>
-            <Button type="text" icon={<CloseOutlined />} onClick={() => setDrill(null)} />
+            {/* Prints this drill alone — his lots, his gate passes, his loans — not the tiles. */}
+            <Space size={4}>
+              <Tooltip title={t('common.print')}>
+                <Button
+                  type="text"
+                  icon={<PrinterOutlined />}
+                  onClick={() => print(() => window.api.print.overview(accountId, drill))}
+                />
+              </Tooltip>
+              <Button type="text" icon={<CloseOutlined />} onClick={() => setDrill(null)} />
+            </Space>
           </div>
           {drill === 'aamad' && <AamadDrill accountId={accountId} rentRatePaise={o.rentRatePaise} />}
           {drill === 'nikasiOut' && (
@@ -197,6 +223,28 @@ function MoneyTile({
   )
 }
 
+/** Shared footer under a drill's cards — label on the left, totals on the right. */
+function DrillTotals({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
+        padding: '10px 12px',
+        borderTop: '1px solid #f0f0f0',
+        fontWeight: 600
+      }}
+    >
+      <span>{label}</span>
+      <Space size="large" wrap>
+        {children}
+      </Space>
+    </div>
+  )
+}
+
 function AamadDrill({
   accountId,
   rentRatePaise
@@ -205,60 +253,62 @@ function AamadDrill({
   rentRatePaise: number
 }): JSX.Element {
   const { t } = useTranslation()
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const q = useQuery({
     queryKey: ['overview-aamad', accountId],
     queryFn: () => window.api.aamad.list({ kisanAccountId: accountId })
   })
   const rows = q.data?.rows ?? []
   const totalPkts = rows.reduce((s, r) => s + r.totalPackets, 0)
+  const totalOut = rows.reduce((s, r) => s + r.outPackets, 0)
+
+  if (q.isLoading) return <Card size="small" loading />
+  if (rows.length === 0) return <Empty />
+
+  // One card per lot, matching the Nikasi drill: header (lot no / date / rent) over its rack
+  // breakdown — nothing behind an expander.
   return (
-    <Table
-      rowKey="id"
-      size="small"
-      loading={q.isLoading}
-      dataSource={rows}
-      pagination={false}
-      locale={{ emptyText: <Empty /> }}
-      columns={[
-        { title: t('overview.lotNo'), dataIndex: 'no', width: 100 },
-        { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
-        { title: t('aamad.totalPackets'), dataIndex: 'totalPackets', align: 'right' as const },
-        {
-          title: t('overview.rent'),
-          key: 'rent',
-          align: 'right' as const,
-          render: (_: unknown, r) => formatINR(r.totalPackets * rentRatePaise)
-        }
-      ]}
-      expandable={{
-        // Default every lot open so its rack breakdown is visible without a click; the user can
-        // still collapse one. (Controlled keys because defaultExpandAllRows misses async-loaded rows.)
-        expandedRowKeys: rows.filter((r) => !collapsed.has(r.id)).map((r) => r.id),
-        onExpand: (open, r) =>
-          setCollapsed((prev) => {
-            const next = new Set(prev)
-            open ? next.delete(r.id) : next.add(r.id)
-            return next
-          }),
-        expandedRowRender: (r) => <AamadLocations aamadId={r.id} />
-      }}
-      summary={() =>
-        rows.length ? (
-          <Table.Summary.Row>
-            <Table.Summary.Cell index={0} colSpan={2} align="right">
-              <strong>{t('overview.summary', { lots: rows.length })}</strong>
-            </Table.Summary.Cell>
-            <Table.Summary.Cell index={2} align="right">
-              <strong>{totalPkts}</strong>
-            </Table.Summary.Cell>
-            <Table.Summary.Cell index={3} align="right">
-              <strong>{formatINR(totalPkts * rentRatePaise)}</strong>
-            </Table.Summary.Cell>
-          </Table.Summary.Row>
-        ) : null
-      }
-    />
+    <div>
+      {rows.map((r) => (
+        <Card
+          key={r.id}
+          size="small"
+          style={{ marginBottom: 12 }}
+          title={
+            <Space size="small">
+              <span>
+                {t('overview.lotNo')} {r.no}
+              </span>
+              <Typography.Text type="secondary">· {formatDate(r.date)}</Typography.Text>
+            </Space>
+          }
+          extra={<strong>{formatINR(r.totalPackets * rentRatePaise)}</strong>}
+        >
+          <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }} style={{ marginBottom: 4 }}>
+            <Descriptions.Item label={t('aamad.totalPackets')}>{r.totalPackets}</Descriptions.Item>
+            <Descriptions.Item label={t('overview.nikasiOut')}>{r.outPackets}</Descriptions.Item>
+            <Descriptions.Item label={t('overview.stockBalance')}>
+              <strong>{r.totalPackets - r.outPackets}</strong>
+            </Descriptions.Item>
+            <Descriptions.Item label={t('overview.rent')}>
+              {formatINR(r.totalPackets * rentRatePaise)}
+            </Descriptions.Item>
+          </Descriptions>
+          <AamadLocations aamadId={r.id} />
+        </Card>
+      ))}
+      <DrillTotals label={t('overview.summary', { lots: rows.length })}>
+        <span>
+          {totalPkts} {t('aamad.packets')}
+        </span>
+        <span>
+          {t('overview.nikasiOut')}: {totalOut}
+        </span>
+        <span>
+          {t('overview.stockBalance')}: {totalPkts - totalOut}
+        </span>
+        <span>{formatINR(totalPkts * rentRatePaise)}</span>
+      </DrillTotals>
+    </div>
   )
 }
 
@@ -301,6 +351,7 @@ function NikasiDrill({
   })
   const rows = q.data ?? []
   const totalPkts = rows.reduce((s, r) => s + r.totalPackets, 0)
+  const totalWeight = rows.reduce((s, r) => s + r.totalWeightKg, 0)
   const totalRent = rows.reduce((s, r) => s + r.totalPackets * rentRatePaise, 0)
   const totalAmount = rows.reduce((s, r) => s + r.totalAmountPaise, 0)
 
@@ -326,47 +377,52 @@ function NikasiDrill({
           }
           extra={<strong>{formatINR(r.totalAmountPaise)}</strong>}
         >
-          <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }} style={{ marginBottom: 4 }}>
+          <Descriptions size="small" column={{ xs: 1, sm: 2, md: 5 }} style={{ marginBottom: 4 }}>
             <Descriptions.Item label={t('nikasi.deliveredTo')}>
               {r.deliveredToName} ({t(`delivery.${r.deliveredToType}`)})
             </Descriptions.Item>
             <Descriptions.Item label={t('nikasi.vehicle')}>{r.vehicleNo ?? '—'}</Descriptions.Item>
             <Descriptions.Item label={t('nikasi.packetsCol')}>{r.totalPackets}</Descriptions.Item>
+            {/* Filtered to one kisan (his Nikasi-out drill) this is his own weight off the truck;
+                unfiltered (the vyapari's Purchased drill) it's the whole vehicle's load. */}
+            <Descriptions.Item label={t('nikasi.weight')}>
+              {r.totalWeightKg ? r.totalWeightKg.toLocaleString('en-IN') : '—'}
+            </Descriptions.Item>
             <Descriptions.Item label={t('overview.rent')}>
               {formatINR(r.totalPackets * rentRatePaise)}
             </Descriptions.Item>
           </Descriptions>
-          <NikasiRegister nikasiId={r.id} />
+          <NikasiRegister nikasiId={r.id} onlyKisanAccountId={filter.fromKisanAccountId} />
         </Card>
       ))}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 12,
-          padding: '10px 12px',
-          borderTop: '1px solid #f0f0f0',
-          fontWeight: 600
-        }}
-      >
-        <span>{t('overview.summaryNikasi', { count: rows.length })}</span>
-        <Space size="large" wrap>
-          <span>
-            {totalPkts} {t('nikasi.packetsCol')}
-          </span>
-          <span>
-            {t('overview.rent')}: {formatINR(totalRent)}
-          </span>
-          <span>{formatINR(totalAmount)}</span>
-        </Space>
-      </div>
+      <DrillTotals label={t('overview.summaryNikasi', { count: rows.length })}>
+        <span>
+          {totalPkts} {t('nikasi.packetsCol')}
+        </span>
+        {totalWeight > 0 && (
+          <span>{t('overview.weightKg', { kg: totalWeight.toLocaleString('en-IN') })}</span>
+        )}
+        <span>
+          {t('overview.rent')}: {formatINR(totalRent)}
+        </span>
+        <span>{formatINR(totalAmount)}</span>
+      </DrillTotals>
     </div>
   )
 }
 
-/** The full legacy per-kisan register for one gate pass (matches the printed Vyapari ledger). */
-function NikasiRegister({ nikasiId }: { nikasiId: number }): JSX.Element {
+/**
+ * The full legacy per-kisan register for one gate pass (matches the printed Vyapari ledger).
+ * `onlyKisanAccountId` narrows it to that kisan's own weighings — a truck is filled off many
+ * kisans, and one kisan's Overview must never show another kisan's packets, weight or rate.
+ */
+function NikasiRegister({
+  nikasiId,
+  onlyKisanAccountId
+}: {
+  nikasiId: number
+  onlyKisanAccountId?: number
+}): JSX.Element {
   const { t } = useTranslation()
   const q = useQuery({
     queryKey: ['overview-nikasi-detail', nikasiId],
@@ -374,28 +430,36 @@ function NikasiRegister({ nikasiId }: { nikasiId: number }): JSX.Element {
   })
   const d = q.data
   if (!d) return <Table size="small" loading pagination={false} dataSource={[]} columns={[]} />
+  const weighments = onlyKisanAccountId
+    ? d.weighments.filter((w) => w.fromKisanAccountId === onlyKisanAccountId)
+    : d.weighments
   return (
       <Table
         rowKey={(_, i) => String(i)}
         size="small"
         pagination={false}
-        dataSource={d.lines}
+        dataSource={weighments}
         columns={[
-          { title: t('aamad.lot'), dataIndex: 'lotNo' },
           { title: t('nikasi.fromKisan'), dataIndex: 'fromKisanName' },
+          {
+            title: t('nikasi.lots'),
+            key: 'lots',
+            render: (_: unknown, w) => w.lots.map((l) => `${l.lotNo} (${l.packets})`).join(' + ')
+          },
           { title: t('nikasi.packets'), dataIndex: 'packets', align: 'right' as const },
           {
             title: t('nikasi.weight'),
             dataIndex: 'weightKg',
             align: 'right' as const,
-            render: (v: number | null) => (v == null ? '—' : v)
+            render: (v: number) => (v ? v.toLocaleString('en-IN') : '—')
           },
           {
+            // Average across the weighing — the only level at which a per-packet weight exists.
             title: t('overview.avgPerPacket'),
             key: 'avg',
             align: 'right' as const,
-            render: (_: unknown, l) =>
-              l.weightKg == null || l.packets === 0 ? '—' : (l.weightKg / l.packets).toFixed(2)
+            render: (_: unknown, w) =>
+              w.weightKg === 0 || w.packets === 0 ? '—' : (w.weightKg / w.packets).toFixed(2)
           },
           {
             title: t('nikasi.rate'),

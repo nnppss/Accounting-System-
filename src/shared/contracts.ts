@@ -120,6 +120,12 @@ export interface AccountDetail {
  * 360° snapshot for the opened-account Overview tab: stock movement + money composition for the
  * working year. Money slices are net dr − cr per entry tag and sum to `balancePaise`.
  */
+/**
+ * Which panel of the Overview tab a print is for: the tiles themselves, or whichever drill-down is
+ * open under them. Each prints only what that panel shows.
+ */
+export type OverviewSection = 'summary' | 'aamad' | 'nikasiOut' | 'purchased' | 'loan'
+
 export interface AccountOverview {
   accountId: number
   stock: {
@@ -128,9 +134,13 @@ export interface AccountOverview {
     aamadCount: number
     /** Packets of this kisan's own stock that left the store (nikasi lines from this kisan). */
     nikasiOutPackets: number
+    /** Weight of this kisan's own stock that left — his share alone, not the vehicles' loads. */
+    nikasiOutWeightKg: number
     balancePackets: number
     /** Packets received as a vyapari across all gate passes. */
     purchasedPackets: number
+    /** Weight received as a vyapari across all gate passes. */
+    purchasedWeightKg: number
   }
   money: {
     openingPaise: number
@@ -242,6 +252,12 @@ export interface SimpleVoucherInput {
   amountPaise: number
   narration?: string
   tag?: EntryTag
+  /**
+   * Required when `tag` is 'loan' on a receipt: the loan being repaid. Without it the money would
+   * land on the party's balance but never reach the loan's own outstanding (the Loans screen reads
+   * `loan_event`, not the ledger). `createReceipt` routes these through the loan module instead.
+   */
+  loanId?: number
   accountantUserId?: number
 }
 
@@ -283,9 +299,19 @@ export interface VoucherListRow {
   narration: string | null
   isAuto: boolean
   totalPaise: number
+  /** Debit-side account name(s), comma-joined — the "Dr" column in the list. */
+  drName: string
+  /** Credit-side account name(s), comma-joined — the "Cr" column in the list. */
+  crName: string
   /** Distinct non-'general' entry tags on this voucher, for a badge in the list. */
   tags: EntryTag[]
 }
+
+/** A manual voucher being re-saved (edit = void old + re-post corrected). Tagged by type. */
+export type EditVoucherInput =
+  | ({ type: 'receipt' | 'payment' } & ReceiptArg)
+  | ({ type: 'contra' } & ContraArg)
+  | ({ type: 'journal' } & JournalArg)
 
 export interface VoucherEntryView {
   accountId: number
@@ -330,38 +356,31 @@ export interface MoneyBookDetailRow {
   type: VoucherType
   date: string
   narration: string | null
-  counterparty: string
+  /** The other accounts on this voucher — who the money moved to/from. */
+  counterparties: { id: number; name: string }[]
   receiptPaise: number
   paymentPaise: number
-  /** Cash/bank holding after this transaction — the running balance seeded from the month's opening. */
+  /** Cash/bank holding after this transaction — the running balance carried from the year's start. */
   balancePaise: number
 }
 
-/** One posting line of a day-book voucher. */
-export interface DayBookEntry {
+/** One cash/bank account's money movements on the chosen day. */
+export interface DayBookSection {
   accountId: number
   accountName: string
-  drPaise: number
-  crPaise: number
-  tag: EntryTag
+  /** Balance before the day's first transaction. */
+  openingPaise: number
+  /** Balance after the day's last transaction. */
+  closingPaise: number
+  rows: MoneyBookDetailRow[]
 }
 
-/** A voucher (with its entries) that posted on the chosen day. */
-export interface DayBookVoucher {
-  voucherId: number
-  voucherNo: number
-  type: VoucherType
-  sourceModule: string | null
-  narration: string | null
-  entries: DayBookEntry[]
-}
-
-/** Every financial transaction posted on one date — the Day Book / day register. */
+/** Money that moved on one date — the Day Book, one section per cash/bank account. */
 export interface DayBook {
   date: string
-  vouchers: DayBookVoucher[]
-  totalDrPaise: number
-  totalCrPaise: number
+  sections: DayBookSection[]
+  totalReceiptPaise: number
+  totalPaymentPaise: number
 }
 
 // ============================ STORE & STOCK (Phase 2) ============================
@@ -394,9 +413,12 @@ export interface AamadListRow {
   date: string
   kisanAccountId: number
   kisanName: string
+  kisanSonOf: string | null
   totalPackets: number
   /** Sum of location-line packets; < totalPackets means some packets are not yet placed. */
   assignedPackets: number
+  /** Packets shipped out of this lot so far; `totalPackets - outPackets` is what is still stored. */
+  outPackets: number
 }
 
 export interface AamadSearchFilter {
@@ -412,7 +434,7 @@ export interface AamadListResult {
   totalPackets: number
 }
 
-export interface AamadDetail extends AamadListRow {
+export interface AamadDetail extends Omit<AamadListRow, 'outPackets'> {
   locations: Array<AamadLocationInput & { id: number }>
 }
 
@@ -432,17 +454,46 @@ export interface SaudaListRow {
   date: string
   vyapariAccountId: number
   vyapariName: string
+  vyapariSonOf: string | null
   kisanAccountId: number
   kisanName: string
+  kisanSonOf: string | null
   aamadId: number | null
   lotNo: string | null
   packets: number
   ratePaise: number
+  /** Packets of this deal the vyapari has actually lifted (see sauda.ts — FIFO within a rate). */
+  liftedPackets: number
+  /** Packets promised but not lifted. Zero once the deal is fully delivered. */
+  shortfallPackets: number
+  /**
+   * What the shortfall is worth, priced off what he DID lift on this rate — null when he has
+   * lifted nothing at all, because then there is no weighing to price it from and the accountant
+   * must supply the amount.
+   */
+  suggestedShortfallPaise: number | null
+  /** The settlement voucher, once the shortfall has been charged to the vyapari. */
+  settlementVoucherId: number | null
+  settlementPaise: number | null
+}
+
+/** What `settleSauda` posted, for the toast. */
+export interface SettleSaudaResult {
+  voucherId: number
+  voucherNo: number
+  amountPaise: number
 }
 
 // ---- Nikasi (stock-out / gate pass) ----
-/** One outbound lot: N packets from lot `aamadId`. The kisan is implied by the lot; the
- * service allocates the packets across that lot's racks. */
+/**
+ * One outbound lot: N packets from lot `aamadId`. The kisan is implied by the lot; the service
+ * allocates the packets across that lot's racks.
+ *
+ * Weight and rate are agreed per WEIGHING, not per lot: lots of one kisan sold at one rate go over
+ * the scale together as a single reading. Lines sharing a (kisan, rate) are therefore treated as
+ * one weighing, and their `weightKg` is SUMMED to rebuild it — so put the reading on any one of
+ * them and leave the rest blank. A sale needs each weighing to total more than zero.
+ */
 export interface NikasiLineInput {
   aamadId: number
   packets: number
@@ -459,6 +510,8 @@ export interface LotRemaining {
   kisanName: string
   totalPackets: number
   remaining: number
+  /** Packets of this lot still sitting in racks (placed − shipped). Nikasi can only ship these. */
+  inRacks: number
 }
 
 export interface NikasiInput {
@@ -468,6 +521,8 @@ export interface NikasiInput {
   deliveredToAccountId: number
   receivedBy?: string
   bhadaRecoveredPaise?: number
+  /** Free note — why packets and weight disagree (spoilt packets drawn but not weighed), etc. */
+  remark?: string
   lines: NikasiLineInput[]
 }
 
@@ -486,22 +541,30 @@ export interface NikasiListRow {
   deliveredToType: DeliveryTarget
   deliveredToAccountId: number
   deliveredToName: string
+  deliveredToSonOf: string | null
   vehicleNo: string | null
   totalPackets: number
+  /** Weight on the vehicle (all kisans' lots added up); scoped to one kisan's lots when filtered. */
+  totalWeightKg: number
   totalAmountPaise: number
   isPosted: boolean
 }
 
-/** Nikasi lines grouped back to one row per lot (the rack split is internal). */
-export interface NikasiLineView {
-  aamadId: number | null
-  lotNo: string
+/**
+ * One weighing off the gate scale: the lots of a single kisan that shared a rate and went over the
+ * scale together — e.g. Ajay's 18/215 + 17/200 as one 21,040 kg at ₹900. `weightKg` is that one
+ * reading and `amountPaise` the money it settles; the lots inside carry only their packets,
+ * because at the gate no lot had a weight of its own. A kisan has several weighings on a gate pass
+ * when he sold at several rates (a different variety, say).
+ */
+export interface NikasiWeighmentView {
   fromKisanAccountId: number
   fromKisanName: string
-  packets: number
-  weightKg?: number
   ratePaise: number
+  weightKg: number
+  packets: number
   amountPaise: number
+  lots: Array<{ aamadId: number | null; lotNo: string; packets: number }>
 }
 
 export interface NikasiDetail {
@@ -514,8 +577,11 @@ export interface NikasiDetail {
   deliveredToName: string
   receivedBy: string | null
   bhadaRecoveredPaise: number
+  remark: string | null
   voucherNo: number | null
-  lines: NikasiLineView[]
+  weighments: NikasiWeighmentView[]
+  /** Total weight loaded on this vehicle — every kisan's weighings added up. */
+  totalWeightKg: number
 }
 
 // ---- Maps ----
@@ -571,6 +637,7 @@ export interface RentPaymentTurn {
 export interface RentReportKisan {
   accountId: number
   name: string
+  sonOf: string | null
   /** Full-year rent accrued to this kisan. */
   billedPaise: number
   /** Rent he has paid, across all turns. */
@@ -658,6 +725,14 @@ export interface LoanEventRow {
   voucherId: number | null
 }
 
+/** A loan event in a party's combined history — carries the loan it belongs to, since his loans
+ *  keep their own rates and start dates even though he is billed as one man. */
+export interface PartyLoanEventRow extends LoanEventRow {
+  /** The day that loan was given — what the history labels it by. */
+  loanDate: string
+  monthlyRateBps: number
+}
+
 /** Live breakdown from the interest engine — pure computation, posts nothing. */
 export interface LoanOutstanding {
   loanId: number
@@ -710,8 +785,40 @@ export interface CreateLoanResult {
 
 export interface LoanPaymentResult {
   voucherId: number
+  voucherNo: number
   interestPaise: number
   principalPaise: number
+}
+
+/** One party's whole interest fixed as a single agreed figure — see `fixPartyInterest`. */
+export interface PartyInterestFixResult {
+  accountId: number
+  atDate: string
+  totalInterestPaise: number
+  /** The single voucher carrying the whole figure; null when the total is ₹0 (nothing to post). */
+  voucherId: number | null
+  /** What each loan took of the total, pro-rata to what it accrued on its own rate and dates. */
+  shares: Array<{ loanId: number; interestPaise: number }>
+}
+
+export interface InterestFixResult {
+  loanId: number
+  atDate: string
+  interestPaise: number
+}
+
+/**
+ * One loan's interest as it stands. `interestPaise` is what has accrued but is not posted yet — the
+ * ledger's standing-interest line. `fixedPaise` is what the accountant has already fixed for the
+ * year and is therefore posted; the two together are the interest for the year, which is the figure
+ * he edits.
+ */
+export interface AccountInterestRow {
+  loanId: number
+  date: string
+  category: LoanCategory
+  interestPaise: number
+  fixedPaise: number
 }
 
 export interface CapitaliseResult {
@@ -791,6 +898,7 @@ export interface BardanaRow {
   date: string
   partyAccountId: number | null
   partyName: string | null
+  partySonOf: string | null
   ratePaise: number
   qty: number
   amountPaise: number
@@ -842,6 +950,7 @@ export interface ExpenseRow {
   date: string
   partyAccountId: number | null
   partyName: string | null
+  partySonOf: string | null
   amountPaise: number
   narration: string | null
 }
@@ -1061,7 +1170,12 @@ export interface CloseSummary {
   leftoverPackets: number
 }
 
-export type CloseExceptionKind = 'pending_cheque' | 'credit_balance' | 'leftover_stock' | 'unbalanced'
+export type CloseExceptionKind =
+  | 'pending_cheque'
+  | 'credit_balance'
+  | 'leftover_stock'
+  | 'unbalanced'
+  | 'unsettled_sauda'
 
 /** One thing the accountant should eyeball before/after a close (software.md §3.13 exceptions list). */
 export interface CloseException {
@@ -1072,8 +1186,11 @@ export interface CloseException {
   /** pending_cheque only — cheque number and direction, for the localized detail line. */
   chequeNo?: string
   chequeDirection?: ChequeDirection
-  /** leftover_stock only — how many packets remain. */
+  /** leftover_stock and unsettled_sauda only — how many packets remain / went undelivered. */
   packets?: number
+  /** unsettled_sauda only — the deal, so the accountant can go settle it. */
+  saudaId?: number
+  counterpartyName?: string
 }
 
 /** A dry-run of the close — what it WOULD do, computed without posting anything. */
@@ -1109,6 +1226,9 @@ export interface YearCloseInfo {
 export interface PrintResult {
   path: string | null
 }
+
+/** One cell of an Excel export. Numbers stay numbers so the sheet can sum them; text is text. */
+export type XlsxCell = string | number | null
 
 // ============================ BACKUPS ============================
 

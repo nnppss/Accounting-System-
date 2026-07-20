@@ -7,6 +7,8 @@ import type { AccountType } from '@shared/enums'
 interface Option {
   value: number
   label: ReactNode
+  /** Plain-text name, for callers that build a narration from the choice. */
+  name: string
 }
 
 interface Props {
@@ -19,7 +21,7 @@ interface Props {
    */
   showType?: boolean
   value?: number
-  onChange?: (value: number | undefined) => void
+  onChange?: (value: number | undefined, name?: string) => void
   placeholder?: string
   allowClear?: boolean
   autoFocus?: boolean
@@ -74,6 +76,7 @@ export default function AccountSearchSelect({
   // with the same name (e.g. two "Abhishek Dhakrey") are distinguishable.
   const options: Option[] = (query.data ?? []).map((a) => ({
     value: a.id,
+    name: a.name,
     label: (
       <span>
         {a.name}
@@ -108,7 +111,7 @@ export default function AccountSearchSelect({
         // Reset the search so reopening the box starts fresh, not on the old term.
         setSearch('')
         setTerm('')
-        onChange?.(v as number | undefined)
+        onChange?.(v as number | undefined, (option as Option | undefined)?.name)
       }}
       placeholder={placeholder}
       allowClear={allowClear}

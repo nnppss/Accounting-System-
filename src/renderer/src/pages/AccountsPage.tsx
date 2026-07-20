@@ -105,7 +105,13 @@ export default function AccountsPage(): JSX.Element {
 
   const [accountForm] = Form.useForm()
   const [personForm] = Form.useForm()
-  const accountNav = useFormKeyNav({ open: newOpen, onAccept: () => accountForm.submit() })
+  // Set by "Save & new" so the success handler clears the form instead of closing it.
+  const again = useRef(false)
+  const submitAccountForm = (addAnother: boolean) => (): void => {
+    again.current = addAnother
+    accountForm.submit()
+  }
+  const accountNav = useFormKeyNav({ open: newOpen, onAccept: submitAccountForm(false) })
   const personNav = useFormKeyNav({ open: personOpen, onAccept: () => personForm.submit() })
   // Land the cursor in the filter bar on open; Enter/Tab flow across Type→Name→…, and Enter on
   // the last filter blurs so the table's arrow-key navigation takes over.
@@ -154,8 +160,9 @@ export default function AccountsPage(): JSX.Element {
     mutationFn: (v: AccountInput) => window.api.accounts.create(v),
     onSuccess: () => {
       message.success(t('accounts.created'))
-      setNewOpen(false)
       accountForm.resetFields()
+      if (again.current) accountNav.focusFirst()
+      else setNewOpen(false)
       invalidate()
     },
     onError: (e: Error) => message.error(e.message)
@@ -404,7 +411,8 @@ export default function AccountsPage(): JSX.Element {
         title={t('accounts.new')}
         open={newOpen}
         onCancel={() => setNewOpen(false)}
-        onOk={() => accountForm.submit()}
+        onOk={submitAccountForm(false)}
+        onOkAndNew={submitAccountForm(true)}
         confirmLoading={createAccount.isPending}
         okText={t('common.create')}
       >
@@ -421,7 +429,12 @@ export default function AccountsPage(): JSX.Element {
             style={{ marginBottom: 16 }}
             message={t('accounts.typeSubgroupLocked')}
           />
-          <Form.Item name="name" label={t('accounts.name')} rules={[{ required: true }]}>
+          <Form.Item
+            name="name"
+            label={t('accounts.name')}
+            rules={[{ required: true }]}
+            getValueFromEvent={(e) => titleCase(e.target.value)}
+          >
             <Input />
           </Form.Item>
           <Form.Item name="type" label={t('accounts.type')} rules={[{ required: true }]}>

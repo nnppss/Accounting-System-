@@ -14,16 +14,18 @@ import {
   Tag,
   Typography
 } from 'antd'
-import { PrinterOutlined } from '@ant-design/icons'
+import { FileExcelOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageBanner, SectionBar } from '../components/report'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { ExpenseRow, LoadingContractorYearRow } from '@shared/contracts'
 import type { AccountType, PaymentMode } from '@shared/enums'
-import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { expenseNarration, useAutoNarration } from '../lib/narration'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
@@ -48,6 +50,7 @@ const KIND_META: Record<
 export default function ExpensesPage(): JSX.Element {
   const { t } = useTranslation()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
@@ -108,7 +111,19 @@ export default function ExpensesPage(): JSX.Element {
       width: 130,
       render: (k: ExpenseKind) => <Tag color={KIND_META[k].color}>{t(`expenses.${k}`)}</Tag>
     },
-    { title: t('expenses.party'), dataIndex: 'partyName', render: (n: string | null) => n ?? t('common.none') },
+    {
+      title: t('expenses.party'),
+      dataIndex: 'partyName',
+      render: (n: string | null, r: ExpenseRegisterRow) =>
+        n === null ? (
+          t('common.none')
+        ) : (
+          <>
+            {n}
+            {r.partySonOf && <Typography.Text type="secondary"> s/o {r.partySonOf}</Typography.Text>}
+          </>
+        )
+    },
     { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? t('common.none') },
     {
       title: t('common.amount'),
@@ -137,6 +152,27 @@ export default function ExpensesPage(): JSX.Element {
               }}
             >
               {t('common.print')}
+            </Button>
+            <Button
+              icon={<FileExcelOutlined />}
+              onClick={() =>
+                exportXlsx(
+                  'expense-register.xlsx',
+                  t('expenses.title'),
+                  ['Date', 'Voucher No', 'Party', 'Type', 'Amount', 'Narration'],
+                  rows.map((r) => [
+                    formatDate(r.date),
+                    r.voucherNo,
+                    r.partyName ?? '',
+                    t(`expenses.${r.kind}`),
+                    paiseToRupees(r.amountPaise),
+                    r.narration ?? ''
+                  ]),
+                  [4] // Amount
+                )
+              }
+            >
+              {t('common.excel')}
             </Button>
             <Button onClick={() => setChargesOpen(true)}>{t('expenses.contractorCharges')}</Button>
             <Button type="primary" onClick={() => setOpen(true)}>
@@ -243,6 +279,8 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
   const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
   const kind = (Form.useWatch('kind', form) as ExpenseKind | undefined) ?? 'salary'
   const mode = Form.useWatch('mode', form) as PaymentMode | undefined
+  const [partyName, setPartyName] = useState('')
+  useAutoNarration(form, expenseNarration(KIND_META[kind].defaultNarration, partyName))
 
   const banks = useQuery({ queryKey: ['moneybook', 'accounts'], queryFn: () => window.api.moneybook.accounts() })
   const bankOptions = (banks.data ?? []).filter((b) => b.name !== 'Cash').map((b) => ({ value: b.id, label: b.name }))
@@ -271,6 +309,7 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
       message.success(t('expenses.paid'))
       queryClient.invalidateQueries({ queryKey: [v.kind === 'salary' ? 'salaryRegister' : 'loadingRegister'] })
       form.resetFields()
+      setPartyName('')
       onClose()
     },
     onError: (e: Error) => message.error(e.message)
@@ -305,7 +344,10 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
         <Form.Item name="kind" label={t('expenses.type')} rules={[{ required: true }]}>
           <Select
             // Switching head changes which party type is valid — drop the stale party.
-            onChange={() => form.setFieldValue('partyAccountId', undefined)}
+            onChange={() => {
+              form.setFieldValue('partyAccountId', undefined)
+              setPartyName('')
+            }}
             options={(['salary', 'loading'] as ExpenseKind[]).map((k) => ({ value: k, label: t(`expenses.${k}`) }))}
           />
         </Form.Item>
@@ -314,6 +356,7 @@ function NewExpenseModal({ open, onClose }: { open: boolean; onClose: () => void
             type={KIND_META[kind].partyType}
             placeholder={t(KIND_META[kind].labelKey)}
             style={{ width: '100%' }}
+            onChange={(_, name) => setPartyName(name ?? '')}
           />
         </Form.Item>
         <Form.Item name="amount" label={t('common.amount')} rules={[{ required: true }]}>

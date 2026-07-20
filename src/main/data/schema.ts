@@ -397,6 +397,10 @@ export const nikasi = sqliteTable(
       .references(() => account.id),
     receivedBy: text('received_by'),
     bhadaRecoveredPaise: integer('bhada_recovered_paise').notNull().default(0),
+    // Free note on the gate pass. Its reason for existing: money is weight-driven, so when packets
+    // and weight disagree (115 drawn, only 100 sound enough to weigh and pay for) nothing else on
+    // the record says why. Without it that reads back as a weighing error.
+    remark: text('remark'),
     voucherId: integer('voucher_id').references(() => voucher.id), // the sale voucher (null for self-withdrawal)
     createdAt
   },
@@ -426,7 +430,9 @@ export const nikasiLine = sqliteTable(
     floor: integer('floor').notNull(),
     rack: integer('rack').notNull(),
     packets: integer('packets').notNull(),
-    weightKg: integer('weight_kg'), // recorded only; not used in money
+    // The scale reading; drives the money (amount = weight ÷ 105 × rate). Held on the first rack
+    // line of a weighment, null on the rest — see nikasi.ts.
+    weightKg: integer('weight_kg'),
     ratePaise: integer('rate_paise').notNull()
   },
   (t) => ({

@@ -39,6 +39,7 @@ const GROUPS: { titleKey: string; rows: Row[] }[] = [
       { keys: <Kbd>Enter</Kbd>, descKey: 'shortcuts.nextField' },
       { keys: <><Kbd>Tab</Kbd> / <Kbd>Shift</Kbd> + <Kbd>Tab</Kbd></>, descKey: 'shortcuts.tabField' },
       { keys: <><Kbd>Ctrl</Kbd> + <Kbd>Enter</Kbd></>, descKey: 'shortcuts.save' },
+      { keys: <><Kbd>Ctrl</Kbd> + <Kbd>Shift</Kbd> + <Kbd>Enter</Kbd></>, descKey: 'shortcuts.saveAndNew' },
       { keys: <Kbd>Enter</Kbd>, descKey: 'shortcuts.addLine' },
       { keys: <Kbd>Esc</Kbd>, descKey: 'shortcuts.cancel' }
     ]

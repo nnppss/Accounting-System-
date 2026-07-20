@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
@@ -19,15 +19,16 @@ import {
   Tag,
   Typography
 } from 'antd'
-import { PrinterOutlined } from '@ant-design/icons'
+import { FileExcelOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageBanner } from '../components/report'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { BardanaRow } from '@shared/contracts'
 import type { BardanaDirection, PaymentMode } from '@shared/enums'
-import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -47,12 +48,27 @@ export default function BardanaPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
-  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  // Set by "Save & new" so the success handler clears the form instead of closing it.
+  const again = useRef(false)
+  const submit = (addAnother: boolean) => (): void => {
+    again.current = addAnother
+    form.submit()
+  }
+  const formNav = useFormKeyNav({ open, onAccept: submit(false) })
   const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
+
+  // Keep the date — a run of entries is nearly always for the same day.
+  const clearForNext = (): void => {
+    const date = form.getFieldValue('date')
+    form.resetFields()
+    form.setFieldValue('date', date)
+    formNav.focusFirst()
+  }
   const mode = Form.useWatch('mode', form) as PaymentMode | undefined
   const direction = Form.useWatch('direction', form) as BardanaDirection | undefined
   const prebooked = (Form.useWatch('prebooked', form) as boolean | undefined) ?? false
@@ -81,8 +97,11 @@ export default function BardanaPage(): JSX.Element {
       window.api.bardana.create(input),
     onSuccess: () => {
       message.success(t('bardana.created'))
-      setOpen(false)
-      form.resetFields()
+      if (again.current) clearForNext()
+      else {
+        setOpen(false)
+        form.resetFields()
+      }
       invalidate()
     },
     onError: (e: Error) => message.error(e.message)
@@ -153,7 +172,19 @@ export default function BardanaPage(): JSX.Element {
         </>
       )
     },
-    { title: t('bardana.party'), dataIndex: 'partyName', render: (n: string | null) => n ?? t('common.none') },
+    {
+      title: t('bardana.party'),
+      dataIndex: 'partyName',
+      render: (n: string | null, r: BardanaRow) =>
+        n === null ? (
+          t('common.none')
+        ) : (
+          <>
+            {n}
+            {r.partySonOf && <Typography.Text type="secondary"> s/o {r.partySonOf}</Typography.Text>}
+          </>
+        )
+    },
     { title: t('bardana.qty'), dataIndex: 'qty', align: 'right' as const, width: 90 },
     {
       title: t('bardana.rate'),
@@ -243,6 +274,29 @@ export default function BardanaPage(): JSX.Element {
               }}
             >
               {t('common.print')}
+            </Button>
+            <Button
+              icon={<FileExcelOutlined />}
+              onClick={() =>
+                exportXlsx(
+                  'bardana-account.xlsx',
+                  t('bardana.title'),
+                  ['Date', 'Direction', 'Party', 'Rate', 'Qty', 'Amount', 'Paid', 'Mode'],
+                  rows.map((r) => [
+                    formatDate(r.date),
+                    t(`bardana.dir.${r.direction}`),
+                    r.partyName ?? '',
+                    paiseToRupees(r.ratePaise),
+                    r.qty,
+                    paiseToRupees(r.amountPaise),
+                    paiseToRupees(r.paidPaise),
+                    r.mode
+                  ]),
+                  [3, 5, 6] // Rate, Amount, Paid
+                )
+              }
+            >
+              {t('common.excel')}
             </Button>
             <Button type="primary" onClick={() => setOpen(true)}>
               {t('bardana.new')}
@@ -359,7 +413,8 @@ export default function BardanaPage(): JSX.Element {
         title={t('bardana.new')}
         open={open}
         onCancel={() => setOpen(false)}
-        onOk={() => form.submit()}
+        onOk={submit(false)}
+        onOkAndNew={submit(true)}
         confirmLoading={create.isPending}
         okText={t('common.create')}
         width={560}

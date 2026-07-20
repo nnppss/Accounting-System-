@@ -202,7 +202,9 @@ export default function AppLayout(): JSX.Element {
   // Shared detail pages (the account ledger and the bill) can be reached from several sections —
   // e.g. the Party page opens both. When a page is opened that way it passes `fromNav` so the
   // nav keeps the *originating* section highlighted instead of jumping to Accounts/Bills.
-  const stateFrom = (location.state as { fromNav?: string } | null)?.fromNav
+  // `fromNav` may carry a query string (the Money Book puts its segment and day there); the nav
+  // keys are bare paths, so match on the path only.
+  const stateFrom = (location.state as { fromNav?: string } | null)?.fromNav?.split('?')[0]
   const selectedKey = stateFrom ?? '/' + (location.pathname.split('/')[1] || 'home')
 
   // Grouped horizontal nav: a handful of headers, each opening a dropdown of sections. Leaf keys

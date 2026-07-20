@@ -45,14 +45,15 @@ beforeEach(() => {
   vyapari = makeAccount('Suresh Vyapari', 'vyapari', 'Sundry Debtors')
   creditor = makeAccount('Mohan Supplier', 'other', 'Sundry Creditors')
 
-  // Kisan stores 200 packets → owes ₹2,000 full-year rent (Dr 200,000 paise).
+  // Kisan stores 200 packets → owes ₹2,000 full-year rent (Dr 200,000 paise). Rent now accrues
+  // as stock ships; force the year-end STORED basis here so the pre-close setup owes the full rent.
   createAamad(yearId, {
     date: '2026-01-08',
     kisanAccountId: kisan,
     totalPackets: 200,
     locations: [{ room: 1, floor: 1, rack: 1, packets: 200 }]
   })
-  accrueRent(kisan, yearId, '2026-06-30')
+  accrueRent(kisan, yearId, '2026-06-30', undefined, 'stored')
 
   // Vyapari takes a ₹1,00,000 direct loan on 1 Jan → capitalises to +₹18,000 at 1 Jan 2027.
   createLoan(yearId, {

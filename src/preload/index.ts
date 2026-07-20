@@ -35,6 +35,7 @@ import type {
   CreateLoanResult,
   CreateNikasiResult,
   DayBook,
+  EditVoucherInput,
   ExpensePaymentInput,
   ExpenseRow,
   JournalArg,
@@ -46,6 +47,10 @@ import type {
   LoanComposition,
   LoanDetail,
   LoanInput,
+  AccountInterestRow,
+  InterestFixResult,
+  PartyInterestFixResult,
+  PartyLoanEventRow,
   LoanPaymentResult,
   LoanRow,
   MoneyBookDetailRow,
@@ -54,6 +59,7 @@ import type {
   NikasiInput,
   NikasiListFilter,
   NikasiListRow,
+  OverviewSection,
   PartyCriteria,
   PartyResult,
   PartyRow,
@@ -62,17 +68,20 @@ import type {
   PersonRow,
   PostResult,
   PrintResult,
+  XlsxCell,
   RackKisanStock,
   RecordChequeResult,
   ReceiptArg,
   SaudaInput,
   SaudaListRow,
+  SettleSaudaResult,
   SavedFilterRow,
   Session,
   StockMap,
   StoreConfig,
   SubgroupRow,
   TrialBalance,
+  VoucherDetail,
   VoucherListRow,
   YearCloseInfo,
   YearInfo
@@ -134,8 +143,14 @@ const api = {
     contra: (arg: ContraArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:contra', arg),
     journal: (arg: JournalArg): Promise<PostResult> => ipcRenderer.invoke('vouchers:journal', arg),
     list: (type?: VoucherType): Promise<VoucherListRow[]> => ipcRenderer.invoke('vouchers:list', type),
+    get: (voucherId: number): Promise<VoucherDetail | null> =>
+      ipcRenderer.invoke('vouchers:get', voucherId),
+    update: (voucherId: number, input: EditVoucherInput): Promise<PostResult> =>
+      ipcRenderer.invoke('vouchers:update', voucherId, input),
     void: (voucherId: number, reason: string): Promise<void> =>
-      ipcRenderer.invoke('vouchers:void', voucherId, reason)
+      ipcRenderer.invoke('vouchers:void', voucherId, reason),
+    updateNarration: (voucherId: number, narration: string): Promise<void> =>
+      ipcRenderer.invoke('vouchers:updateNarration', voucherId, narration)
   },
   ledger: {
     trialBalance: (): Promise<TrialBalance> => ipcRenderer.invoke('ledger:trialBalance')
@@ -167,8 +182,11 @@ const api = {
     create: (input: SaudaInput): Promise<number> => ipcRenderer.invoke('sauda:create', input),
     list: (): Promise<SaudaListRow[]> => ipcRenderer.invoke('sauda:list'),
     delete: (id: number): Promise<void> => ipcRenderer.invoke('sauda:delete', id),
-    latestRate: (vyapariAccountId: number, kisanAccountId: number): Promise<number | null> =>
-      ipcRenderer.invoke('sauda:latestRate', vyapariAccountId, kisanAccountId)
+    rateForLifting: (vyapariAccountId: number, kisanAccountId: number): Promise<number | null> =>
+      ipcRenderer.invoke('sauda:rateForLifting', vyapariAccountId, kisanAccountId),
+    settle: (id: number, input: { date: string; amountPaise: number }): Promise<SettleSaudaResult> =>
+      ipcRenderer.invoke('sauda:settle', id, input),
+    unsettle: (id: number): Promise<void> => ipcRenderer.invoke('sauda:unsettle', id)
   },
   nikasi: {
     create: (input: NikasiInput): Promise<CreateNikasiResult> =>
@@ -201,6 +219,8 @@ const api = {
       ipcRenderer.invoke('loans:get', loanId, asOf),
     composition: (loanId: number): Promise<LoanComposition | null> =>
       ipcRenderer.invoke('loans:composition', loanId),
+    partyEvents: (accountId: number): Promise<PartyLoanEventRow[]> =>
+      ipcRenderer.invoke('loans:partyEvents', accountId),
     pay: (
       loanId: number,
       amountPaise: number,
@@ -210,7 +230,18 @@ const api = {
       chequeNo?: string,
       chequeBank?: string
     ): Promise<LoanPaymentResult> =>
-      ipcRenderer.invoke('loans:pay', loanId, amountPaise, date, mode, bankAccountId, chequeNo, chequeBank)
+      ipcRenderer.invoke('loans:pay', loanId, amountPaise, date, mode, bankAccountId, chequeNo, chequeBank),
+    undoPayment: (eventId: number): Promise<void> => ipcRenderer.invoke('loans:undoPayment', eventId),
+    accountInterest: (accountId: number, asOf?: string): Promise<AccountInterestRow[]> =>
+      ipcRenderer.invoke('loans:accountInterest', accountId, asOf),
+    fixInterest: (loanId: number, atDate: string, interestPaise: number): Promise<InterestFixResult> =>
+      ipcRenderer.invoke('loans:fixInterest', loanId, atDate, interestPaise),
+    fixPartyInterest: (
+      accountId: number,
+      atDate: string,
+      totalInterestPaise: number
+    ): Promise<PartyInterestFixResult> =>
+      ipcRenderer.invoke('loans:fixPartyInterest', accountId, atDate, totalInterestPaise)
   },
   cheques: {
     record: (input: ChequeInput): Promise<RecordChequeResult> =>
@@ -280,6 +311,8 @@ const api = {
       ipcRenderer.invoke('print:bill', accountId, asOf),
     voucher: (voucherId: number): Promise<PrintResult> => ipcRenderer.invoke('print:voucher', voucherId),
     ledger: (accountId: number): Promise<PrintResult> => ipcRenderer.invoke('print:ledger', accountId),
+    overview: (accountId: number, section?: OverviewSection): Promise<PrintResult> =>
+      ipcRenderer.invoke('print:overview', accountId, section),
     trialBalance: (): Promise<PrintResult> => ipcRenderer.invoke('print:trialBalance'),
     moneyBookSummary: (accountId: number): Promise<PrintResult> =>
       ipcRenderer.invoke('print:moneyBookSummary', accountId),
@@ -304,7 +337,15 @@ const api = {
     loanRegister: (rows: LoanRow[]): Promise<PrintResult> => ipcRenderer.invoke('print:loanRegister', rows),
     party: (subtitle: string, rows: PartyRow[]): Promise<PrintResult> =>
       ipcRenderer.invoke('print:party', subtitle, rows)
-  }
+  },
+  exportXlsx: (
+    fileName: string,
+    sheetName: string,
+    columns: string[],
+    rows: XlsxCell[][],
+    moneyColumns: number[] = []
+  ): Promise<PrintResult> =>
+    ipcRenderer.invoke('export:xlsx', fileName, sheetName, columns, rows, moneyColumns)
 }
 
 contextBridge.exposeInMainWorld('api', api)

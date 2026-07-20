@@ -11,11 +11,12 @@ import type {
   ExpenseRow,
   LoanRow,
   NikasiListRow,
+  OverviewSection,
   PartyRow,
   PrintResult,
   SaudaListRow
 } from '../../shared/contracts'
-import { getNikasi } from '../services/nikasi'
+import { getNikasi, listNikasi } from '../services/nikasi'
 import { getBill } from '../services/bills'
 import { getVoucher } from '../services/vouchers'
 import { getAccountLedger } from '../services/ledger'
@@ -23,9 +24,11 @@ import { getTrialBalance } from '../services/ledger'
 import { getAccountDetail } from '../services/accounts'
 import { getSummary as getMoneyBookSummary, getDetail as getMoneyBookDetail, getCashBankAccounts } from '../services/moneybook'
 import { getDayBook } from '../services/daybook'
-import { getAamad } from '../services/aamad'
-import { getLoan, getLoanComposition } from '../services/loans'
+import { getAamad, listAamad } from '../services/aamad'
+import { getLoan, getLoanComposition, listAccountInterest, listLoans } from '../services/loans'
 import { getBardanaAccount } from '../services/bardana'
+import { listYears } from '../auth/auth'
+import { getAccountOverview } from '../services/overview'
 import { deriveFinancials } from '../../shared/financials'
 import {
   aamadReceiptHtml,
@@ -42,6 +45,9 @@ import {
   moneyBookDetailHtml,
   moneyBookSummaryHtml,
   nikasiRegisterHtml,
+  overviewAamadHtml,
+  overviewHtml,
+  overviewNikasiHtml,
   partyHtml,
   saudaRegisterHtml,
   trialBalanceHtml,
@@ -111,7 +117,64 @@ export async function printLedger(accountId: number, yearId: number): Promise<Pr
   const acct = getAccountDetail(accountId, yearId)
   const name = acct?.name ?? accountName(accountId)
   const safe = name.replace(/[^\w]+/g, '-').toLowerCase()
-  return renderPdf(ledgerHtml(name, lines, acct), `ledger-${safe}.pdf`)
+  // Interest earned but not yet posted, exactly as the Ledger tab totals it under the table. A
+  // party with no loans has no such row on screen either, hence null rather than 0.
+  const rows = listAccountInterest(accountId, yearId, new Date().toISOString().slice(0, 10))
+  const standingInterest = rows.length ? rows.reduce((s, r) => s + r.interestPaise, 0) : null
+  return renderPdf(ledgerHtml(name, lines, acct, standingInterest), `ledger-${safe}.pdf`)
+}
+
+/** The year's flat per-packet rent rate — what the Overview's drills price their rent columns at. */
+function rentRate(yearId: number): number {
+  return listYears().find((y) => y.id === yearId)?.rentRatePaise ?? 0
+}
+
+/**
+ * The Overview tab prints whatever panel you are looking at: the tiles (`summary`), or the drill
+ * open under them — his lots, the gate passes his stock left on, the gate passes he bought on, or
+ * his loans. The loans drill is the loan register cut to one man, so it prints as exactly that.
+ */
+export async function printOverview(
+  accountId: number,
+  yearId: number,
+  section: OverviewSection = 'summary'
+): Promise<PrintResult> {
+  const acct = getAccountDetail(accountId, yearId)
+  const name = acct?.name ?? accountName(accountId)
+  const safe = name.replace(/[^\w]+/g, '-').toLowerCase()
+
+  switch (section) {
+    case 'aamad': {
+      const lots = listAamad(yearId, { kisanAccountId: accountId }).rows.map((r) => ({
+        ...r,
+        locations: getAamad(r.id)?.locations ?? []
+      }))
+      return renderPdf(overviewAamadHtml(name, lots, rentRate(yearId)), `aamad-${safe}.pdf`)
+    }
+    case 'nikasiOut':
+    case 'purchased': {
+      const out = section === 'nikasiOut'
+      const filter = out ? { fromKisanAccountId: accountId } : { deliveredToAccountId: accountId }
+      const passes = listNikasi(yearId, filter).map((r) => {
+        const weighments = getNikasi(r.id)?.weighments ?? []
+        // His Nikasi drill is his own stock leaving — the truck's other kisans are not his business.
+        return { ...r, weighments: out ? weighments.filter((w) => w.fromKisanAccountId === accountId) : weighments }
+      })
+      const kind = out
+        ? 'Nikasi — packets gone out / निकासी — बाहर गए पैकेट'
+        : 'Purchases (gate passes) / खरीद (गेट पास)'
+      return renderPdf(
+        overviewNikasiHtml(kind, name, passes, rentRate(yearId)),
+        `${out ? 'nikasi' : 'purchases'}-${safe}.pdf`
+      )
+    }
+    case 'loan': {
+      const rows = listLoans(yearId).filter((l) => l.accountId === accountId)
+      return renderPdf(loanRegisterHtml(rows), `loans-${safe}.pdf`)
+    }
+    case 'summary':
+      return renderPdf(overviewHtml(name, getAccountOverview(accountId, yearId), acct), `overview-${safe}.pdf`)
+  }
 }
 
 export async function printTrialBalance(yearId: number, year: number): Promise<PrintResult> {

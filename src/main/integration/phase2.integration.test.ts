@@ -3,7 +3,7 @@ import { closeDb } from '../data/db'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import { makeAccount, makeYear, setupDb } from '../test-utils'
 import { createAamad } from '../services/aamad'
-import { createSauda, latestRate } from '../services/sauda'
+import { createSauda, rateForLifting } from '../services/sauda'
 import { createNikasi } from '../services/nikasi'
 import { accrueRent, getStandingBhada } from '../engines/bhada'
 import { createPayment, createReceipt } from '../services/vouchers'
@@ -41,14 +41,10 @@ describe('Phase 2 done/verify — worked settlement', () => {
 
     // 2) Deal: vyapari agrees ₹500/packet with the kisan; the rate flows to the nikasi.
     createSauda(yearId, { date: '2026-04-01', vyapariAccountId: vyapari, kisanAccountId: kisan, packets: 150, ratePaise: RATE })
-    expect(latestRate(yearId, vyapari, kisan)).toBe(RATE)
+    expect(rateForLifting(yearId, vyapari, kisan)).toBe(RATE)
 
-    // 3) Full-year rent accrued: 200 × ₹15 = ₹3,000 Dr Kisan / Cr Rent Income.
-    accrueRent(kisan, yearId, '2026-12-31')
-    expect(getAccountBalance(kisan, yearId)).toBe(200 * RENT) // ₹3,000 Dr so far
-    expect(getStandingBhada(kisan, yearId).standingPaise).toBe(200 * RENT)
-
-    // 4) Nikasi sale: vyapari buys 150 packets from the lot (drained rack1 120 + rack2 30).
+    // 3) Nikasi sale: vyapari buys 150 packets from the lot (drained rack1 120 + rack2 30). Rent
+    //    accrues on the shipped 150 automatically as the stock leaves.
     const proceeds = 150 * RATE // ₹75,000
     const res = createNikasi(yearId, {
       date: '2026-05-15',
@@ -60,6 +56,11 @@ describe('Phase 2 done/verify — worked settlement', () => {
       lines: [{ aamadId: lot, packets: 150, weightKg: 150 * 105, ratePaise: RATE }]
     })
     expect(res.voucherId).not.toBeNull()
+    expect(getStandingBhada(kisan, yearId).standingPaise).toBe(150 * RENT) // rent for shipped stock
+
+    // 4) Year-end catch-up: the 50 packets still in storage are billed too → full ₹3,000 rent.
+    accrueRent(kisan, yearId, '2026-12-31', undefined, 'stored')
+    expect(getStandingBhada(kisan, yearId).standingPaise).toBe(200 * RENT)
 
     // Maps: current = aamad − nikasi = 200 − 150 = 50.
     expect(getMap(yearId, 'aamad').totalPackets).toBe(200)

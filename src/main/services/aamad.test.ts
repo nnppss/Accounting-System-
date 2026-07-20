@@ -147,6 +147,32 @@ describe('Aamad (stock-in)', () => {
     expect(getAamad(id)!.assignedPackets).toBe(60)
   })
 
+  it('reports packets shipped out per lot without the location join inflating the sums', () => {
+    const id = createAamad(yearId, {
+      date: '2026-02-10',
+      kisanAccountId: kisan,
+      totalPackets: 230,
+      locations: [
+        { room: 1, floor: 1, rack: 1, packets: 130 },
+        { room: 1, floor: 1, rack: 2, packets: 100 }
+      ]
+    })
+    const vyapari = makeAccount('Mohan Vyapari', 'vyapari', 'Sundry Debtors')
+    for (const packets of [20, 30]) {
+      createNikasi(yearId, {
+        date: '2026-06-01',
+        deliveredToType: 'vyapari',
+        deliveredToAccountId: vyapari,
+        lines: [{ aamadId: id, packets, weightKg: packets * 50, ratePaise: 50000 }]
+      })
+    }
+
+    const row = listAamad(yearId, { kisanAccountId: kisan }).rows.find((r) => r.id === id)!
+    expect(row.outPackets).toBe(50)
+    expect(row.assignedPackets).toBe(230)
+    expect(row.totalPackets - row.outPackets).toBe(180)
+  })
+
   it('searches by kisan with a count + total-packets summary', () => {
     createAamad(yearId, {
       date: '2026-02-10',

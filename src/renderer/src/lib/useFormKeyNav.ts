@@ -111,10 +111,21 @@ export function useFormKeyNav({
 }): {
   containerRef: RefObject<HTMLDivElement>
   onKeyDownCapture: (e: ReactKeyboardEvent<HTMLDivElement>) => void
+  focusFirst: () => void
 } {
   const containerRef = useRef<HTMLDivElement>(null) as RefObject<HTMLDivElement>
   const acceptRef = useRef(onAccept)
   acceptRef.current = onAccept
+
+  // Call after clearing the form in place (a "Save & new") to put the cursor back at the top —
+  // nothing opened, so the effect below won't fire. Deferred a frame so the cleared fields
+  // have re-rendered.
+  const focusFirst = useCallback((): void => {
+    window.requestAnimationFrame(() => {
+      const c = containerRef.current
+      if (c) focusField(collectFields(c)[0])
+    })
+  }, [])
 
   // Land on the first field whenever the form becomes visible (after antd's open animation).
   useEffect(() => {
@@ -190,5 +201,5 @@ export function useFormKeyNav({
     focusField(next)
   }, [])
 
-  return { containerRef, onKeyDownCapture }
+  return { containerRef, onKeyDownCapture, focusFirst }
 }

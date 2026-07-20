@@ -9,7 +9,7 @@ import type {
   StoreConfig
 } from '../../shared/contracts'
 import { createAamad, deleteAamad, getAamad, listAamad, updateAamad } from '../services/aamad'
-import { createSauda, deleteSauda, latestRate, listSauda } from '../services/sauda'
+import { createSauda, deleteSauda, listSauda, rateForLifting, settleSauda, unsettleSauda } from '../services/sauda'
 import { createNikasi, deleteNikasi, getNikasi, listNikasi, lotsWithRemaining } from '../services/nikasi'
 import { getMap, getRackStock, kisanStockLocations } from '../services/maps'
 import { getStoreConfig, setStoreConfig } from '../services/store'
@@ -55,9 +55,17 @@ export function registerStockIpc(): void {
     const s = requireOpenYear()
     return deleteSauda(s.yearId, id, s.userId)
   })
-  ipcMain.handle('sauda:latestRate', (_e, vyapariAccountId: number, kisanAccountId: number) =>
-    latestRate(requireSession().yearId, vyapariAccountId, kisanAccountId)
+  ipcMain.handle('sauda:rateForLifting', (_e, vyapariAccountId: number, kisanAccountId: number) =>
+    rateForLifting(requireSession().yearId, vyapariAccountId, kisanAccountId)
   )
+  ipcMain.handle('sauda:settle', (_e, id: number, input: { date: string; amountPaise: number }) => {
+    const s = requireOpenYear()
+    return settleSauda(s.yearId, id, input, s.userId)
+  })
+  ipcMain.handle('sauda:unsettle', (_e, id: number) => {
+    const s = requireOpenYear()
+    return unsettleSauda(s.yearId, id, s.userId)
+  })
 
   // Nikasi
   ipcMain.handle('nikasi:create', (_e, input: NikasiInput) => {

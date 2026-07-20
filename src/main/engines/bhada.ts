@@ -1,6 +1,6 @@
 import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { aamad, account, financialYear, voucher, voucherEntry } from '../data/schema'
+import { aamad, account, financialYear, nikasi, nikasiLine, person, voucher, voucherEntry } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type {
   AccrueAllResult,
@@ -14,13 +14,21 @@ import { writeAudit } from '../audit/audit'
 
 /**
  * Bhada (rent) engine — architecture.md §7. Storage rent is a flat per-packet rate for the year
- * (financial_year.rent_rate_paise). Once a kisan's stored quantity is known, the FULL-year rent
- * is accrued: Dr Kisan / Cr Rent Income (tag 'rent'). Recovery is NOT a separate entry — the
- * kisan's sale-proceeds credit nets against this rent debit in his running balance (posting map).
+ * (financial_year.rent_rate_paise), charged Dr Kisan / Cr Rent Income (tag 'rent'). Recovery is NOT
+ * a separate entry — the kisan's sale-proceeds credit nets against this rent debit in his running
+ * balance (posting map).
+ *
+ * **When rent hits the ledger.** Rent accrues as the kisan's stock LEAVES: every nikasi (a vyapari
+ * sale, a personal draw, or a self-withdrawal) re-prices his rent to `shipped packets × rate`, so
+ * the ledger reflects rent piecemeal as he ships — not all at once at intake. At year-end close the
+ * accrual switches to the STORED basis (`basis: 'stored'`), charging the full year's rent on every
+ * packet he stored — including stock that never shipped — because the kisan owes rent no matter
+ * what (the unpaid remainder then carries forward like any due).
  *
  * Re-running `accrueRent` is idempotent: it voids the prior accrual and re-posts at the current
- * stored quantity (e.g. after more aamad is added). Settlement ordering ("rent deducted first")
- * is a Bills concern (Phase 5); here standing bhada = the rent still carried on the kisan's books.
+ * quantity (after another nikasi ships, or when the year-end catch-up switches to the stored basis).
+ * Settlement ordering ("rent deducted first") is a Bills concern; here standing bhada = the rent
+ * still carried on the kisan's books.
  */
 export type { AccrueAllResult, AccrueResult, StandingBhada } from '../../shared/contracts'
 
@@ -30,6 +38,17 @@ export function getStoredPackets(kisanAccountId: number, yearId: number): number
     .select({ n: sql<number>`coalesce(sum(${aamad.totalPackets}), 0)` })
     .from(aamad)
     .where(and(eq(aamad.kisanAccountId, kisanAccountId), eq(aamad.yearId, yearId)))
+    .get()
+  return row?.n ?? 0
+}
+
+/** Total packets that have LEFT the cold on this kisan's account this year (sum of his nikasi lines). */
+export function getShippedPackets(kisanAccountId: number, yearId: number): number {
+  const row = db()
+    .select({ n: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)` })
+    .from(nikasiLine)
+    .innerJoin(nikasi, eq(nikasiLine.nikasiId, nikasi.id))
+    .where(and(eq(nikasiLine.fromKisanAccountId, kisanAccountId), eq(nikasi.yearId, yearId)))
     .get()
   return row?.n ?? 0
 }
@@ -52,12 +71,19 @@ function priorAccrualVoucherIds(kisanAccountId: number, yearId: number): number[
   return rows.map((r) => r.id)
 }
 
-/** Accrue (or re-accrue) one kisan's full-year storage rent. Returns null if rent is zero. */
+/**
+ * Accrue (or re-accrue) one kisan's storage rent. `basis` picks the quantity charged:
+ *  - `'shipped'` (default) — packets that have LEFT via nikasi; called after each nikasi so rent
+ *    hits the ledger piecemeal as he ships.
+ *  - `'stored'` — every packet he stored; used by the year-end catch-up so unshipped stock is billed.
+ * Idempotent (voids the prior accrual first). Returns null if rent is zero.
+ */
 export function accrueRent(
   kisanAccountId: number,
   yearId: number,
   date: string,
-  userId?: number
+  userId?: number,
+  basis: 'shipped' | 'stored' = 'shipped'
 ): AccrueResult | null {
   const yr = db().select().from(financialYear).where(eq(financialYear.id, yearId)).get()
   if (!yr) throw new Error(`Financial year ${yearId} not found`)
@@ -66,7 +92,10 @@ export function accrueRent(
     voidVoucher(vid, 'bhada re-accrued', userId)
   }
 
-  const packets = getStoredPackets(kisanAccountId, yearId)
+  const packets =
+    basis === 'stored'
+      ? getStoredPackets(kisanAccountId, yearId)
+      : getShippedPackets(kisanAccountId, yearId)
   const amountPaise = packets * yr.rentRatePaise
   if (amountPaise <= 0) return null
 
@@ -115,8 +144,13 @@ export function setRentRate(
   return accrueAllRent(yearId, date, userId)
 }
 
-/** Accrue rent for every kisan who stored stock this year. */
-export function accrueAllRent(yearId: number, date: string, userId?: number): AccrueAllResult {
+/** Accrue rent for every kisan who stored stock this year (see `accrueRent` for `basis`). */
+export function accrueAllRent(
+  yearId: number,
+  date: string,
+  userId?: number,
+  basis: 'shipped' | 'stored' = 'shipped'
+): AccrueAllResult {
   const kisans = db()
     .selectDistinct({ id: aamad.kisanAccountId })
     .from(aamad)
@@ -125,7 +159,7 @@ export function accrueAllRent(yearId: number, date: string, userId?: number): Ac
   let totalPaise = 0
   let count = 0
   for (const k of kisans) {
-    const r = accrueRent(k.id, yearId, date, userId)
+    const r = accrueRent(k.id, yearId, date, userId, basis)
     if (r) {
       totalPaise += r.amountPaise
       count++
@@ -186,12 +220,14 @@ export function getRentReport(yearId: number): RentReport {
     .select({
       accountId: voucherEntry.accountId,
       name: account.name,
+      sonOf: person.sonOf,
       billed: sql<number>`coalesce(sum(${voucherEntry.drPaise}), 0)`,
       paid: sql<number>`coalesce(sum(${voucherEntry.crPaise}), 0)`
     })
     .from(voucherEntry)
     .innerJoin(voucher, eq(voucherEntry.voucherId, voucher.id))
     .innerJoin(account, eq(voucherEntry.accountId, account.id))
+    .leftJoin(person, eq(account.personId, person.id))
     .where(rentParty)
     .groupBy(voucherEntry.accountId)
     .all()
@@ -222,6 +258,7 @@ export function getRentReport(yearId: number): RentReport {
     .map((r) => ({
       accountId: r.accountId,
       name: r.name,
+      sonOf: r.sonOf,
       billedPaise: r.billed,
       paidPaise: r.paid,
       duePaise: r.billed - r.paid,

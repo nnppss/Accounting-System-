@@ -1,65 +1,41 @@
-import { and, asc, eq, isNull } from 'drizzle-orm'
-import { db } from '../data/db'
-import { account, voucher, voucherEntry } from '../data/schema'
-import type { DayBook, DayBookVoucher } from '../../shared/contracts'
+import { getCashBankAccounts, getRows } from './moneybook'
+import type { DayBook, DayBookSection } from '../../shared/contracts'
 
 /**
- * Day Book read model — every financial transaction posted on one date (software.md day register).
- * Pure query over the ledger: all non-voided vouchers for the year on `date`, each with its
- * posting lines (account · Dr · Cr). Ordered by voucher id (insertion ≈ chronological).
+ * Day Book read model (software.md day register) — the money that moved on one date. It is the
+ * Money Book sliced by day instead of by month: one section per cash/bank account, each listing
+ * that account's transactions with the running balance after every one of them.
  *
- * Physical-only documents (Aamad / Sauda / kisan self-withdrawal Nikasi) post no voucher, so they
- * don't appear here — this is the money day-book, not a stock-movement log.
+ * Only money movements appear. A voucher that touches neither cash nor a bank (a Bhada accrual,
+ * a Nikasi sale journal) is a book entry, not a movement of money, and belongs in the account's
+ * ledger — likewise the physical-only documents (Aamad / Sauda / kisan self-withdrawal Nikasi),
+ * which post no voucher at all. Accounts with no transactions on the date are left out.
  */
-export type { DayBook, DayBookVoucher, DayBookEntry } from '../../shared/contracts'
+export type { DayBook, DayBookSection } from '../../shared/contracts'
 
 export function getDayBook(yearId: number, date: string): DayBook {
-  const rows = db()
-    .select({
-      voucherId: voucher.id,
-      voucherNo: voucher.no,
-      type: voucher.type,
-      sourceModule: voucher.sourceModule,
-      narration: voucher.narration,
-      accountId: account.id,
-      accountName: account.name,
-      drPaise: voucherEntry.drPaise,
-      crPaise: voucherEntry.crPaise,
-      tag: voucherEntry.tag
-    })
-    .from(voucher)
-    .innerJoin(voucherEntry, eq(voucherEntry.voucherId, voucher.id))
-    .innerJoin(account, eq(voucherEntry.accountId, account.id))
-    .where(and(eq(voucher.yearId, yearId), eq(voucher.date, date), isNull(voucher.voidedAt)))
-    .orderBy(asc(voucher.id), asc(voucherEntry.id))
-    .all()
+  const sections: DayBookSection[] = []
+  let totalReceiptPaise = 0
+  let totalPaymentPaise = 0
 
-  const byVoucher = new Map<number, DayBookVoucher>()
-  let totalDrPaise = 0
-  let totalCrPaise = 0
-  for (const r of rows) {
-    let v = byVoucher.get(r.voucherId)
-    if (!v) {
-      v = {
-        voucherId: r.voucherId,
-        voucherNo: r.voucherNo,
-        type: r.type,
-        sourceModule: r.sourceModule,
-        narration: r.narration,
-        entries: []
-      }
-      byVoucher.set(r.voucherId, v)
-    }
-    v.entries.push({
-      accountId: r.accountId,
-      accountName: r.accountName,
-      drPaise: r.drPaise,
-      crPaise: r.crPaise,
-      tag: r.tag
+  for (const a of getCashBankAccounts()) {
+    const rows = getRows(a.id, yearId, (d) => d === date)
+    if (rows.length === 0) continue
+    // getRows is newest-first: rows[0] is the day's last movement (→ closing), the last element
+    // is the day's first (→ opening = its balance backed out by its own receipt/payment).
+    const oldest = rows[rows.length - 1]
+    sections.push({
+      accountId: a.id,
+      accountName: a.name,
+      openingPaise: oldest.balancePaise - oldest.receiptPaise + oldest.paymentPaise,
+      closingPaise: rows[0].balancePaise,
+      rows
     })
-    totalDrPaise += r.drPaise
-    totalCrPaise += r.crPaise
+    for (const r of rows) {
+      totalReceiptPaise += r.receiptPaise
+      totalPaymentPaise += r.paymentPaise
+    }
   }
 
-  return { date, vouchers: [...byVoucher.values()], totalDrPaise, totalCrPaise }
+  return { date, sections, totalReceiptPaise, totalPaymentPaise }
 }

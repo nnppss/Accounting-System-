@@ -71,7 +71,10 @@ export const LOAN_MODES = ['cash', 'bank', 'cheque'] as const
 export type LoanMode = (typeof LOAN_MODES)[number]
 
 /** The lifecycle events recorded against a loan; replayed by the interest engine. */
-export const LOAN_EVENT_TYPES = ['disbursement', 'payment', 'capitalisation'] as const
+// 'capitalisation' is the automatic year-end fold; 'interest_fix' is a figure the accountant set
+// by hand. Both fold interest into the base — they are kept apart so a fix can replace an earlier
+// fix without ever rewriting the year-ends, which are history.
+export const LOAN_EVENT_TYPES = ['disbursement', 'payment', 'capitalisation', 'interest_fix'] as const
 export type LoanEventType = (typeof LOAN_EVENT_TYPES)[number]
 
 // ============================ BARDANA & EXPENSES (Phase 4) ============================

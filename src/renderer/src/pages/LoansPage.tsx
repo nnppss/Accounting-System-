@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
   Button,
   DatePicker,
   Descriptions,
-  Drawer,
+  Empty,
   Form,
   Input,
   InputNumber,
@@ -17,17 +17,19 @@ import {
   Tooltip,
   Typography
 } from 'antd'
-import { PrinterOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PageBanner } from '../components/report'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
-import type { Bill, LoanRow } from '@shared/contracts'
+import type { Bill, LoanRow, PartyLoanEventRow } from '@shared/contracts'
 import type { LoanCategory, LoanEventType, LoanMode, LoanNature } from '@shared/enums'
-import { DATE_FORMAT, DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_FORMAT, DATE_INPUT_FORMATS, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import { SeverityText, interestSeverity, severityRowClass } from '../components/Highlight'
 import AccountSearchSelect from '../components/AccountSearchSelect'
+import { loanNarration, useAutoNarration } from '../lib/narration'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -38,21 +40,53 @@ const CATEGORY_TYPE: Record<LoanCategory, 'kisan' | 'vyapari' | null> = {
   other: null
 }
 
+/** Everything one party owes on loan, as the Loans list shows it: his loans rolled into one row. */
+type PartyRow = {
+  accountId: number
+  accountName: string
+  sonOf: string | null
+  /** 'mixed' when he holds loans under more than one hat (kisan and vyapari, say). */
+  category: LoanCategory | 'mixed'
+  /** The most recent loan he took — what the list sorts on. */
+  latestDate: string
+  principalPaise: number
+  outstandingPaise: number
+  loans: LoanRow[]
+}
+
 export default function LoansPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
   const category = Form.useWatch('category', form) as LoanCategory | undefined
   const mode = Form.useWatch('mode', form) as LoanMode | undefined
   const nature = Form.useWatch('nature', form) as LoanNature | undefined
-  const [payLoan, setPayLoan] = useState<LoanRow | null>(null)
-  const [detailLoan, setDetailLoan] = useState<LoanRow | null>(null)
+  const [partyName, setPartyName] = useState('')
+  useAutoNarration(form, loanNarration(partyName), 'remark')
+  const [payParty, setPayParty] = useState<PartyRow | null>(null)
+  const [detailParty, setDetailParty] = useState<PartyRow | null>(null)
   const [open, setOpen] = useState(false)
   useCreateHotkey(() => setOpen(true))
-  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  // Set by "Save & new" so the success handler clears the form instead of closing it.
+  const again = useRef(false)
+  const submit = (addAnother: boolean) => (): void => {
+    again.current = addAnother
+    form.submit()
+  }
+  const formNav = useFormKeyNav({ open, onAccept: submit(false) })
   const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
+
+  // Keep the date — a run of entries is nearly always for the same day.
+  const clearForNext = (): void => {
+    const date = form.getFieldValue('date')
+    form.resetFields()
+    form.setFieldValue('date', date)
+    setPartyName('')
+    formNav.focusFirst()
+  }
 
   const [accountFilter, setAccountFilter] = useState<number | undefined>()
   const [categoryFilter, setCategoryFilter] = useState<'all' | LoanCategory>('all')
@@ -65,20 +99,48 @@ export default function LoansPage(): JSX.Element {
   })
   const loans = useQuery({ queryKey: ['loans'], queryFn: () => window.api.loans.list() })
 
+  // One row per party, not per loan: the cold lends to the man and settles with the man, so his
+  // loans are a history behind a single figure — Σprincipal, Σinterest, Σoutstanding. They keep
+  // their own rates and dates underneath (which is why 'rate' is a column only when they agree).
   const rows = useMemo(() => {
-    const all = (loans.data ?? []) as LoanRow[]
-    return all.filter((r) => {
+    const kept = ((loans.data ?? []) as LoanRow[]).filter((r) => {
       if (accountFilter && r.accountId !== accountFilter) return false
       if (categoryFilter !== 'all' && r.category !== categoryFilter) return false
       if (natureFilter !== 'all' && r.nature !== natureFilter) return false
       if (range && (r.date < range[0] || r.date > range[1])) return false
       return true
     })
+    const byParty = new Map<number, PartyRow>()
+    for (const l of kept) {
+      const p = byParty.get(l.accountId)
+      if (!p) {
+        byParty.set(l.accountId, {
+          accountId: l.accountId,
+          accountName: l.accountName,
+          sonOf: l.sonOf,
+          category: l.category,
+          latestDate: l.date,
+          principalPaise: l.principalPaise,
+          outstandingPaise: l.outstandingPaise,
+          loans: [l]
+        })
+        continue
+      }
+      p.principalPaise += l.principalPaise
+      p.outstandingPaise += l.outstandingPaise
+      p.loans.push(l)
+      if (l.date > p.latestDate) p.latestDate = l.date
+      // A man can hold loans under more than one hat; the row says so rather than picking one.
+      if (p.category !== l.category) p.category = 'mixed'
+    }
+    return [...byParty.values()].sort((a, b) =>
+      a.latestDate === b.latestDate ? a.accountName.localeCompare(b.accountName) : a.latestDate < b.latestDate ? 1 : -1
+    )
   }, [loans.data, accountFilter, categoryFilter, natureFilter, range])
 
   const { containerRef, rowClassName: keyNavRowClass } = useTableKeyNav(
     rows,
-    (row) => setDetailLoan(row)
+    (row) => setDetailParty(row)
   )
 
   const create = useMutation({
@@ -86,8 +148,12 @@ export default function LoansPage(): JSX.Element {
       window.api.loans.create(input),
     onSuccess: () => {
       message.success(t('loans.created'))
-      setOpen(false)
-      form.resetFields()
+      if (again.current) clearForNext()
+      else {
+        setOpen(false)
+        form.resetFields()
+        setPartyName('')
+      }
       queryClient.invalidateQueries({ queryKey: ['loans'] })
     },
     onError: (e: Error) => message.error(e.message)
@@ -101,11 +167,10 @@ export default function LoansPage(): JSX.Element {
     .map((b) => ({ value: b.id, label: b.name }))
 
   const columns = [
-    { title: t('common.date'), dataIndex: 'date', width: 110, render: (v: string) => formatDate(v) },
     {
       title: t('loans.party'),
       dataIndex: 'accountName',
-      render: (name: string, row: LoanRow) => (
+      render: (name: string, row: PartyRow) => (
         <>
           {name}
           {row.sonOf && <Typography.Text type="secondary"> s/o {row.sonOf}</Typography.Text>}
@@ -116,17 +181,15 @@ export default function LoansPage(): JSX.Element {
       title: t('loans.category'),
       dataIndex: 'category',
       width: 90,
-      render: (c: LoanCategory) => t(`loans.cat.${c}`)
+      render: (c: LoanCategory | 'mixed') =>
+        c === 'mixed' ? t('loans.cat.mixed') : t(`loans.cat.${c}`)
     },
     {
-      title: t('loans.nature'),
-      dataIndex: 'nature',
-      width: 100,
-      render: (n: LoanNature) => (
-        <Tooltip title={t(`loans.natureHelp.${n}`)}>
-          <Tag color={n === 'direct' ? 'blue' : 'orange'}>{t(`loans.nature.${n}`)}</Tag>
-        </Tooltip>
-      )
+      title: t('loans.loanCount'),
+      key: 'count',
+      align: 'right' as const,
+      width: 80,
+      render: (_: unknown, row: PartyRow) => row.loans.length
     },
     {
       title: t('loans.principal'),
@@ -144,7 +207,7 @@ export default function LoansPage(): JSX.Element {
       key: 'interest',
       align: 'right' as const,
       width: 120,
-      render: (_: unknown, row: LoanRow) => {
+      render: (_: unknown, row: PartyRow) => {
         const interest = row.outstandingPaise - row.principalPaise
         return interest > 0 ? (
           <SeverityText severity="warning" strong>
@@ -156,11 +219,21 @@ export default function LoansPage(): JSX.Element {
       }
     },
     {
+      // His loans can each run at their own rate; one figure would be a lie, so say so.
       title: t('loans.rate'),
-      dataIndex: 'monthlyRateBps',
+      key: 'rate',
       align: 'right' as const,
       width: 80,
-      render: (bps: number) => `${bps / 100}%`
+      render: (_: unknown, row: PartyRow) => {
+        const rates = [...new Set(row.loans.map((l) => l.monthlyRateBps))]
+        return rates.length === 1 ? (
+          `${rates[0] / 100}%`
+        ) : (
+          <Tooltip title={rates.map((r) => `${r / 100}%`).join(', ')}>
+            <Typography.Text type="secondary">{t('loans.mixedRates')}</Typography.Text>
+          </Tooltip>
+        )
+      }
     },
     {
       title: t('loans.outstanding'),
@@ -173,25 +246,26 @@ export default function LoansPage(): JSX.Element {
       title: t('common.actions'),
       key: 'actions',
       width: 130,
-      render: (_: unknown, row: LoanRow) => (
+      render: (_: unknown, row: PartyRow) => (
         <Space size={4}>
           <Button
             size="small"
             onClick={(e) => {
               e.stopPropagation()
-              setPayLoan(row)
+              setPayParty(row)
             }}
             disabled={row.outstandingPaise <= 0}
           >
             {t('loans.pay')}
           </Button>
+          {/* His loans on paper — the register, cut to this one man. */}
           <Button
             size="small"
             type="text"
             icon={<PrinterOutlined />}
             onClick={(e) => {
               e.stopPropagation()
-              print(() => window.api.print.loanStatement(row.id))
+              print(() => window.api.print.loanRegister(row.loans))
             }}
           />
         </Space>
@@ -205,8 +279,37 @@ export default function LoansPage(): JSX.Element {
         title={t('loans.title')}
         extra={
           <Space>
-            <Button icon={<PrinterOutlined />} onClick={() => print(() => window.api.print.loanRegister(rows))}>
+            {/* The register is a loan-by-loan document, so it prints the loans behind the rows. */}
+            <Button
+              icon={<PrinterOutlined />}
+              onClick={() => print(() => window.api.print.loanRegister(rows.flatMap((r) => r.loans)))}
+            >
               {t('common.print')}
+            </Button>
+            <Button
+              icon={<FileExcelOutlined />}
+              onClick={() =>
+                exportXlsx(
+                  'loan-register.xlsx',
+                  t('loans.title'),
+                  ['Date', 'Party', 'Category', 'Principal', 'Mode', 'Nature', 'Rate %/mo', 'Outstanding'],
+                  rows
+                    .flatMap((r) => r.loans)
+                    .map((l) => [
+                      formatDate(l.date),
+                      l.accountName,
+                      l.category,
+                      paiseToRupees(l.principalPaise),
+                      l.mode,
+                      l.nature,
+                      l.monthlyRateBps / 100,
+                      paiseToRupees(l.outstandingPaise)
+                    ]),
+                  [3, 7] // Principal, Outstanding
+                )
+              }
+            >
+              {t('common.excel')}
             </Button>
             <Button type="primary" onClick={() => setOpen(true)}>
               {t('loans.new')}
@@ -215,6 +318,17 @@ export default function LoansPage(): JSX.Element {
         }
       />
 
+      {detailParty ? (
+        <PartyLoanDetail
+          party={detailParty}
+          onBack={() => setDetailParty(null)}
+          onPay={(party) => {
+            setDetailParty(null)
+            setPayParty(party)
+          }}
+        />
+      ) : (
+        <>
       <div ref={filterNav.containerRef} onKeyDownCapture={filterNav.onKeyDownCapture}>
       <Space style={{ marginBottom: 16 }} wrap>
         <AccountSearchSelect
@@ -272,7 +386,7 @@ export default function LoansPage(): JSX.Element {
       <div ref={containerRef}>
         <Table
           className="pc-report"
-          rowKey="id"
+          rowKey="accountId"
           size="small"
           loading={loans.isLoading}
           columns={columns}
@@ -282,17 +396,20 @@ export default function LoansPage(): JSX.Element {
             [severityRowClass(interestSeverity(row.outstandingPaise - row.principalPaise)), keyNavRowClass(row, i)].filter(Boolean).join(' ')
           }
           onRow={(row) => ({
-            onClick: () => setDetailLoan(row),
+            onClick: () => setDetailParty(row),
             style: { cursor: 'pointer' }
           })}
         />
       </div>
+        </>
+      )}
 
       <AutoFocusModal
         title={t('loans.new')}
         open={open}
         onCancel={() => setOpen(false)}
-        onOk={() => form.submit()}
+        onOk={submit(false)}
+        onOkAndNew={submit(true)}
         confirmLoading={create.isPending}
         okText={t('common.create')}
         width={640}
@@ -341,6 +458,7 @@ export default function LoansPage(): JSX.Element {
                 type={partyType}
                 placeholder={t('loans.party')}
                 style={{ width: 200 }}
+                onChange={(_, name) => setPartyName(name ?? '')}
               />
             </Form.Item>
           </Space>
@@ -405,23 +523,13 @@ export default function LoansPage(): JSX.Element {
         </div>
       </AutoFocusModal>
 
-      <LoanDetailDrawer
-        loan={detailLoan}
-        bankName={(id) => bankOptions.find((b) => b.value === id)?.label}
-        onClose={() => setDetailLoan(null)}
-        onPay={(loan) => {
-          setDetailLoan(null)
-          setPayLoan(loan)
-        }}
-      />
-
-      {payLoan && (
+      {payParty && (
         <PayModal
-          loan={payLoan}
+          party={payParty}
           bankOptions={bankOptions}
-          onClose={() => setPayLoan(null)}
+          onClose={() => setPayParty(null)}
           onDone={() => {
-            setPayLoan(null)
+            setPayParty(null)
             queryClient.invalidateQueries({ queryKey: ['loans'] })
           }}
         />
@@ -433,6 +541,7 @@ export default function LoansPage(): JSX.Element {
 const EVENT_COLOR: Record<LoanEventType, string> = {
   disbursement: 'blue',
   capitalisation: 'orange',
+  interest_fix: 'purple',
   payment: 'green'
 }
 
@@ -457,45 +566,62 @@ function loanComponentsOf(bill: Bill): Array<{
 }
 
 /**
- * Party-centric loan detail: everything `loan`'s party owes, decomposed into components
- * (each loan + its interest, rent, trade/other) **as of a chosen date** — sourced from the
- * Bills read model so the figures provably net to the party's total. Below, the clicked loan's
- * own terms and event history.
+ * Everything one party owes on loan, in one place. The cold lends to the man, not to each of his
+ * loans, so this is the man's page: the top panel decomposes what he owes as of a chosen date
+ * (each loan + its interest, rent, trade/other) from the Bills read model, so the figures provably
+ * net to his total. Then his loans on their own terms, and finally the whole run of what has
+ * happened across all of them — given, interest, repaid — as one history.
+ *
+ * Takes over the page where the list was, rather than sliding a panel over it — there are four
+ * stacked sections here and they want the full width, and nothing on the list behind is worth
+ * keeping in view. Back returns to it.
  */
-function LoanDetailDrawer({
-  loan,
-  bankName,
-  onClose,
+function PartyLoanDetail({
+  party,
+  onBack,
   onPay
 }: {
-  loan: LoanRow | null
-  bankName: (id: number | null) => string | undefined
-  onClose: () => void
-  onPay: (loan: LoanRow) => void
+  party: PartyRow
+  onBack: () => void
+  onPay: (party: PartyRow) => void
 }): JSX.Element {
   const { t } = useTranslation()
+  const { message, modal } = AntApp.useApp()
+  const print = usePrinter()
+  const queryClient = useQueryClient()
   const [asOf, setAsOf] = useState<string>(() => dayjs().format('YYYY-MM-DD'))
 
   const bill = useQuery({
-    queryKey: ['bill', loan?.accountId, asOf],
-    queryFn: () => window.api.bills.get(loan!.accountId, asOf),
-    enabled: loan != null
+    queryKey: ['bill', party.accountId, asOf],
+    queryFn: () => window.api.bills.get(party.accountId, asOf)
   })
-  const detail = useQuery({
-    queryKey: ['loan', loan?.id, asOf],
-    queryFn: () => window.api.loans.get(loan!.id, asOf),
-    enabled: loan != null
+  const events = useQuery({
+    queryKey: ['partyLoanEvents', party.accountId],
+    queryFn: () => window.api.loans.partyEvents(party.accountId)
   })
-  // What a carried-forward indirect loan's principal is made of (from the closed source year).
-  const composition = useQuery({
-    queryKey: ['loanComposition', loan?.id],
-    queryFn: () => window.api.loans.composition(loan!.id),
-    enabled: loan != null && loan.nature === 'indirect'
+
+  const undo = useMutation({
+    mutationFn: (eventId: number) => window.api.loans.undoPayment(eventId),
+    onSuccess: () => {
+      message.success(t('loans.paymentUndone'))
+      queryClient.invalidateQueries({ queryKey: ['loans'] })
+      queryClient.invalidateQueries({ queryKey: ['partyLoanEvents'] })
+      queryClient.invalidateQueries({ queryKey: ['bill'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['vouchers'] })
+    },
+    onError: (e: Error) => message.error(e.message)
   })
 
   const b = bill.data
-  const d = detail.data
-  const comp = composition.data
+  const evs = events.data ?? []
+  // Undo is offered only on the last-entered event of its OWN loan — anything later on that loan
+  // was computed on top of it, which is exactly what the service refuses. Compared by id, not by
+  // position: the run is ordered by date, so a backdated payment isn't necessarily the last one in.
+  const newestByLoan = new Map<number, number>()
+  for (const e of evs) newestByLoan.set(e.loanId, Math.max(newestByLoan.get(e.loanId) ?? 0, e.id))
+  const canUndo = (e: PartyLoanEventRow): boolean =>
+    e.type === 'payment' && newestByLoan.get(e.loanId) === e.id
 
   const components = b ? loanComponentsOf(b) : []
   const loansOutstanding = components.reduce((s, c) => s + c.outstandingPaise, 0)
@@ -505,20 +631,25 @@ function LoanDetailDrawer({
   const tradeOtherPaise = totalPaise - loansOutstanding - rentPaise
 
   return (
-    <Drawer
-      open={loan != null}
-      onClose={onClose}
-      width={500}
-      title={loan ? `${loan.accountName} — ${t(`loans.cat.${loan.category}`)}` : t('loans.title')}
-      loading={bill.isLoading}
-      extra={
-        loan && (
-          <Button type="primary" disabled={loan.outstandingPaise <= 0} onClick={() => onPay(loan)}>
-            {t('loans.pay')}
-          </Button>
-        )
-      }
-    >
+    <>
+      <Space style={{ marginBottom: 16 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+          {t('common.back')}
+        </Button>
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          {party.accountName}
+          {party.sonOf && (
+            <Typography.Text type="secondary" style={{ fontSize: 14, fontWeight: 400 }}>
+              {' '}
+              s/o {party.sonOf}
+            </Typography.Text>
+          )}
+        </Typography.Title>
+        <Button type="primary" disabled={party.outstandingPaise <= 0} onClick={() => onPay(party)}>
+          {t('loans.pay')}
+        </Button>
+      </Space>
+
       {b && (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Space>
@@ -560,13 +691,7 @@ function LoanDetailDrawer({
                   )
                 })),
                 ...(rentPaise !== 0
-                  ? [
-                      {
-                        key: 'rent',
-                        label: t('loans.rentComponent'),
-                        children: formatINR(rentPaise)
-                      }
-                    ]
+                  ? [{ key: 'rent', label: t('loans.rentComponent'), children: formatINR(rentPaise) }]
                   : []),
                 ...(tradeOtherPaise !== 0
                   ? [
@@ -586,99 +711,169 @@ function LoanDetailDrawer({
             />
           </div>
 
-          {comp && comp.lines.length > 0 && (
-            <div>
-              <Typography.Title level={5}>
-                {t('loans.compTitle', { year: comp.sourceYear })}
-              </Typography.Title>
-              <Descriptions
-                column={1}
-                size="small"
-                bordered
-                items={[
-                  ...comp.lines.map((l) => ({
-                    key: l.tag,
-                    label: t(`loans.comp.${l.tag}`),
-                    children: formatINR(l.paise)
-                  })),
-                  {
-                    key: 'comp-total',
-                    label: <strong>{t('loans.principalTotal')}</strong>,
-                    children: <strong>{formatINR(comp.totalPaise)}</strong>
-                  }
-                ]}
-              />
-              <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
-                {t('loans.compHelp', { year: comp.sourceYear })}
-              </Typography.Paragraph>
-            </div>
-          )}
+          <div>
+            <Typography.Title level={5}>
+              {t('loans.hisLoans', { count: party.loans.length })}
+            </Typography.Title>
+            <Table
+              rowKey="id"
+              size="small"
+              pagination={false}
+              dataSource={party.loans}
+              columns={[
+                {
+                  title: t('common.date'),
+                  dataIndex: 'date',
+                  render: (v: string) => formatDate(v)
+                },
+                {
+                  title: t('loans.nature'),
+                  dataIndex: 'nature',
+                  render: (n: LoanNature) => (
+                    <Tooltip title={t(`loans.natureHelp.${n}`)}>
+                      <Tag color={n === 'direct' ? 'blue' : 'orange'}>{t(`loans.nature.${n}`)}</Tag>
+                    </Tooltip>
+                  )
+                },
+                {
+                  title: t('loans.rate'),
+                  dataIndex: 'monthlyRateBps',
+                  align: 'right' as const,
+                  render: (bps: number) => `${bps / 100}%`
+                },
+                {
+                  title: t('loans.principal'),
+                  dataIndex: 'principalPaise',
+                  align: 'right' as const,
+                  render: (v: number) => formatINR(v)
+                },
+                {
+                  title: t('loans.outstanding'),
+                  dataIndex: 'outstandingPaise',
+                  align: 'right' as const,
+                  render: (v: number) => <strong>{formatINR(v)}</strong>
+                },
+                {
+                  key: 'print',
+                  width: 40,
+                  render: (_: unknown, l: LoanRow) => (
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<PrinterOutlined />}
+                      title={t('loans.statement')}
+                      onClick={() => print(() => window.api.print.loanStatement(l.id))}
+                    />
+                  )
+                }
+              ]}
+              expandable={{
+                // Only a carried-forward indirect loan is made of anything — a direct one is just
+                // cash handed over. Rendered on expand, so the query only runs if he looks.
+                rowExpandable: (l) => l.nature === 'indirect',
+                expandedRowRender: (l) => <LoanCompositionPanel loanId={l.id} />
+              }}
+            />
+          </div>
 
-          {d && (
-            <>
-              <Descriptions
-                column={1}
-                size="small"
-                title={t('loans.thisLoanTitle')}
-                items={[
-                  { key: 'nature', label: t('loans.nature'), children: t(`loans.nature.${d.nature}`) },
-                  { key: 'date', label: t('loans.dateTaken'), children: formatDate(d.date) },
-                  {
-                    key: 'rate',
-                    label: t('loans.rate'),
-                    children: `${d.monthlyRateBps / 100}% / ${t('loans.perMonth')}`
-                  },
-                  { key: 'istart', label: t('loans.interestFrom'), children: d.interestStartDate },
-                  {
-                    key: 'mode',
-                    label: t('loans.mode'),
-                    children:
-                      d.mode === 'cash'
-                        ? t('loans.mode.cash')
-                        : `${t(`loans.mode.${d.mode}`)} — ${bankName(d.bankAccountId) ?? '—'}`
-                  },
-                  { key: 'mobile', label: t('loans.mobile'), children: d.mobile || '—' },
-                  { key: 'remark', label: t('common.narration'), children: d.remark || '—' }
-                ]}
-              />
-
-              <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
-                {d.nature === 'indirect'
-                  ? t('loans.natureHelp.indirect')
-                  : t('loans.natureHelp.direct')}
-              </Typography.Paragraph>
-
-              <div>
-                <Typography.Title level={5}>{t('loans.history')}</Typography.Title>
-                <Timeline
-                  items={d.events.map((e) => ({
-                    color: EVENT_COLOR[e.type],
-                    children: (
-                      <Space direction="vertical" size={0}>
-                        <Typography.Text>
-                          {t(`loans.event.${e.type}`)} — <strong>{formatINR(e.amountPaise)}</strong>
-                        </Typography.Text>
-                        <Typography.Text type="secondary">{formatDate(e.date)}</Typography.Text>
-                      </Space>
-                    )
-                  }))}
-                />
-              </div>
-            </>
-          )}
+          <div>
+            <Typography.Title level={5}>{t('loans.history')}</Typography.Title>
+            <Timeline
+              items={evs.map((e) => ({
+                color: EVENT_COLOR[e.type],
+                children: (
+                  <Space direction="vertical" size={0}>
+                    <Typography.Text>
+                      {t(`loans.event.${e.type}`)} — <strong>{formatINR(e.amountPaise)}</strong>
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                      {formatDate(e.date)}
+                      {party.loans.length > 1 && (
+                        <> · {t('loans.ofLoan', { date: formatDate(e.loanDate) })}</>
+                      )}
+                    </Typography.Text>
+                    {canUndo(e) && (
+                      <Button
+                        size="small"
+                        danger
+                        type="link"
+                        style={{ padding: 0 }}
+                        loading={undo.isPending}
+                        onClick={() =>
+                          modal.confirm({
+                            title: t('loans.undoPayment'),
+                            content: t('loans.undoPaymentHint', {
+                              amount: formatINR(e.amountPaise),
+                              date: formatDate(e.date)
+                            }),
+                            okText: t('loans.undoPayment'),
+                            okButtonProps: { danger: true },
+                            onOk: () => undo.mutateAsync(e.id)
+                          })
+                        }
+                      >
+                        {t('loans.undoPayment')}
+                      </Button>
+                    )}
+                  </Space>
+                )
+              }))}
+            />
+          </div>
         </Space>
       )}
-    </Drawer>
+    </>
   )
 }
 
+/** What a carried-forward indirect loan's principal is made of, from the closed source year. */
+function LoanCompositionPanel({ loanId }: { loanId: number }): JSX.Element {
+  const { t } = useTranslation()
+  const q = useQuery({
+    queryKey: ['loanComposition', loanId],
+    queryFn: () => window.api.loans.composition(loanId)
+  })
+  const comp = q.data
+  if (!comp || comp.lines.length === 0) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+  return (
+    <>
+      <Descriptions
+        column={1}
+        size="small"
+        bordered
+        title={t('loans.compTitle', { year: comp.sourceYear })}
+        items={[
+          ...comp.lines.map((l) => ({
+            key: l.tag,
+            label: t(`loans.comp.${l.tag}`),
+            children: formatINR(l.paise)
+          })),
+          {
+            key: 'comp-total',
+            label: <strong>{t('loans.principalTotal')}</strong>,
+            children: <strong>{formatINR(comp.totalPaise)}</strong>
+          }
+        ]}
+      />
+      <Typography.Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
+        {t('loans.compHelp', { year: comp.sourceYear })}
+      </Typography.Paragraph>
+    </>
+  )
+}
+
+/**
+ * Take a repayment. Interest is settled with the man as a whole, but the money itself lands on one
+ * loan — each carries its own rate and base, so there is nowhere neutral to put it. When he has
+ * more than one running, the loan is picked here; with a single loan there is nothing to ask.
+ */
 function PayModal({
-  loan,
+  party,
   bankOptions,
   onClose,
   onDone
 }: {
-  loan: LoanRow
+  party: PartyRow
   bankOptions: { value: number; label: string }[]
   onClose: () => void
   onDone: () => void
@@ -688,9 +883,13 @@ function PayModal({
   const [form] = Form.useForm()
   const formNav = useFormKeyNav({ onAccept: () => form.submit() })
   const mode = Form.useWatch('mode', form) as LoanMode | undefined
+  const payable = party.loans.filter((l) => l.outstandingPaise > 0)
+  const watchLoanId = Form.useWatch('loanId', form) as number | undefined
+  const loan = payable.find((l) => l.id === watchLoanId) ?? payable[0]
 
   const pay = useMutation({
     mutationFn: (v: {
+      loanId: number
       amount: number
       date: dayjs.Dayjs
       mode: LoanMode
@@ -699,7 +898,7 @@ function PayModal({
       chequeBank?: string
     }) =>
       window.api.loans.pay(
-        loan.id,
+        v.loanId,
         toPaise(v.amount),
         v.date.format('YYYY-MM-DD'),
         v.mode,
@@ -717,17 +916,32 @@ function PayModal({
   return (
     <AutoFocusModal
       open
-      title={`${t('loans.pay')} — ${loan.accountName}`}
+      title={`${t('loans.pay')} — ${party.accountName}`}
       onCancel={onClose}
       onOk={() => form.submit()}
       confirmLoading={pay.isPending}
       okText={t('loans.pay')}
     >
       <Typography.Paragraph type="secondary">
-        {t('loans.outstanding')}: <strong>{formatINR(loan.outstandingPaise)}</strong>
+        {t('loans.outstanding')}: <strong>{formatINR(loan?.outstandingPaise ?? 0)}</strong>
       </Typography.Paragraph>
       <div ref={formNav.containerRef} onKeyDownCapture={formNav.onKeyDownCapture}>
-      <Form form={form} layout="vertical" initialValues={{ date: dayjs(), mode: 'cash' }} onFinish={(v) => pay.mutate(v)}>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{ date: dayjs(), mode: 'cash', loanId: payable[0]?.id }}
+        onFinish={(v) => pay.mutate(v)}
+      >
+        {payable.length > 1 && (
+          <Form.Item name="loanId" label={t('loans.againstLoan')} rules={[{ required: true }]}>
+            <Select
+              options={payable.map((l) => ({
+                value: l.id,
+                label: `${formatDate(l.date)} · ${l.monthlyRateBps / 100}% · ${formatINR(l.outstandingPaise)}`
+              }))}
+            />
+          </Form.Item>
+        )}
         <Form.Item name="amount" label={t('common.amount')} rules={[{ required: true }]}>
           <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
         </Form.Item>

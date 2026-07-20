@@ -128,6 +128,15 @@ export default function ShortcutHintBar(): JSX.Element {
         }
         label={t('shortcuts.bar.save')}
       />,
+      <Hint
+        key="saveNew"
+        keys={
+          <>
+            <Kbd small>Ctrl</Kbd>+<Kbd small>Shift</Kbd>+<Kbd small>Enter</Kbd>
+          </>
+        }
+        label={t('shortcuts.bar.saveAndNew')}
+      />,
       <Hint key="cancel" keys={<Kbd small>Esc</Kbd>} label={t('shortcuts.bar.cancel')} />
     )
   } else if (mode === 'view') {

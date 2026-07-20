@@ -1,0 +1,1 @@
+ALTER TABLE `nikasi` ADD `remark` text;

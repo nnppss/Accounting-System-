@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import AutoFocusModal from '../components/AutoFocusModal'
 import {
   App as AntApp,
@@ -9,15 +9,19 @@ import {
   Popconfirm,
   Select,
   Space,
-  Table
+  Table,
+  Tag,
+  Tooltip,
+  Typography
 } from 'antd'
-import { PrinterOutlined } from '@ant-design/icons'
+import { FileExcelOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
 import type { SaudaListRow } from '@shared/contracts'
-import { DATE_INPUT_FORMATS, formatDate, formatINR, toPaise } from '../lib/format'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, paiseToRupees, toPaise } from '../lib/format'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import AccountSearchSelect from '../components/AccountSearchSelect'
 import { useCreateHotkey } from '../lib/useHotkeys'
 import { useFormKeyNav } from '../lib/useFormKeyNav'
@@ -28,6 +32,7 @@ export default function SaudaPage(): JSX.Element {
   const { t } = useTranslation()
   const { message } = AntApp.useApp()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const queryClient = useQueryClient()
   const [form] = Form.useForm()
 
@@ -35,9 +40,26 @@ export default function SaudaPage(): JSX.Element {
   const [kisanFilter, setKisanFilter] = useState<number | undefined>()
   const [range, setRange] = useState<[string, string] | undefined>()
   const [open, setOpen] = useState(false)
+  // The deal whose shortfall is being settled (its modal is open).
+  const [settling, setSettling] = useState<SaudaListRow | null>(null)
+  const [settleForm] = Form.useForm()
   useCreateHotkey(() => setOpen(true))
-  const formNav = useFormKeyNav({ open, onAccept: () => form.submit() })
+  // Set by "Save & new" so the success handler clears the form instead of closing it.
+  const again = useRef(false)
+  const submit = (addAnother: boolean) => (): void => {
+    again.current = addAnother
+    form.submit()
+  }
+  const formNav = useFormKeyNav({ open, onAccept: submit(false) })
   const filterNav = useFormKeyNav({ onAccept: () => (document.activeElement as HTMLElement | null)?.blur() })
+
+  // Keep the date — a run of entries is nearly always for the same day.
+  const clearForNext = (): void => {
+    const date = form.getFieldValue('date')
+    form.resetFields()
+    form.setFieldValue('date', date)
+    formNav.focusFirst()
+  }
 
   const saudas = useQuery({ queryKey: ['sauda'], queryFn: () => window.api.sauda.list() })
 
@@ -66,8 +88,11 @@ export default function SaudaPage(): JSX.Element {
       window.api.sauda.create(input),
     onSuccess: () => {
       message.success(t('sauda.created'))
-      setOpen(false)
-      form.resetFields()
+      if (again.current) clearForNext()
+      else {
+        setOpen(false)
+        form.resetFields()
+      }
       queryClient.invalidateQueries({ queryKey: ['sauda'] })
     },
     onError: (e: Error) => message.error(e.message)
@@ -79,6 +104,26 @@ export default function SaudaPage(): JSX.Element {
       message.success(t('sauda.deleted'))
       queryClient.invalidateQueries({ queryKey: ['sauda'] })
     },
+    onError: (e: Error) => message.error(e.message)
+  })
+
+  // Settling a shortfall posts money (Dr vyapari / Cr kisan), so it invalidates the ledger reads too.
+  const afterSettle = (msg: string) => (): void => {
+    message.success(msg)
+    setSettling(null)
+    queryClient.invalidateQueries({ queryKey: ['sauda'] })
+    queryClient.invalidateQueries({ queryKey: ['ledger'] })
+    queryClient.invalidateQueries({ queryKey: ['vouchers'] })
+  }
+  const settle = useMutation({
+    mutationFn: (v: { id: number; date: string; amountPaise: number }) =>
+      window.api.sauda.settle(v.id, { date: v.date, amountPaise: v.amountPaise }),
+    onSuccess: (r) => afterSettle(t('sauda.settled', { amount: formatINR(r.amountPaise) }))(),
+    onError: (e: Error) => message.error(e.message)
+  })
+  const unsettle = useMutation({
+    mutationFn: (id: number) => window.api.sauda.unsettle(id),
+    onSuccess: afterSettle(t('sauda.unsettled')),
     onError: (e: Error) => message.error(e.message)
   })
 
@@ -107,8 +152,26 @@ export default function SaudaPage(): JSX.Element {
   const columns = [
     { title: 'ID', dataIndex: 'id', width: 70, render: (id: number) => `#${id}` },
     { title: t('common.date'), dataIndex: 'date', width: 120, render: (v: string) => formatDate(v) },
-    { title: t('sauda.vyapari'), dataIndex: 'vyapariName' },
-    { title: t('sauda.kisan'), dataIndex: 'kisanName' },
+    {
+      title: t('sauda.vyapari'),
+      dataIndex: 'vyapariName',
+      render: (_: unknown, r: SaudaListRow) => (
+        <>
+          {r.vyapariName}
+          {r.vyapariSonOf && <Typography.Text type="secondary"> s/o {r.vyapariSonOf}</Typography.Text>}
+        </>
+      )
+    },
+    {
+      title: t('sauda.kisan'),
+      dataIndex: 'kisanName',
+      render: (_: unknown, r: SaudaListRow) => (
+        <>
+          {r.kisanName}
+          {r.kisanSonOf && <Typography.Text type="secondary"> s/o {r.kisanSonOf}</Typography.Text>}
+        </>
+      )
+    },
     { title: t('sauda.lot'), dataIndex: 'lotNo', width: 110, render: (v: string | null) => v ?? '—' },
     { title: t('sauda.packets'), dataIndex: 'packets', align: 'right' as const, width: 110 },
     {
@@ -119,22 +182,70 @@ export default function SaudaPage(): JSX.Element {
       render: (v: number) => formatINR(v)
     },
     {
+      // What he actually took against what he promised — the whole point of the shortfall feature.
+      title: t('sauda.lifted'),
+      key: 'lifted',
+      align: 'right' as const,
+      width: 130,
+      render: (_: unknown, r: SaudaListRow) =>
+        r.shortfallPackets === 0 ? (
+          <Tag color="green">{t('sauda.delivered')}</Tag>
+        ) : (
+          <Tooltip title={t('sauda.shortfallHint', { packets: r.shortfallPackets })}>
+            <Tag color={r.settlementVoucherId ? 'blue' : 'orange'}>
+              {r.liftedPackets} / {r.packets}
+            </Tag>
+          </Tooltip>
+        )
+    },
+    {
       title: t('common.actions'),
       key: 'actions',
-      width: 100,
+      width: 200,
       align: 'center' as const,
       render: (_: unknown, r: SaudaListRow) => (
-        <Popconfirm
-          title={t('sauda.deleteConfirm')}
-          okText={t('common.delete')}
-          okButtonProps={{ danger: true }}
-          cancelText={t('common.cancel')}
-          onConfirm={() => remove.mutate(r.id)}
-        >
-          <Button size="small" danger type="text">
-            {t('common.delete')}
-          </Button>
-        </Popconfirm>
+        <Space size={0}>
+          {r.settlementVoucherId !== null ? (
+            <Popconfirm
+              title={t('sauda.unsettleConfirm', { amount: formatINR(r.settlementPaise ?? 0) })}
+              okText={t('sauda.unsettle')}
+              cancelText={t('common.cancel')}
+              onConfirm={() => unsettle.mutate(r.id)}
+            >
+              <Button size="small" type="text">
+                {t('sauda.settledFor', { amount: formatINR(r.settlementPaise ?? 0) })}
+              </Button>
+            </Popconfirm>
+          ) : (
+            r.shortfallPackets > 0 && (
+              <Button
+                size="small"
+                type="link"
+                onClick={() => {
+                  setSettling(r)
+                  settleForm.setFieldsValue({
+                    date: dayjs(),
+                    amount:
+                      r.suggestedShortfallPaise === null ? undefined : r.suggestedShortfallPaise / 100
+                  })
+                }}
+              >
+                {t('sauda.settle')}
+              </Button>
+            )
+          )}
+          <Popconfirm
+            title={t('sauda.deleteConfirm')}
+            okText={t('common.delete')}
+            okButtonProps={{ danger: true }}
+            cancelText={t('common.cancel')}
+            onConfirm={() => remove.mutate(r.id)}
+          >
+            <Button size="small" danger type="text">
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
+        </Space>
       )
     }
   ]
@@ -147,6 +258,29 @@ export default function SaudaPage(): JSX.Element {
           <Space>
             <Button icon={<PrinterOutlined />} onClick={() => print(() => window.api.print.saudaRegister(rows))}>
               {t('common.print')}
+            </Button>
+            <Button
+              icon={<FileExcelOutlined />}
+              onClick={() =>
+                exportXlsx(
+                  'sauda-register.xlsx',
+                  t('sauda.title'),
+                  ['Date', 'Vyapari', 'Kisan', 'Lot No', 'Packets', 'Rate', 'Lifted', 'Shortfall'],
+                  rows.map((r) => [
+                    formatDate(r.date),
+                    r.vyapariName,
+                    r.kisanName,
+                    r.lotNo ?? '',
+                    r.packets,
+                    paiseToRupees(r.ratePaise),
+                    r.liftedPackets,
+                    r.shortfallPackets
+                  ]),
+                  [5] // Rate
+                )
+              }
+            >
+              {t('common.excel')}
             </Button>
             <Button type="primary" onClick={() => setOpen(true)}>
               {t('sauda.new')}
@@ -208,7 +342,8 @@ export default function SaudaPage(): JSX.Element {
         title={t('sauda.new')}
         open={open}
         onCancel={() => setOpen(false)}
-        onOk={() => form.submit()}
+        onOk={submit(false)}
+        onOkAndNew={submit(true)}
         confirmLoading={create.isPending}
         okText={t('common.create')}
       >
@@ -256,6 +391,51 @@ export default function SaudaPage(): JSX.Element {
           </Form.Item>
         </Form>
         </div>
+      </AutoFocusModal>
+
+      {/* Settle a shortfall. The amount is pre-filled from what the vyapari DID lift on this deal
+          (per packet), but it stays editable — the two parties may have agreed something else, and
+          when he lifted nothing there is nothing to pre-fill from. */}
+      <AutoFocusModal
+        title={t('sauda.settleTitle')}
+        open={settling !== null}
+        onCancel={() => setSettling(null)}
+        onOk={() => settleForm.submit()}
+        confirmLoading={settle.isPending}
+        okText={t('sauda.settle')}
+      >
+        {settling && (
+          <Form
+            form={settleForm}
+            layout="vertical"
+            onFinish={(v: { date: dayjs.Dayjs; amount: number }) =>
+              settle.mutate({
+                id: settling.id,
+                date: v.date.format('YYYY-MM-DD'),
+                amountPaise: toPaise(v.amount)
+              })
+            }
+          >
+            <Typography.Paragraph type="secondary">
+              {t('sauda.settleHint', {
+                vyapari: settling.vyapariName,
+                kisan: settling.kisanName,
+                shortfall: settling.shortfallPackets,
+                promised: settling.packets,
+                lifted: settling.liftedPackets
+              })}
+            </Typography.Paragraph>
+            {settling.suggestedShortfallPaise === null && (
+              <Typography.Paragraph type="warning">{t('sauda.noBasis')}</Typography.Paragraph>
+            )}
+            <Form.Item name="date" label={t('common.date')} rules={[{ required: true }]}>
+              <DatePicker format={DATE_INPUT_FORMATS} />
+            </Form.Item>
+            <Form.Item name="amount" label={t('sauda.settleAmount')} rules={[{ required: true }]}>
+              <InputNumber min={0} precision={2} addonBefore="₹" style={{ width: '100%' }} />
+            </Form.Item>
+          </Form>
+        )}
       </AutoFocusModal>
     </div>
   )

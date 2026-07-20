@@ -3,8 +3,7 @@ import { db } from '../data/db'
 import { aamad, financialYear, nikasi, nikasiLine, voucher, voucherEntry } from '../data/schema'
 import type { AccountOverview } from '../../shared/contracts'
 import { getAccountDetail } from './accounts'
-import { listLoans } from './loans'
-import { accruedForPayment } from '../engines/interest'
+import { listAccountInterest } from './loans'
 
 /**
  * 360° per-account snapshot for the Overview tab. Reuses the same shapes as party.ts's bulk maps
@@ -22,17 +21,25 @@ export function getAccountOverview(accountId: number, yearId: number): AccountOv
     .where(and(eq(aamad.yearId, yearId), eq(aamad.kisanAccountId, accountId)))
     .get()
 
-  // Stock out — packets of this kisan's own stock that left, across any gate pass.
+  // Stock out — packets/weight of this kisan's own stock that left, across any gate pass. His stock
+  // is weighed separately even when it shares a truck with other kisans' lots, so this is his
+  // alone, never the vehicle's load.
   const outRow = db()
-    .select({ packets: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)` })
+    .select({
+      packets: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)`,
+      weightKg: sql<number>`coalesce(sum(${nikasiLine.weightKg}), 0)`
+    })
     .from(nikasiLine)
     .innerJoin(nikasi, eq(nikasiLine.nikasiId, nikasi.id))
     .where(and(eq(nikasi.yearId, yearId), eq(nikasiLine.fromKisanAccountId, accountId)))
     .get()
 
-  // Purchased — packets this account received as a vyapari across all gate passes.
+  // Purchased — packets/weight this account received as a vyapari across all gate passes.
   const purchasedRow = db()
-    .select({ packets: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)` })
+    .select({
+      packets: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)`,
+      weightKg: sql<number>`coalesce(sum(${nikasiLine.weightKg}), 0)`
+    })
     .from(nikasiLine)
     .innerJoin(nikasi, eq(nikasiLine.nikasiId, nikasi.id))
     .where(and(eq(nikasi.yearId, yearId), eq(nikasi.deliveredToAccountId, accountId)))
@@ -56,9 +63,10 @@ export function getAccountOverview(accountId: number, yearId: number): AccountOv
   // Live loan interest accrued but not yet capitalised into the ledger (mirrors bills.ts) — this is
   // the "total interest to date" the legacy ledger shows mid-year, before year-end capitalisation.
   const asOf = new Date().toISOString().slice(0, 10)
-  const accruedInterestPaise = listLoans(yearId, asOf)
-    .filter((l) => l.accountId === accountId)
-    .reduce((sum, l) => sum + accruedForPayment(l.id, asOf).interestPaise, 0)
+  const accruedInterestPaise = listAccountInterest(accountId, yearId, asOf).reduce(
+    (sum, r) => sum + r.interestPaise,
+    0
+  )
 
   const rentRatePaise =
     db()
@@ -77,8 +85,10 @@ export function getAccountOverview(accountId: number, yearId: number): AccountOv
       aamadPackets,
       aamadCount: inRow?.count ?? 0,
       nikasiOutPackets,
+      nikasiOutWeightKg: outRow?.weightKg ?? 0,
       balancePackets: aamadPackets - nikasiOutPackets,
-      purchasedPackets: purchasedRow?.packets ?? 0
+      purchasedPackets: purchasedRow?.packets ?? 0,
+      purchasedWeightKg: purchasedRow?.weightKg ?? 0
     },
     money: {
       openingPaise: byTag('opening'),

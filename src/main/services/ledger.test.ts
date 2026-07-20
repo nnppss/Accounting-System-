@@ -73,7 +73,7 @@ describe('Trial Balance', () => {
 })
 
 describe('account ledger', () => {
-  it('keeps a correct running balance, oldest first', () => {
+  it('keeps a correct running balance, newest first', () => {
     post({
       yearId,
       type: 'journal',
@@ -94,8 +94,9 @@ describe('account ledger', () => {
     })
     const lines = getAccountLedger(kisan, yearId)
     expect(lines).toHaveLength(2)
-    expect(lines[0].balancePaise).toBe(50000)
-    expect(lines[1].balancePaise).toBe(20000)
+    // Newest-first: the Feb receipt row (balance 20000) leads, the Jan rent row (50000) follows.
+    expect(lines[0].balancePaise).toBe(20000)
+    expect(lines[1].balancePaise).toBe(50000)
     expect(getAccountBalance(kisan, yearId)).toBe(20000)
   })
 })

@@ -79,11 +79,12 @@ describe('Bardana sub-ledger (software.md §3.7)', () => {
     const acct = getBardanaAccount(yearId)
     expect(acct.issues[0].partyName).toBe('Mohan Vyapari')
     // The full deal is documented on the buyer's ledger: Dr ₹600 (goods) and Cr ₹600 (paid now).
+    // Ledger is newest-first, so the paid (Cr) row leads and the goods (Dr) row follows.
     const lines = getAccountLedger(vyapari, yearId)
     expect(lines).toHaveLength(2)
     expect(lines.map((l) => [l.drPaise, l.crPaise])).toEqual([
-      [60000, 0],
-      [0, 60000]
+      [0, 60000],
+      [60000, 0]
     ])
     expect(getAccountBalance(vyapari, yearId)).toBe(0) // fully paid → nothing outstanding
     expect(getAccountBalance(cash, yearId)).toBe(60000)

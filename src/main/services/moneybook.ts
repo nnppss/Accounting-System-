@@ -80,12 +80,21 @@ export function getSummary(accountId: number, yearId: number): MoneyBookSummary 
 }
 
 /** The individual transactions behind one month of a cash/bank book. */
-export function getDetail(
+export function getDetail(accountId: number, yearId: number, month: number): MoneyBookDetailRow[] {
+  const mm = String(month).padStart(2, '0')
+  return getRows(accountId, yearId, (date) => date.slice(5, 7) === mm)
+}
+
+/**
+ * The cash/bank account's transactions whose date passes `inScope`, each carrying the running
+ * balance *at that point in the year* — so the balance after the last row of a month equals that
+ * month's closing in the summary. For a cash/bank book a Dr adds, a Cr subtracts.
+ */
+export function getRows(
   accountId: number,
   yearId: number,
-  month: number
+  inScope: (date: string) => boolean
 ): MoneyBookDetailRow[] {
-  const mm = String(month).padStart(2, '0')
   const entries = db()
     .select({
       entryId: voucherEntry.id,
@@ -102,45 +111,47 @@ export function getDetail(
     .where(
       and(eq(voucherEntry.accountId, accountId), eq(voucher.yearId, yearId), isNull(voucher.voidedAt))
     )
-    .orderBy(asc(voucher.date), asc(voucher.no))
+    // Within a date, id (insertion ≈ chronological) is the only sound tie-break: voucher numbers
+    // run as a separate series per type, so ordering by `no` interleaves receipts and payments and
+    // walks the running balance out of order.
+    .orderBy(asc(voucher.date), asc(voucher.id))
     .all()
-  const inMonth = entries.filter((e) => e.date.slice(5, 7) === mm)
-  if (inMonth.length === 0) return []
 
-  // Seed the running balance from everything before this month (incl. opening), so the balance
-  // after the last row equals the month's closing in the summary. For a cash/bank book a Dr adds,
-  // a Cr subtracts.
-  let running = entries
-    .filter((e) => e.date.slice(5, 7) < mm)
-    .reduce((s, e) => s + e.dr - e.cr, 0)
+  // Walk the whole year in order and keep the scoped rows with the balance as it stood then.
+  let running = 0
+  const scoped = entries.flatMap((e) => {
+    running += e.dr - e.cr
+    return inScope(e.date) ? [{ ...e, balancePaise: running }] : []
+  })
+  if (scoped.length === 0) return []
 
   // Counterparty = the other accounts on each voucher (everything that isn't this account).
-  const voucherIds = [...new Set(inMonth.map((e) => e.voucherId))]
+  const voucherIds = [...new Set(scoped.map((e) => e.voucherId))]
   const others = db()
-    .select({ voucherId: voucherEntry.voucherId, name: account.name })
+    .select({ voucherId: voucherEntry.voucherId, id: account.id, name: account.name })
     .from(voucherEntry)
     .innerJoin(account, eq(voucherEntry.accountId, account.id))
     .where(and(inArray(voucherEntry.voucherId, voucherIds), ne(voucherEntry.accountId, accountId)))
     .all()
-  const counterpartyByVoucher = new Map<number, string[]>()
+  const counterpartyByVoucher = new Map<number, { id: number; name: string }[]>()
   for (const o of others) {
     const list = counterpartyByVoucher.get(o.voucherId) ?? []
-    if (!list.includes(o.name)) list.push(o.name)
+    if (!list.some((c) => c.id === o.id)) list.push({ id: o.id, name: o.name })
     counterpartyByVoucher.set(o.voucherId, list)
   }
 
-  return inMonth.map((e) => {
-    running += e.dr - e.cr
-    return {
+  // Balance is walked chronologically above; display newest-first (each row keeps its own balance).
+  return scoped
+    .map((e) => ({
       voucherId: e.voucherId,
       voucherNo: e.voucherNo,
       type: e.type,
       date: e.date,
       narration: e.narration,
-      counterparty: (counterpartyByVoucher.get(e.voucherId) ?? []).join(', '),
+      counterparties: counterpartyByVoucher.get(e.voucherId) ?? [],
       receiptPaise: e.dr,
       paymentPaise: e.cr,
-      balancePaise: running
-    }
-  })
+      balancePaise: e.balancePaise
+    }))
+    .reverse()
 }

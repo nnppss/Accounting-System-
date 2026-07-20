@@ -1,30 +1,45 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, DatePicker, Empty, Table, Tag } from 'antd'
-import { LeftOutlined, PrinterOutlined, RightOutlined } from '@ant-design/icons'
+import { FileExcelOutlined, LeftOutlined, PrinterOutlined, RightOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import dayjs from 'dayjs'
-import type { DayBookEntry, DayBookVoucher } from '@shared/contracts'
-import { DATE_INPUT_FORMATS, formatINR } from '../lib/format'
+import type { DayBookSection, MoneyBookDetailRow } from '@shared/contracts'
+import { DATE_INPUT_FORMATS, formatDate, formatINR, paiseToRupees } from '../lib/format'
 import { isInputFocused, isNavFocused, isOverlayOpen } from '../lib/keyGuards'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import { SectionBar } from './report'
+import { SeverityText } from './Highlight'
 
 /**
- * Day Book — every financial transaction posted on one date, grouped by voucher. Embedded as a
- * segment of the Money Book. Step days with the ‹ › buttons, the Today button, or the ←/→ arrow
- * keys (when not typing in a field).
+ * Day Book — the money that moved on one date, one section per cash/bank account, with the running
+ * balance after every transaction. Embedded as a segment of the Money Book. Step days with the ‹ ›
+ * buttons, the Today button, or the ←/→ arrow keys (when not typing in a field).
+ *
+ * The day lives in the URL (?date=…) so returning from a party's ledger lands back on the same day.
  */
 export function DayBookView(): JSX.Element {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const today = dayjs().format('YYYY-MM-DD')
-  const [date, setDate] = useState(today)
+  const [params, setParams] = useSearchParams()
+  const date = params.get('date') ?? today
+  const setDate = (d: string): void =>
+    setParams(
+      (p) => {
+        p.set('date', d)
+        return p
+      },
+      { replace: true }
+    )
   const day = useQuery({ queryKey: ['daybook', date], queryFn: () => window.api.daybook.get(date) })
 
-  const shift = (n: number): void => setDate((d) => dayjs(d).add(n, 'day').format('YYYY-MM-DD'))
+  const shift = (n: number): void => setDate(dayjs(date).add(n, 'day').format('YYYY-MM-DD'))
 
   // How many day-chips fit in the strip — recomputed on resize. Kept odd so the selected day centres.
   const stripRef = useRef<HTMLDivElement>(null)
@@ -54,27 +69,77 @@ export function DayBookView(): JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [date])
+
+  // Coming back from a ledger should land on this same day, so carry the query string along.
+  const openAccount = (id: number): void =>
+    navigate(`/accounts/${id}`, { state: { fromNav: `${location.pathname}${location.search}` } })
 
   const columns = [
-    { title: t('vouchers.account'), dataIndex: 'accountName' },
     {
-      title: t('common.dr'),
-      dataIndex: 'drPaise',
+      title: t('vouchers.no'),
+      dataIndex: 'voucherNo',
+      width: 110,
+      render: (no: number, r: MoneyBookDetailRow) => (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Tag color="magenta" style={{ margin: 0 }}>
+            {t(`vouchers.${r.type}`)}
+          </Tag>
+          #{no}
+        </span>
+      )
+    },
+    {
+      title: t('moneyBook.counterparty'),
+      dataIndex: 'counterparties',
+      width: 200,
+      render: (cs: MoneyBookDetailRow['counterparties']) =>
+        cs.length === 0
+          ? '—'
+          : cs.map((c, i) => (
+              <span key={c.id}>
+                {i > 0 && ', '}
+                <a onClick={() => openAccount(c.id)}>{c.name}</a>
+              </span>
+            ))
+    },
+    {
+      title: t('common.narration'),
+      dataIndex: 'narration',
+      render: (n: string | null) => n ?? '—'
+    },
+    {
+      title: t('moneyBook.receipts'),
+      dataIndex: 'receiptPaise',
       align: 'right' as const,
-      width: 160,
+      width: 130,
       render: (v: number) => (v ? formatINR(v) : '')
     },
     {
-      title: t('common.cr'),
-      dataIndex: 'crPaise',
+      title: t('moneyBook.payments'),
+      dataIndex: 'paymentPaise',
       align: 'right' as const,
-      width: 160,
+      width: 130,
       render: (v: number) => (v ? formatINR(v) : '')
+    },
+    {
+      title: t('common.balance'),
+      dataIndex: 'balancePaise',
+      align: 'right' as const,
+      width: 140,
+      // Holding after this transaction. Negative = overdrawn, a red flag.
+      render: (v: number) =>
+        v < 0 ? (
+          <SeverityText severity="danger" strong>
+            {formatINR(v)}
+          </SeverityText>
+        ) : (
+          <strong>{formatINR(v)}</strong>
+        )
     }
   ]
 
-  const vouchers = day.data?.vouchers ?? []
+  const sections = day.data?.sections ?? []
   const isToday = date === today
 
   return (
@@ -125,41 +190,71 @@ export function DayBookView(): JSX.Element {
           onClick={() => print(() => window.api.print.dayBook(date))}
           aria-label={t('common.print')}
         />
+        <Button
+          icon={<FileExcelOutlined />}
+          aria-label={t('common.excel')}
+          onClick={() =>
+            exportXlsx(
+              `day-book-${date}.xlsx`,
+              `${t('dayBook.title')} ${formatDate(date)}`,
+              [
+                t('moneyBook.account'),
+                t('vouchers.no'),
+                t('vouchers.type'),
+                t('moneyBook.counterparty'),
+                t('common.narration'),
+                t('moneyBook.receipts'),
+                t('moneyBook.payments'),
+                t('common.balance')
+              ],
+              sections.flatMap((s) =>
+                s.rows.map((r) => [
+                  s.accountName,
+                  r.voucherNo,
+                  t(`vouchers.${r.type}`),
+                  r.counterparties.map((c) => c.name).join(', '),
+                  r.narration ?? '',
+                  r.receiptPaise ? paiseToRupees(r.receiptPaise) : '',
+                  r.paymentPaise ? paiseToRupees(r.paymentPaise) : '',
+                  paiseToRupees(r.balancePaise)
+                ])
+              ),
+              [5, 6, 7] // Receipts, Payments, Balance
+            )
+          }
+        />
       </div>
 
-      {!day.isLoading && vouchers.length === 0 ? (
+      {!day.isLoading && sections.length === 0 ? (
         <Empty description={t('dayBook.empty')} />
       ) : (
-        vouchers.map((v: DayBookVoucher, i) => (
-          <div key={v.voucherId}>
+        sections.map((s: DayBookSection, i) => (
+          <div key={s.accountId} style={{ marginBottom: 20 }}>
             <SectionBar>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Tag color="magenta" style={{ margin: 0 }}>
-                  {t(`vouchers.${v.type}`)}
-                </Tag>
-                <span>#{v.voucherNo}</span>
-                {v.narration && <span style={{ fontWeight: 400 }}>· {v.narration}</span>}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 16, width: '100%' }}>
+                <span>{s.accountName}</span>
+                <span style={{ marginLeft: 'auto', fontWeight: 400 }}>
+                  {t('moneyBook.opening')} {formatINR(s.openingPaise)}
+                </span>
+                <span>
+                  {t('moneyBook.closing')} {formatINR(s.closingPaise)}
+                </span>
               </span>
             </SectionBar>
             <Table
               className="pc-report"
-              rowKey="accountId"
+              rowKey="voucherId"
               size="small"
               loading={day.isLoading && i === 0}
-              showHeader={i === 0}
               columns={columns}
-              dataSource={v.entries}
+              dataSource={s.rows}
               pagination={false}
-              onRow={(e: DayBookEntry) => ({
-                onClick: () =>
-                  navigate(`/accounts/${e.accountId}`, { state: { fromNav: '/money-book' } }),
-                style: { cursor: 'pointer' }
-              })}
+              scroll={{ x: 'max-content' }}
             />
           </div>
         ))
       )}
-      {vouchers.length > 0 && (
+      {sections.length > 0 && (
         <div
           style={{
             display: 'flex',
@@ -176,10 +271,10 @@ export function DayBookView(): JSX.Element {
         >
           <span style={{ marginRight: 'auto' }}>{t('common.total')}</span>
           <span>
-            {t('common.dr')} {formatINR(day.data?.totalDrPaise ?? 0)}
+            {t('moneyBook.receipts')} {formatINR(day.data?.totalReceiptPaise ?? 0)}
           </span>
           <span>
-            {t('common.cr')} {formatINR(day.data?.totalCrPaise ?? 0)}
+            {t('moneyBook.payments')} {formatINR(day.data?.totalPaymentPaise ?? 0)}
           </span>
         </div>
       )}

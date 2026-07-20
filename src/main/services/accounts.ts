@@ -70,7 +70,8 @@ export function createPerson(input: PersonInput): number {
 export function listPersons(search?: string): Array<typeof person.$inferSelect> {
   const q = db().select().from(person)
   if (search) {
-    const term = `%${search.trim()}%`
+    // Starts-with: typing "A" lists people whose name/father/village/phone begins with "A".
+    const term = `${search.trim()}%`
     return q
       .where(
         or(
@@ -247,15 +248,11 @@ export function listAccounts(yearId: number, filter: AccountListFilter = {}): Ac
   const conds = []
   if (filter.type) conds.push(eq(account.type, filter.type))
   if (filter.name) {
-    const term = `%${filter.name.trim()}%`
-    conds.push(
-      or(
-        like(account.name, term),
-        like(person.name, term),
-        like(person.sonOf, term),
-        like(account.code, term)
-      )
-    )
+    // Starts-with on the account/person NAME only: typing "A" lists accounts whose name begins
+    // with "A". Deliberately not father's-name (S/o) or account code — matching those surprised
+    // users (e.g. "A" pulling in a farmer whose father is "Amar", "B" pulling in bank codes B-…).
+    const term = `${filter.name.trim()}%`
+    conds.push(or(like(account.name, term), like(person.name, term)))
   }
   if (filter.villageCity) conds.push(like(person.villageCity, `%${filter.villageCity.trim()}%`))
   if (filter.state) conds.push(like(person.state, `%${filter.state.trim()}%`))
@@ -585,7 +582,7 @@ export function setOpeningBalance(
   date: string,
   userId?: number
 ): void {
-  if (amountPaise <= 0) throw new Error('Opening balance must be positive')
+  if (amountPaise < 0) throw new Error('Opening balance cannot be negative')
   const equityId = getSystemAccountId(SYSTEM_ACCOUNTS.OPENING_EQUITY)
   if (accountId === equityId) throw new Error('Cannot set an opening balance on Opening Balance Equity')
 
@@ -604,6 +601,16 @@ export function setOpeningBalance(
     )
     .all()
   for (const v of priorVoucherIds) voidVoucher(v.id, 'opening balance re-entered', userId)
+
+  // Zero means "no opening" — clear the row and skip the (pointless, possibly rejected) zero
+  // journal. The void above already unwound any prior opening.
+  if (amountPaise === 0) {
+    db()
+      .delete(openingBalance)
+      .where(and(eq(openingBalance.accountId, accountId), eq(openingBalance.yearId, yearId)))
+      .run()
+    return
+  }
 
   // Dr balance = party owes the cold; Cr balance = the cold owes the party.
   const entries =

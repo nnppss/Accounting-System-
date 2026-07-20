@@ -32,14 +32,13 @@ afterEach(() => closeDb())
 
 describe('Bills — person-wise statement (software.md §3.11)', () => {
   function seed(): void {
-    // Ram-kisan stores 100 packets, is charged full-year rent (₹1,000), then sells 50 @ ₹500.
+    // Ram-kisan stores 100 packets, sells 50 @ ₹500, then is charged full-year rent (₹1,000).
     const lot = createAamad(yearId, {
       date: '2026-01-10',
       kisanAccountId: kisan,
       totalPackets: 100,
       locations: [{ room: 1, floor: 1, rack: 1, packets: 100 }]
     })
-    accrueRent(kisan, yearId, '2026-06-30')
     createNikasi(yearId, {
       date: '2026-05-01',
       deliveredToType: 'vyapari',
@@ -47,6 +46,9 @@ describe('Bills — person-wise statement (software.md §3.11)', () => {
       // Rate is per 105 kg; 50 × 105 kg keeps proceeds = 50 × ₹500 = ₹25,000.
       lines: [{ aamadId: lot, packets: 50, weightKg: 50 * 105, ratePaise: 50000 }]
     })
+    // The nikasi accrued rent on the 50 shipped; the year-end catch-up bills the other 50 too, so
+    // the full ₹1,000 rent sits on his books (stored basis).
+    accrueRent(kisan, yearId, '2026-06-30', undefined, 'stored')
     // Ram-vyapari takes a direct loan ₹10,000 on 1 Jan (interest accrues from then).
     createLoan(yearId, {
       category: 'vyapari',

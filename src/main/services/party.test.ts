@@ -5,6 +5,7 @@ import { account } from '../data/schema'
 import { groupId, makeAccount, makeYear, setupDb } from '../test-utils'
 import { createAccount, createPerson, setOpeningBalance } from './accounts'
 import { createAamad } from './aamad'
+import { accrueRent } from '../engines/bhada'
 import { createLoan } from './loans'
 import {
   deleteSavedFilter,
@@ -57,6 +58,9 @@ function bring(kisanAccountId: number, packets: number): void {
     totalPackets: packets,
     locations: [{ room: 1, floor: 1, rack: aamadSeq, packets }]
   })
+  // Rent now accrues as stock ships (nothing ships here), so charge the full stored-basis rent
+  // explicitly — the state a year-end close would produce — to exercise the standing-bhada metric.
+  accrueRent(kisanAccountId, yearId, '2026-06-30', undefined, 'stored')
 }
 function owe(accountId: number, amountPaise: number): void {
   setOpeningBalance(accountId, yearId, amountPaise, 'dr', '2026-01-01')

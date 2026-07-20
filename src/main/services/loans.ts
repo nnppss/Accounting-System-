@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '../data/db'
 import { account, cheque, financialYear, loan, loanEvent, person, voucher, voucherEntry, yearClose } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type {
+  AccountInterestRow,
   CreateLoanResult,
   LoanComposition,
   LoanDetail,
@@ -10,13 +11,14 @@ import type {
   LoanInput,
   LoanPaymentResult,
   LoanRow,
+  PartyLoanEventRow,
   StandingLoan
 } from '../../shared/contracts'
 import type { EntryTag } from '../../shared/enums'
 import { writeAudit } from '../audit/audit'
 import { assertMoneyAccount } from './accounts'
 import { postCore } from './posting'
-import { accruedForPayment, ensureCapitalisedBefore, outstandingAsOf } from '../engines/interest'
+import { accruedForPayment, ensureCapitalisedBefore, fixedInterestIn, outstandingAsOf } from '../engines/interest'
 
 /**
  * Loans (Udhaar) — software.md §3.8, posting map architecture.md §6. The cold lends to
@@ -36,6 +38,7 @@ import { accruedForPayment, ensureCapitalisedBefore, outstandingAsOf } from '../
  * party's ledger — so creating one posts no disbursement; only its later interest posts.
  */
 export type {
+  AccountInterestRow,
   CreateLoanResult,
   LoanComposition,
   LoanDetail,
@@ -43,6 +46,7 @@ export type {
   LoanInput,
   LoanPaymentResult,
   LoanRow,
+  PartyLoanEventRow,
   StandingLoan
 } from '../../shared/contracts'
 
@@ -111,14 +115,18 @@ export function createLoan(yearId: number, input: LoanInput, userId?: number): C
           : input.mode === 'bank'
             ? input.bankAccountId!
             : getSystemAccountId(SYSTEM_ACCOUNTS.CHEQUES_IN_CLEARING)
+      // Fold the accountant's remark into the ledger narration (like Bardana). Keep " (in clearing)"
+      // last on cheque loans — the cheque-clearing engine strips it by endsWith().
+      const base =
+        input.mode === 'cheque'
+          ? `Loan given by cheque ${input.chequeNo} — loan #${row.id}`
+          : `Loan given — loan #${row.id}`
+      const withRemark = input.remark?.trim() ? `${base} — ${input.remark.trim()}` : base
       const res = postCore(tx, {
         yearId,
         type: 'payment',
         date: input.date,
-        narration:
-          input.mode === 'cheque'
-            ? `Loan given by cheque ${input.chequeNo} — loan #${row.id} (in clearing)`
-            : `Loan given — loan #${row.id}`,
+        narration: input.mode === 'cheque' ? `${withRemark} (in clearing)` : withRemark,
         accountantUserId: userId,
         sourceModule: 'loan',
         sourceId: row.id,
@@ -176,7 +184,8 @@ export function recordPayment(
   mode: 'cash' | 'bank' | 'cheque',
   bankAccountId: number | undefined,
   userId?: number,
-  chequeDetails?: { no: string; bank?: string }
+  chequeDetails?: { no: string; bank?: string },
+  narration?: string
 ): LoanPaymentResult {
   if (!Number.isInteger(amountPaise) || amountPaise <= 0) {
     throw new Error('Payment must be a positive whole number of paise')
@@ -222,9 +231,10 @@ export function recordPayment(
       type: 'receipt',
       date,
       narration:
-        mode === 'cheque'
+        narration?.trim() ||
+        (mode === 'cheque'
           ? `Loan repayment by cheque ${chequeDetails!.no} — loan #${loanId} (in clearing)`
-          : `Loan repayment — loan #${loanId}`,
+          : `Loan repayment — loan #${loanId}`),
       accountantUserId: userId,
       sourceModule: 'loan',
       sourceId: loanId,
@@ -253,8 +263,112 @@ export function recordPayment(
       { userId, action: 'create', entity: 'loan_payment', entityId: loanId, after: { amountPaise, date, interestPaise } },
       tx
     )
-    return { voucherId: res.voucherId, interestPaise, principalPaise: amountPaise - interestPaise }
+    return {
+      voucherId: res.voucherId,
+      voucherNo: res.voucherNo,
+      interestPaise,
+      principalPaise: amountPaise - interestPaise
+    }
   })
+}
+
+/**
+ * Undo a loan payment — the "reverse this from its own screen" that `voidManualVoucher` points at
+ * for a mistyped repayment. Voids the entry voucher and erases the loan event, so the ledger and
+ * the interest engine agree the money never arrived: the party owes again and interest keeps
+ * accruing from the base it had before. The voucher's entries stay for the audit trail (no hard
+ * deletes — same semantics as `posting.voidVoucher`). Mirrors `bounceLoanCheque`.
+ *
+ * The payment's voucher carries the interest posted up to the payment date as well, so voiding it
+ * unwinds the interest fold in the same stroke — which is exactly right, since that interest was
+ * only posted to be settled by this payment.
+ */
+export function undoPayment(eventId: number, userId?: number): void {
+  const ev = db().select().from(loanEvent).where(eq(loanEvent.id, eventId)).get()
+  if (!ev) throw new Error(`Loan event ${eventId} not found`)
+  if (ev.type !== 'payment') throw new Error('Only a payment can be undone — this entry is not one')
+  if (!ev.voucherId) throw new Error('That payment has no voucher to void')
+
+  // Later events were computed on top of this one, so this can't be pulled out from under them.
+  const later = db()
+    .select()
+    .from(loanEvent)
+    .where(and(eq(loanEvent.loanId, ev.loanId), gt(loanEvent.id, ev.id)))
+    .all()
+  if (later.length > 0) {
+    throw new Error('Later interest/payment entries exist on this loan — undo those first, newest first')
+  }
+  // A cheque repayment's money is still in clearing and the cheque has its own state to settle,
+  // which the bounce path already handles properly. Don't half-undo it from here.
+  const chq = db().select().from(cheque).where(eq(cheque.voucherId, ev.voucherId)).get()
+  if (chq) {
+    throw new Error('That repayment came by cheque — bounce the cheque on the Cheques screen instead')
+  }
+  const v = db().select().from(voucher).where(eq(voucher.id, ev.voucherId)).get()
+  if (!v) throw new Error(`Voucher ${ev.voucherId} not found`)
+  if (v.voidedAt) throw new Error('That payment’s voucher is already voided')
+
+  db().transaction((tx) => {
+    // Void in-transaction (same semantics as posting.voidVoucher, which opens its own).
+    tx.update(voucher)
+      .set({ voidedAt: new Date(), voidedReason: `Loan repayment undone — loan #${ev.loanId}` })
+      .where(eq(voucher.id, ev.voucherId!))
+      .run()
+    writeAudit({ userId, action: 'void', entity: 'voucher', entityId: ev.voucherId!, before: v }, tx)
+
+    tx.delete(loanEvent).where(eq(loanEvent.id, ev.id)).run()
+    writeAudit({ userId, action: 'delete', entity: 'loan_payment', entityId: ev.loanId, before: ev }, tx)
+  })
+}
+
+/**
+ * Each of a party's loans and the interest on it not yet posted, as of `asOf` — the rows behind the
+ * standing-interest figure on his ledger, and what the accountant edits when he fixes it.
+ */
+export function listAccountInterest(accountId: number, yearId: number, asOf?: string): AccountInterestRow[] {
+  const at = asOf ?? todayIso()
+  const year = db().select({ year: financialYear.year }).from(financialYear).where(eq(financialYear.id, yearId)).get()
+  return listLoans(yearId, at)
+    .filter((l) => l.accountId === accountId)
+    .map((l) => ({
+      loanId: l.id,
+      date: l.date,
+      category: l.category,
+      interestPaise: accruedForPayment(l.id, at).interestPaise,
+      fixedPaise: fixedInterestIn(listLoanEvents(l.id), String(year?.year ?? at.slice(0, 4)))
+    }))
+}
+
+/**
+ * Everything that has happened across **all** of a party's loans, oldest first — each loan given,
+ * every interest fold, every repayment, in one run. The cold deals with the man, not with each of
+ * his loans separately, so this is what his loan history actually looks like to the accountant.
+ * Each row carries the loan it belongs to, since the loans keep their own rates and dates.
+ */
+export function listPartyLoanEvents(accountId: number, yearId: number): PartyLoanEventRow[] {
+  const loans = db()
+    .select()
+    .from(loan)
+    .where(and(eq(loan.accountId, accountId), eq(loan.yearId, yearId)))
+    .all()
+  const byId = new Map(loans.map((l) => [l.id, l]))
+  if (loans.length === 0) return []
+  return db()
+    .select()
+    .from(loanEvent)
+    .where(inArray(loanEvent.loanId, [...byId.keys()]))
+    .orderBy(asc(loanEvent.date), asc(loanEvent.id))
+    .all()
+    .map((e) => ({
+      ...e,
+      loanDate: byId.get(e.loanId)!.date,
+      monthlyRateBps: byId.get(e.loanId)!.monthlyRateBps
+    }))
+}
+
+/** This loan's events, oldest first. */
+function listLoanEvents(loanId: number): LoanEventRow[] {
+  return db().select().from(loanEvent).where(eq(loanEvent.loanId, loanId)).orderBy(asc(loanEvent.date), asc(loanEvent.id)).all()
 }
 
 function rowFrom(

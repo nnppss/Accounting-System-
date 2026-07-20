@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { aamad, aamadLocation, account, financialYear, nikasiLine } from '../data/schema'
+import { aamad, aamadLocation, account, financialYear, nikasiLine, person } from '../data/schema'
 import type {
   AamadDetail,
   AamadInput,
@@ -9,7 +9,6 @@ import type {
   AamadSearchFilter
 } from '../../shared/contracts'
 import { writeAudit } from '../audit/audit'
-import { accrueRent } from '../engines/bhada'
 import { currentStockAtRack } from './maps'
 import { assertLocationInBounds } from './store'
 
@@ -80,8 +79,8 @@ export function createAamad(yearId: number, input: AamadInput, userId?: number):
     writeAudit({ userId, action: 'create', entity: 'aamad', entityId: header.id, after: input }, tx)
     return header.id
   })
-  // Stored packets changed → keep this kisan's rent current (no-op until a rate is set).
-  accrueRent(input.kisanAccountId, yearId, input.date, userId)
+  // Intake posts no rent — bhada accrues as the stock later ships out via nikasi (and the
+  // year-end close bills any packets that never shipped). See engines/bhada.ts.
   return id
 }
 
@@ -161,12 +160,8 @@ export function updateAamad(yearId: number, id: number, input: AamadInput, userI
       tx
     )
   })
-  // Re-accrue the (new) kisan; if the aamad moved to a different kisan, re-accrue the old one too
-  // so the rent that left his books is removed.
-  accrueRent(input.kisanAccountId, yearId, input.date, userId)
-  if (before.kisanAccountId !== input.kisanAccountId) {
-    accrueRent(before.kisanAccountId, yearId, input.date, userId)
-  }
+  // No rent re-accrual here: bhada tracks shipped packets (nikasi lines carry their own
+  // from-kisan), so editing an aamad — even reassigning its kisan — doesn't move rent.
 }
 
 /**
@@ -175,7 +170,7 @@ export function updateAamad(yearId: number, id: number, input: AamadInput, userI
  * of the stock covers. Scoped to the year and done in one transaction; the change is audited.
  */
 export function deleteAamad(yearId: number, id: number, userId?: number): void {
-  const removed = db().transaction((tx) => {
+  db().transaction((tx) => {
     const header = tx
       .select()
       .from(aamad)
@@ -205,10 +200,9 @@ export function deleteAamad(yearId: number, id: number, userId?: number): void {
       `Aamad ${header.no} cannot be deleted`
     )
     writeAudit({ userId, action: 'delete', entity: 'aamad', entityId: id, before: header }, tx)
-    return { kisanAccountId: header.kisanAccountId, date: header.date }
   })
-  // Stored packets dropped → re-accrue this kisan at his remaining quantity.
-  accrueRent(removed.kisanAccountId, yearId, removed.date, userId)
+  // No rent re-accrual: an aamad can only be deleted once its stock is unshipped, so no shipped
+  // rent depends on it (year-end catch-up will bill whatever stock is actually stored).
 }
 
 export function listAamad(yearId: number, filter: AamadSearchFilter = {}): AamadListResult {
@@ -224,11 +218,16 @@ export function listAamad(yearId: number, filter: AamadSearchFilter = {}): Aamad
       date: aamad.date,
       kisanAccountId: aamad.kisanAccountId,
       kisanName: account.name,
+      kisanSonOf: person.sonOf,
       totalPackets: aamad.totalPackets,
-      assignedPackets: sql<number>`coalesce(sum(${aamadLocation.packets}), 0)`
+      assignedPackets: sql<number>`coalesce(sum(${aamadLocation.packets}), 0)`,
+      // Subquery, not a join: joining nikasiLine alongside aamadLocation would fan out and
+      // inflate both sums.
+      outPackets: sql<number>`coalesce((select sum(${nikasiLine.packets}) from ${nikasiLine} where ${nikasiLine.aamadId} = ${aamad.id}), 0)`
     })
     .from(aamad)
     .innerJoin(account, eq(aamad.kisanAccountId, account.id))
+    .leftJoin(person, eq(account.personId, person.id))
     .leftJoin(aamadLocation, eq(aamadLocation.aamadId, aamad.id))
     .where(and(...conds))
     .groupBy(aamad.id)
@@ -250,10 +249,12 @@ export function getAamad(aamadId: number): AamadDetail | null {
       date: aamad.date,
       kisanAccountId: aamad.kisanAccountId,
       kisanName: account.name,
+      kisanSonOf: person.sonOf,
       totalPackets: aamad.totalPackets
     })
     .from(aamad)
     .innerJoin(account, eq(aamad.kisanAccountId, account.id))
+    .leftJoin(person, eq(account.personId, person.id))
     .where(eq(aamad.id, aamadId))
     .get()
   if (!header) return null

@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Input, Segmented, Table } from 'antd'
-import { PrinterOutlined, SearchOutlined } from '@ant-design/icons'
+import { FileExcelOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
+import type { XlsxCell } from '@shared/contracts'
 import type { SubgroupNature } from '@shared/enums'
-import { formatINR } from '../lib/format'
+import { formatINR, paiseToRupees } from '../lib/format'
 import { deriveFinancials, type Financials, type StatementLine, type SubgroupSection } from '@shared/financials'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import { PageBanner, SectionBar, StatusPill } from '../components/report'
 
 type View = 'income' | 'balance' | 'summary'
@@ -17,6 +20,62 @@ type Side = 'Dr' | 'Cr'
 const fmtSide = (paise: number, side: Side): string =>
   `${formatINR(Math.abs(paise))} ${paise >= 0 ? side : side === 'Dr' ? 'Cr' : 'Dr'}`
 
+/** Flatten the current statement view to leaf rows (Section, Item, Dr, Cr) — Excel sums the totals. */
+function financialsAoa(f: Financials, view: View, t: TFunction): XlsxCell[][] {
+  const cell = (paise: number, side: Side): [XlsxCell, XlsxCell] => {
+    const eff: Side = paise >= 0 ? side : side === 'Dr' ? 'Cr' : 'Dr'
+    const amt = paiseToRupees(Math.abs(paise))
+    return eff === 'Dr' ? [amt, ''] : ['', amt]
+  }
+  const section = (
+    top: string,
+    sections: SubgroupSection[],
+    side: Side,
+    label?: (s: SubgroupSection) => { title: string; lines: StatementLine[] }
+  ): XlsxCell[][] =>
+    sections.flatMap((s) => {
+      const m = label?.(s) ?? { title: s.subgroup, lines: s.lines }
+      return m.lines.map((l) => [`${top} · ${m.title}`, l.name, ...cell(l.paise, side)])
+    })
+
+  if (view === 'summary') {
+    const natureLabel: Record<SubgroupNature, string> = {
+      asset: t('financials.assets'),
+      liability: t('financials.liabilities'),
+      capital: t('financials.equity'),
+      income: t('financials.revenue'),
+      expense: t('financials.expenses')
+    }
+    return f.summary.byNature.map((n) => [
+      natureLabel[n.nature],
+      '',
+      n.drPaise ? paiseToRupees(n.drPaise) : '',
+      n.crPaise ? paiseToRupees(n.crPaise) : ''
+    ])
+  }
+  if (view === 'income') {
+    return [
+      ...section(t('financials.revenue'), f.income.revenue, 'Cr'),
+      ...section(t('financials.expenses'), f.income.expenses, 'Dr'),
+      [t('financials.netProfit'), '', ...cell(f.income.netProfitPaise, 'Cr')]
+    ]
+  }
+  const equityLabel = (s: SubgroupSection): { title: string; lines: StatementLine[] } =>
+    s.subgroup === '__retained__'
+      ? {
+          title: t('financials.retainedEarnings'),
+          lines: s.lines.map((l) =>
+            l.name === '__netProfit__' ? { name: t('financials.retainedEarnings'), paise: l.paise } : l
+          )
+        }
+      : { title: s.subgroup, lines: s.lines }
+  return [
+    ...section(t('financials.assets'), f.balance.assets, 'Dr'),
+    ...section(t('financials.liabilities'), f.balance.liabilities, 'Cr'),
+    ...section(t('financials.equity'), f.balance.equity, 'Cr', equityLabel)
+  ]
+}
+
 /**
  * Financial Statements — Income Statement, Balance Sheet and category Summary, all derived from the
  * trial balance (see lib/financials.ts). Mirrors the Rippling "Financial Statements" + "Summary"
@@ -25,6 +84,7 @@ const fmtSide = (paise: number, side: Side): string =>
 export default function FinancialsPage(): JSX.Element {
   const { t } = useTranslation()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const [view, setView] = useState<View>('income')
   const [search, setSearch] = useState('')
   const tb = useQuery({ queryKey: ['trialBalance'], queryFn: () => window.api.ledger.trialBalance() })
@@ -72,6 +132,23 @@ export default function FinancialsPage(): JSX.Element {
               onClick={() => print(() => window.api.print.financials())}
             >
               {t('common.print')}
+            </Button>
+            <Button
+              size="small"
+              icon={<FileExcelOutlined />}
+              disabled={!f}
+              onClick={() =>
+                f &&
+                exportXlsx(
+                  `financials-${view}.xlsx`,
+                  t(`financials.${view}`),
+                  ['Section', 'Item', t('common.dr'), t('common.cr')],
+                  financialsAoa(f, view, t),
+                  [2, 3] // Dr, Cr
+                )
+              }
+            >
+              {t('common.excel')}
             </Button>
           </>
         }

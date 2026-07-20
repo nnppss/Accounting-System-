@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Button, Drawer, Segmented, Select, Table } from 'antd'
-import { PrinterOutlined } from '@ant-design/icons'
+import { Button, Segmented, Select, Space, Table, Typography } from 'antd'
+import { ArrowLeftOutlined, FileExcelOutlined, PrinterOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import type { MoneyBookMonth } from '@shared/contracts'
-import { formatDate, formatINR, MONTH_NAMES } from '../lib/format'
+import type { MoneyBookDetailRow, MoneyBookMonth } from '@shared/contracts'
+import { formatDate, formatINR, MONTH_NAMES, paiseToRupees } from '../lib/format'
 import { SeverityText } from '../components/Highlight'
 import { PageBanner } from '../components/report'
 import { usePrinter } from '../lib/usePrinter'
+import { useExporter } from '../lib/useExporter'
 import { useTableKeyNav } from '../lib/useTableKeyNav'
 import { DayBookView } from '../components/DayBookView'
 
@@ -17,8 +18,11 @@ type View = 'monthly' | 'day'
 export default function MoneyBookPage(): JSX.Element {
   const { t } = useTranslation()
   const print = usePrinter()
+  const exportXlsx = useExporter()
   const navigate = useNavigate()
-  const [view, setView] = useState<View>('monthly')
+  // In the URL, so a page opened from here (a party's ledger) comes back to the segment it left.
+  const [params, setParams] = useSearchParams()
+  const view: View = params.get('view') === 'day' ? 'day' : 'monthly'
   const [accountId, setAccountId] = useState<number | undefined>()
   const [month, setMonth] = useState<number | null>(null)
 
@@ -42,6 +46,7 @@ export default function MoneyBookPage(): JSX.Element {
   })
 
   const monthData = summary.data?.months ?? []
+  const accountName = (accounts.data ?? []).find((a) => a.id === accountId)?.name ?? ''
   const { containerRef, rowClassName } = useTableKeyNav(
     monthData,
     (r) => setMonth(r.month)
@@ -90,7 +95,12 @@ export default function MoneyBookPage(): JSX.Element {
   const detailColumns = [
     { title: t('common.date'), dataIndex: 'date', width: 100, render: (v: string) => formatDate(v) },
     { title: t('vouchers.no'), dataIndex: 'voucherNo', width: 50 },
-    { title: t('moneyBook.counterparty'), dataIndex: 'counterparty', width: 150 },
+    {
+      title: t('moneyBook.counterparty'),
+      dataIndex: 'counterparties',
+      width: 150,
+      render: (cs: MoneyBookDetailRow['counterparties']) => cs.map((c) => c.name).join(', ')
+    },
     { title: t('common.narration'), dataIndex: 'narration', render: (n: string | null) => n ?? '—' },
     {
       title: t('moneyBook.receipts'),
@@ -131,7 +141,7 @@ export default function MoneyBookPage(): JSX.Element {
           <>
             <Segmented
               value={view}
-              onChange={(v) => setView(v as View)}
+              onChange={(v) => setParams({ view: v as View }, { replace: true })}
               options={[
                 { value: 'monthly', label: t('moneyBook.monthly') },
                 { value: 'day', label: t('dayBook.title') }
@@ -163,6 +173,32 @@ export default function MoneyBookPage(): JSX.Element {
                 >
                   {t('common.print')}
                 </Button>
+                <Button
+                  icon={<FileExcelOutlined />}
+                  onClick={() =>
+                    exportXlsx(
+                      'money-book.xlsx',
+                      accountName || t('moneyBook.title'),
+                      [
+                        t('moneyBook.month'),
+                        t('moneyBook.opening'),
+                        t('moneyBook.receipts'),
+                        t('moneyBook.payments'),
+                        t('moneyBook.closing')
+                      ],
+                      monthData.map((m) => [
+                        MONTH_NAMES[m.month - 1],
+                        paiseToRupees(m.openingPaise),
+                        paiseToRupees(m.receiptsPaise),
+                        paiseToRupees(m.paymentsPaise),
+                        paiseToRupees(m.closingPaise)
+                      ]),
+                      [1, 2, 3, 4] // Opening, Receipts, Payments, Closing
+                    )
+                  }
+                >
+                  {t('common.excel')}
+                </Button>
               </>
             )}
           </>
@@ -171,53 +207,87 @@ export default function MoneyBookPage(): JSX.Element {
 
       {view === 'day' ? (
         <DayBookView />
-      ) : (
+      ) : month !== null ? (
+        // The month's transactions take over where the list was — same width, same table, Back to
+        // the months. (Was a drawer; a full-width table beats a 820px panel over the thing it came
+        // from, and there is nothing on the list worth keeping in view behind it.)
         <>
-          <div ref={containerRef}>
-            <Table
-              className="pc-report"
-              rowKey="month"
-              size="small"
-              loading={summary.isLoading}
-              columns={columns}
-              dataSource={monthData}
-              pagination={false}
-              rowClassName={rowClassName}
-              onRow={(r: MoneyBookMonth) => ({
-                onClick: () => setMonth(r.month),
-                style: { cursor: 'pointer' }
-              })}
-            />
-          </div>
-
-          <Drawer
-            title={month ? `${MONTH_NAMES[month - 1]} — ${t('moneyBook.title')}` : ''}
-            open={month !== null}
-            onClose={() => setMonth(null)}
-            width={820}
-            extra={
-              accountId !== undefined && month !== null ? (
-                <Button
-                  icon={<PrinterOutlined />}
-                  onClick={() => print(() => window.api.print.moneyBookDetail(accountId, month))}
-                >
-                  {t('common.print')}
-                </Button>
-              ) : null
-            }
-          >
-            <Table
-              className="pc-report"
-              rowKey="voucherId"
-              size="small"
-              loading={detail.isLoading}
-              columns={detailColumns}
-              dataSource={detail.data ?? []}
-              pagination={false}
-              scroll={{ x: 'max-content' }}
-            />
-          </Drawer>
+          <Space style={{ marginBottom: 16 }}>
+            <Button icon={<ArrowLeftOutlined />} onClick={() => setMonth(null)}>
+              {t('common.back')}
+            </Button>
+            <Typography.Title level={4} style={{ margin: 0 }}>
+              {MONTH_NAMES[month - 1]}
+            </Typography.Title>
+            {accountId !== undefined && (
+              <Button
+                icon={<PrinterOutlined />}
+                onClick={() => print(() => window.api.print.moneyBookDetail(accountId, month))}
+              >
+                {t('common.print')}
+              </Button>
+            )}
+            {accountId !== undefined && (
+              <Button
+                icon={<FileExcelOutlined />}
+                onClick={() =>
+                  exportXlsx(
+                    `money-book-${MONTH_NAMES[month - 1]}.xlsx`,
+                    `${accountName} — ${MONTH_NAMES[month - 1]}`,
+                    [
+                      t('common.date'),
+                      t('vouchers.no'),
+                      t('moneyBook.counterparty'),
+                      t('common.narration'),
+                      t('moneyBook.receipts'),
+                      t('moneyBook.payments'),
+                      t('common.balance')
+                    ],
+                    (detail.data ?? []).map((r) => [
+                      formatDate(r.date),
+                      r.voucherNo,
+                      r.counterparties.map((c) => c.name).join(', '),
+                      r.narration ?? '',
+                      r.receiptPaise ? paiseToRupees(r.receiptPaise) : '',
+                      r.paymentPaise ? paiseToRupees(r.paymentPaise) : '',
+                      paiseToRupees(r.balancePaise)
+                    ]),
+                    [4, 5, 6] // Receipts, Payments, Balance
+                  )
+                }
+              >
+                {t('common.excel')}
+              </Button>
+            )}
+          </Space>
+          <Table
+            className="pc-report"
+            rowKey="voucherId"
+            size="small"
+            loading={detail.isLoading}
+            columns={detailColumns}
+            dataSource={detail.data ?? []}
+            pagination={false}
+            scroll={{ x: 'max-content' }}
+          />
         </>
+      ) : (
+        <div ref={containerRef}>
+          <Table
+            className="pc-report"
+            rowKey="month"
+            size="small"
+            loading={summary.isLoading}
+            columns={columns}
+            dataSource={monthData}
+            pagination={false}
+            rowClassName={rowClassName}
+            onRow={(r: MoneyBookMonth) => ({
+              onClick: () => setMonth(r.month),
+              style: { cursor: 'pointer' }
+            })}
+          />
+        </div>
       )}
     </div>
   )

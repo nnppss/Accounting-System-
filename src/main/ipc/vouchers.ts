@@ -1,12 +1,15 @@
 import { ipcMain } from 'electron'
 import type { VoucherType } from '../../shared/enums'
-import type { ContraArg, JournalArg, ReceiptArg } from '../../shared/contracts'
+import type { ContraArg, EditVoucherInput, JournalArg, ReceiptArg } from '../../shared/contracts'
 import {
   createContra,
   createJournal,
   createPayment,
   createReceipt,
+  getVoucher,
   listVouchers,
+  updateManualVoucher,
+  updateVoucherNarration,
   voidManualVoucher
 } from '../services/vouchers'
 import { requireOpenYear, requireSession } from '../session'
@@ -31,8 +34,17 @@ export function registerVouchersIpc(): void {
   ipcMain.handle('vouchers:list', (_e, type?: VoucherType) =>
     listVouchers(requireSession().yearId, type)
   )
+  ipcMain.handle('vouchers:get', (_e, voucherId: number) => getVoucher(voucherId))
+  ipcMain.handle('vouchers:update', (_e, voucherId: number, input: EditVoucherInput) => {
+    const s = requireOpenYear()
+    return updateManualVoucher(s.yearId, voucherId, input, s.userId)
+  })
   ipcMain.handle('vouchers:void', (_e, voucherId: number, reason: string) => {
     const s = requireOpenYear()
     return voidManualVoucher(s.yearId, voucherId, reason, s.userId)
+  })
+  ipcMain.handle('vouchers:updateNarration', (_e, voucherId: number, narration: string) => {
+    const s = requireOpenYear()
+    return updateVoucherNarration(s.yearId, voucherId, narration, s.userId)
   })
 }

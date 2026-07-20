@@ -3,6 +3,7 @@ import type {
   AamadDetail,
   AamadListRow,
   AccountDetail,
+  AccountOverview,
   BardanaAccount,
   BardanaRow,
   Bill,
@@ -18,6 +19,7 @@ import type {
   MoneyBookSummary,
   NikasiDetail,
   NikasiListRow,
+  NikasiWeighmentView,
   PartyRow,
   SaudaListRow,
   TrialBalance,
@@ -85,6 +87,16 @@ function balanceSentence(name: string, paise: number): string {
 /** A rupee figure, or an empty cell for zero (keeps dense tables uncluttered). */
 function money(paise: number): string {
   return paise ? formatINR(paise) : ''
+}
+
+/** A packet/kg count in Indian digit grouping, the way the screen writes it ("36,740"). */
+function count(n: number): string {
+  return n.toLocaleString('en-IN')
+}
+
+/** A weight in kg, or an empty cell when nothing was weighed. */
+function kg(weightKg: number): string {
+  return weightKg ? count(weightKg) : ''
 }
 
 /** Stored ISO date (YYYY-MM-DD) → the app's display format DD/MM/YYYY. Unexpected input is left as-is. */
@@ -187,6 +199,7 @@ const STYLE = `
     padding: 9px 12px; background: #fff; }
   .card .lab { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
   .card .val { font-size: 16px; font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .card .sub { color: var(--muted); font-size: 10px; margin-top: 2px; }
   .card.accent { background: var(--maroon-soft); border-color: #e0cfc7; }
   .card.accent .val { color: var(--maroon); }
   .card.amber { background: var(--amber-soft); border-color: #e6d3b8; }
@@ -207,6 +220,8 @@ const STYLE = `
   tfoot td { font-weight: 700; background: var(--beige); font-variant-numeric: tabular-nums; }
   .muted { color: var(--muted); }
   .empty { color: var(--muted); font-style: italic; padding: 10px 2px; }
+  /* a stacked sub-line inside a cell (a voucher's action under its document, wrapped narrations) */
+  .nl { display: block; font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
 
   /* ---- pills & chips ---- */
   .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-weight: 700; font-size: 11px;
@@ -268,12 +283,17 @@ function metaGrid(rows: string[]): string {
 interface Card {
   label: string
   value: string
+  /** Small note under the figure — the tiles' second line on screen (e.g. "3 aamad", "21,040 kg"). */
+  sub?: string
   tone?: 'accent' | 'amber' | 'green'
 }
 
 function cards(items: Card[]): string {
   const html = items
-    .map((c) => `<div class="card${c.tone ? ' ' + c.tone : ''}"><div class="lab">${c.label}</div><div class="val">${c.value}</div></div>`)
+    .map(
+      (c) =>
+        `<div class="card${c.tone ? ' ' + c.tone : ''}"><div class="lab">${c.label}</div><div class="val">${c.value}</div>${c.sub ? `<div class="sub">${c.sub}</div>` : ''}</div>`
+    )
     .join('')
   return `<div class="cards">${html}</div>`
 }
@@ -289,29 +309,70 @@ function balanceCard(label: string, paise: number): Card {
 
 // ---------------------------------------------------------------- Gate pass (Nikasi)
 
+/** One truck carries several kisans' lots; this rolls the weighings up per kisan (the screen's
+ * "By kisan" table) — what each man is owed for his share of the load. */
+function perKisan(
+  weighments: NikasiDetail['weighments']
+): Array<{ name: string; weighings: number; packets: number; weightKg: number; amountPaise: number }> {
+  const by = new Map<number, { name: string; weighings: number; packets: number; weightKg: number; amountPaise: number }>()
+  for (const w of weighments) {
+    const r = by.get(w.fromKisanAccountId) ?? {
+      name: w.fromKisanName,
+      weighings: 0,
+      packets: 0,
+      weightKg: 0,
+      amountPaise: 0
+    }
+    r.weighings += 1
+    r.packets += w.packets
+    r.weightKg += w.weightKg
+    r.amountPaise += w.amountPaise
+    by.set(w.fromKisanAccountId, r)
+  }
+  return [...by.values()]
+}
+
 export function gatePassHtml(n: NikasiDetail): string {
-  const rows = n.lines
+  // Rate and amount only mean something on a vyapari sale — a kisan taking his own stock out buys
+  // nothing, so those columns are dropped exactly as they are on screen.
+  const sale = n.deliveredToType === 'vyapari'
+  const totalPackets = n.weighments.reduce((s, w) => s + w.packets, 0)
+  const totalWeight = n.totalWeightKg
+  const totalAmount = n.weighments.reduce((s, w) => s + w.amountPaise, 0)
+  const deliveredKind = sale ? L('Vyapari', 'व्यापारी') : L('Kisan', 'किसान')
+
+  const kisanRows = perKisan(n.weighments)
     .map(
-      (l) => `<tr>
-        <td>${esc(l.fromKisanName)}</td>
-        <td>${esc(l.lotNo)}</td>
-        <td class="num">${l.packets}</td>
-        <td class="num">${l.weightKg ?? ''}</td>
-        <td class="num">${formatINR(l.ratePaise)}</td>
-        <td class="num">${formatINR(l.amountPaise)}</td>
+      (r) => `<tr>
+        <td>${esc(r.name)}</td>
+        <td class="num">${r.weighings}</td>
+        <td class="num">${r.packets}</td>
+        <td class="num">${kg(r.weightKg)}</td>
+        ${sale ? `<td class="num">${formatINR(r.amountPaise)}</td>` : ''}
       </tr>`
     )
     .join('')
-  const totalPackets = n.lines.reduce((s, l) => s + l.packets, 0)
-  const totalWeight = n.lines.reduce((s, l) => s + (l.weightKg ?? 0), 0)
-  const totalAmount = n.lines.reduce((s, l) => s + l.amountPaise, 0)
-  const deliveredKind = n.deliveredToType === 'vyapari' ? L('Vyapari', 'व्यापारी') : L('Kisan', 'किसान')
+
+  // A row per weighing, since that is what the scale and the deal produced. Lots that shared the
+  // reading are named together ("18/215 + 17/200") against the one weight and rate.
+  const rows = n.weighments
+    .map(
+      (w) => `<tr>
+        <td>${esc(w.fromKisanName)}</td>
+        <td>${w.lots.map((l) => `${esc(l.lotNo)}<span class="muted"> (${l.packets})</span>`).join(' + ')}</td>
+        <td class="num">${w.packets}</td>
+        <td class="num">${kg(w.weightKg)}</td>
+        ${sale ? `<td class="num">${formatINR(w.ratePaise)}</td><td class="num">${formatINR(w.amountPaise)}</td>` : ''}
+      </tr>`
+    )
+    .join('')
 
   const body = `
   ${cards([
     { label: L('Packets', 'पैकेट'), value: String(totalPackets), tone: 'accent' },
-    { label: L('Goods value', 'माल मूल्य'), value: formatINR(totalAmount) },
-    { label: L('Bhada recovered', 'भाड़ा वसूल'), value: formatINR(n.bhadaRecoveredPaise), tone: 'green' }
+    { label: L('Total weight (kg)', 'कुल वज़न (किग्रा)'), value: kg(totalWeight) || '—' },
+    ...(sale ? [{ label: L('Goods value', 'माल मूल्य'), value: formatINR(totalAmount) } as Card] : []),
+    { label: L('Bhada recovered', 'भाड़ा वसूल'), value: formatINR(n.bhadaRecoveredPaise), tone: 'green' as const }
   ])}
   ${metaGrid([
     metaRow(L('Gate pass no.', 'गेट पास सं.'), `#${n.billNo}`),
@@ -319,35 +380,79 @@ export function gatePassHtml(n: NikasiDetail): string {
     metaRow(L('Delivered to', 'प्राप्तकर्ता'), `${esc(n.deliveredToName)} <span class="muted">(${deliveredKind})</span>`),
     metaRow(L('Vehicle no.', 'वाहन सं.'), esc(n.vehicleNo) || '—'),
     metaRow(L('Received by', 'प्राप्तकर्ता हस्ताक्षर'), esc(n.receivedBy) || '—'),
-    n.voucherNo ? metaRow(L('Sale voucher', 'बिक्री वाउचर'), `#${n.voucherNo}`) : ''
+    n.voucherNo ? metaRow(L('Sale voucher', 'बिक्री वाउचर'), `#${n.voucherNo}`) : '',
+    n.remark ? metaRow(L('Remark', 'टिप्पणी'), esc(n.remark)) : ''
   ])}
-  <table>
-    <thead><tr>
-      <th>${L('From kisan', 'किसान')}</th>
-      <th>${L('Lot no.', 'लॉट सं.')}</th>
-      <th class="num">${L('Packets', 'पैकेट')}</th>
-      <th class="num">${L('Weight (kg)', 'वज़न')}</th>
-      <th class="num">${L('Rate /105kg', 'दर /105किग्रा')}</th>
-      <th class="num">${L('Amount', 'राशि')}</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-    <tfoot><tr>
-      <td colspan="2">${L('Total', 'कुल')}</td>
-      <td class="num">${totalPackets}</td>
-      <td class="num">${totalWeight || ''}</td>
-      <td></td>
-      <td class="num">${formatINR(totalAmount)}</td>
-    </tr></tfoot>
-  </table>`
+  <h2>${L('By kisan', 'किसान अनुसार')}</h2>
+  ${table(
+    thc(L('From kisan', 'किसान')) +
+      thc(L('Weighings', 'तौल'), true) +
+      thc(L('Packets', 'पैकेट'), true) +
+      thc(L('Weight (kg)', 'वज़न'), true) +
+      (sale ? thc(L('Amount', 'राशि'), true) : ''),
+    kisanRows || emptyRow(sale ? 5 : 4),
+    `<td colspan="2">${L('Total', 'कुल')}</td><td class="num">${totalPackets}</td><td class="num">${kg(totalWeight)}</td>${sale ? `<td class="num">${formatINR(totalAmount)}</td>` : ''}`
+  )}
+  <h2>${L('Weighing detail', 'तौल विवरण')}</h2>
+  ${table(
+    thc(L('From kisan', 'किसान')) +
+      thc(L('Lot no. (packets)', 'लॉट सं. (पैकेट)')) +
+      thc(L('Packets', 'पैकेट'), true) +
+      thc(L('Weight (kg)', 'वज़न'), true) +
+      (sale ? thc(L('Rate /105kg', 'दर /105किग्रा'), true) + thc(L('Amount', 'राशि'), true) : ''),
+    rows || emptyRow(sale ? 6 : 4),
+    `<td colspan="2">${L('Total', 'कुल')}</td><td class="num">${totalPackets}</td><td class="num">${kg(totalWeight)}</td>${sale ? `<td></td><td class="num">${formatINR(totalAmount)}</td>` : ''}`
+  )}`
   return shell(L('Gate Pass', 'गेट पास'), `#${n.billNo} · ${esc(fmtDate(n.date))}`, body)
 }
 
 // ---------------------------------------------------------------- Ledger table (shared)
 
 /**
- * The running-ledger table shared by the ledger statement and each bill section. Renders the
- * per-entry Dr/Cr, a colour-coded running balance, an entry chip (rent/loan/…), and a tfoot that
- * totals the debits and credits and restates the closing balance.
+ * The business document a voucher came from, bilingual — mirrors the screen's `ledger.doc.*`.
+ * An unknown/absent module falls back to the plain money action.
+ */
+const LEDGER_DOCS: Record<string, string> = {
+  loan: L('Loan', 'ऋण'),
+  bhada: L('Rent', 'भाड़ा'),
+  nikasi: L('Sale', 'बिक्री'),
+  bardana: L('Bardana', 'बारदाना'),
+  salary: L('Salary', 'वेतन'),
+  opening: L('Opening', 'प्रारंभिक'),
+  cheque: L('Cheque', 'चेक'),
+  manual: L('Manual', 'मैनुअल')
+}
+
+/** The plain money action under the document name; a journal moves no money, so it has none. */
+function ledgerAction(t: VoucherType): string | null {
+  switch (t) {
+    case 'receipt':
+      return L('Received', 'प्राप्त')
+    case 'payment':
+      return L('Paid', 'भुगतान')
+    case 'contra':
+      return L('Transfer', 'स्थानांतरण')
+    case 'journal':
+      return null
+  }
+}
+
+/**
+ * The ledger's voucher cell the way the screen reads it (AccountLedgerPage `voucherLabel`): the
+ * business document + its reference no. on top, the money action underneath — not "Journal #8".
+ */
+function ledgerVoucher(l: LedgerLine): string {
+  const doc = l.sourceModule ? LEDGER_DOCS[l.sourceModule] : undefined
+  const action = ledgerAction(l.type)
+  const primary = doc ?? action ?? voucherTypeShort(l.type)
+  const under = doc && action ? `<span class="nl muted">${action}</span>` : ''
+  return `${primary} <span class="muted">#${l.voucherNo}</span>${under}`
+}
+
+/**
+ * The running-ledger table for the ledger statement — the same columns the Ledger tab shows
+ * (date · document · mode · counterparty · particulars · dr/cr · running balance), a colour-coded
+ * balance, an entry chip (rent/loan/…), and a tfoot totalling debits and credits.
  */
 function ledgerTable(lines: LedgerLine[]): string {
   if (lines.length === 0) return `<p class="empty">${L('No ledger entries', 'कोई प्रविष्टि नहीं')}</p>`
@@ -355,7 +460,9 @@ function ledgerTable(lines: LedgerLine[]): string {
     .map(
       (l) => `<tr>
         <td class="num">${esc(fmtDate(l.date))}</td>
-        <td>${voucherTypeShort(l.type)} <span class="muted">#${l.voucherNo}</span></td>
+        <td>${ledgerVoucher(l)}</td>
+        <td>${esc(l.mode) || `<span class="muted">${L('On credit', 'उधार')}</span>`}</td>
+        <td>${esc(l.counterparty) || '—'}</td>
         <td>${esc(l.narration) || ''}${tagChip(l.tag)}</td>
         <td class="num">${money(l.drPaise)}</td>
         <td class="num">${money(l.crPaise)}</td>
@@ -365,11 +472,14 @@ function ledgerTable(lines: LedgerLine[]): string {
     .join('')
   const totalDr = lines.reduce((s, l) => s + l.drPaise, 0)
   const totalCr = lines.reduce((s, l) => s + l.crPaise, 0)
-  const closing = lines[lines.length - 1].balancePaise
+  // lines are newest-first, so the current balance is on the first row.
+  const closing = lines[0].balancePaise
   return `<table>
     <thead><tr>
       <th class="num">${L('Date', 'दिनांक')}</th>
       <th>${L('Voucher', 'वाउचर')}</th>
+      <th>${L('Mode', 'माध्यम')}</th>
+      <th>${L('Counterparty', 'प्रतिपक्ष')}</th>
       <th>${L('Particulars', 'विवरण')}</th>
       <th class="num">${L('Dr', 'नामे')}</th>
       <th class="num">${L('Cr', 'जमा')}</th>
@@ -377,7 +487,7 @@ function ledgerTable(lines: LedgerLine[]): string {
     </tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr>
-      <td colspan="3">${L('Total', 'कुल')}</td>
+      <td colspan="5">${L('Total', 'कुल')}</td>
       <td class="num">${formatINR(totalDr)}</td>
       <td class="num">${formatINR(totalCr)}</td>
       <td class="num">${balancePill(closing)}</td>
@@ -445,7 +555,6 @@ const BILL_HEAD_STYLE = `
   .bhada-note { font-size: 11px; color: var(--muted); margin: -8px 0 12px; }
   .mini-h { background: var(--beige); text-align: center; font-weight: 700; font-size: 11.5px; color: var(--ink-soft);
     padding: 5px; border: 1px solid var(--line); border-bottom: none; margin-top: 14px; }
-  .particulars .nl { display: block; font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
 `
 
 /** Ledger balance cell for the bill: plain Dr/Cr, or a dash for a settled/zero line. */
@@ -500,7 +609,8 @@ function billLedgerTable(lines: LedgerLine[]): string {
     .join('')
   const totalDr = lines.reduce((s, l) => s + l.drPaise, 0)
   const totalCr = lines.reduce((s, l) => s + l.crPaise, 0)
-  const closing = lines[lines.length - 1].balancePaise
+  // lines are newest-first, so the current balance is on the first row.
+  const closing = lines[0].balancePaise
   return `<table>${head}
     <tbody>${rows}</tbody>
     <tfoot><tr>
@@ -518,7 +628,7 @@ function billLoanTable(loans: BillLoanLine[]): string {
     .map(
       (l) => `<tr>
         <td>${esc(fmtDate(l.date))}</td>
-        <td>${esc(l.category)} <span class="muted">· ${esc(l.nature)}</span></td>
+        <td>${loanKind(l.category, l.nature)}</td>
         <td class="num">${formatINR(l.basePaise)}</td>
         <td class="num">${formatINR(l.unpostedInterestPaise)}</td>
         <td class="num">${formatINR(l.liveOutstandingPaise)}</td>
@@ -707,24 +817,65 @@ export function voucherHtml(v: VoucherDetail): string {
 
 // ---------------------------------------------------------------- Ledger statement
 
-export function ledgerHtml(accountName: string, lines: LedgerLine[], acct?: AccountDetail | null): string {
-  const closing = lines.length ? lines[lines.length - 1].balancePaise : 0
+/**
+ * The account's identity as `metaGrid` rows — several kisans may share a name, so son-of / village
+ * / phone are what tell them apart on paper. Empty fields drop out (metaGrid filters). A bank head
+ * shows its account no. / IFSC / branch instead, matching the account details card on screen.
+ */
+function identityRows(acct?: AccountDetail | null): string[] {
+  if (!acct) return []
+  const common = [
+    acct.code ? metaRow(L('Code', 'कोड'), esc(acct.code)) : '',
+    metaRow(L('Type', 'प्रकार'), esc(acct.type.replace(/_/g, ' '))),
+    acct.subgroupName ? metaRow(L('Subgroup', 'उपसमूह'), esc(acct.subgroupName)) : ''
+  ]
+  if (acct.type === 'bank') {
+    return [
+      ...common,
+      acct.bankAccountNumber ? metaRow(L('A/C no.', 'खाता सं.'), esc(acct.bankAccountNumber)) : '',
+      acct.bankIfsc ? metaRow(L('IFSC', 'आईएफ़एससी'), esc(acct.bankIfsc)) : '',
+      acct.bankBranch ? metaRow(L('Branch', 'शाखा'), esc(acct.bankBranch)) : ''
+    ]
+  }
+  return [
+    ...common,
+    acct.sonOf ? metaRow('S/o', esc(acct.sonOf)) : '',
+    acct.villageCity ? metaRow(L('Village / City', 'गाँव / शहर'), esc(acct.villageCity)) : '',
+    acct.state ? metaRow(L('State', 'राज्य'), esc(acct.state)) : '',
+    acct.phone ? metaRow(L('Phone', 'फ़ोन'), esc(acct.phone)) : ''
+  ]
+}
+
+/**
+ * `standingInterestPaise` is the loan interest earned but not yet posted — pass `null` for a party
+ * with no loans, which is how the Ledger tab decides to show the "+ interest" total at all.
+ */
+export function ledgerHtml(
+  accountName: string,
+  lines: LedgerLine[],
+  acct?: AccountDetail | null,
+  standingInterestPaise: number | null = null
+): string {
+  // lines are newest-first: current balance is the first row; period runs oldest → newest.
+  const closing = lines.length ? lines[0].balancePaise : 0
   const totalDr = lines.reduce((s, l) => s + l.drPaise, 0)
   const totalCr = lines.reduce((s, l) => s + l.crPaise, 0)
-  const period = lines.length ? `${esc(fmtDate(lines[0].date))} → ${esc(fmtDate(lines[lines.length - 1].date))}` : '—'
-  // Identity rows so the printout names *which* party this is — several kisans may share a name,
-  // so son-of / village / phone are what tell them apart. Empty fields drop out (metaGrid filters).
-  const idRows = acct
-    ? [
-        acct.code ? metaRow(L('Code', 'कोड'), esc(acct.code)) : '',
-        metaRow(L('Type', 'प्रकार'), esc(acct.type.replace(/_/g, ' '))),
-        acct.subgroupName ? metaRow(L('Subgroup', 'उपसमूह'), esc(acct.subgroupName)) : '',
-        acct.sonOf ? metaRow('S/o', esc(acct.sonOf)) : '',
-        acct.villageCity ? metaRow(L('Village / City', 'गाँव / शहर'), esc(acct.villageCity)) : '',
-        acct.state ? metaRow(L('State', 'राज्य'), esc(acct.state)) : '',
-        acct.phone ? metaRow(L('Phone', 'फ़ोन'), esc(acct.phone)) : ''
-      ]
-    : []
+  const period = lines.length ? `${esc(fmtDate(lines[lines.length - 1].date))} → ${esc(fmtDate(lines[0].date))}` : '—'
+  const idRows = identityRows(acct)
+
+  // A party with loans is carrying interest the ledger hasn't been charged yet; the screen restates
+  // the balance with it (its "Balance + interest" summary row), so the print says the same.
+  const interestClosing =
+    standingInterestPaise === null
+      ? ''
+      : `<div class="closing">
+    <span class="lab">${L('Standing interest (to date)', 'अब तक का ब्याज')}</span>
+    <span>${formatINR(standingInterestPaise)}</span>
+  </div>
+  <div class="closing">
+    <span class="lab">${L('Balance + interest', 'शेष + ब्याज')}</span>
+    ${balancePill(closing + standingInterestPaise)}
+  </div>`
 
   const body = `<h2>${esc(accountName)}</h2>
   ${metaGrid([
@@ -736,15 +887,224 @@ export function ledgerHtml(accountName: string, lines: LedgerLine[], acct?: Acco
   ${cards([
     { label: L('Total debits', 'कुल नामे'), value: formatINR(totalDr) },
     { label: L('Total credits', 'कुल जमा'), value: formatINR(totalCr) },
-    balanceCard(L('Closing balance', 'अंतिम शेष'), closing)
+    balanceCard(L('Closing balance', 'अंतिम शेष'), closing),
+    ...(standingInterestPaise === null
+      ? []
+      : [balanceCard(L('Balance + interest', 'शेष + ब्याज'), closing + standingInterestPaise)])
   ])}
   ${ledgerTable(lines)}
   <div class="closing">
     <span class="lab">${L('Closing balance', 'अंतिम शेष')}</span>
     ${balancePill(closing)}
   </div>
-  <div class="plain">${balanceSentence(accountName, closing)}</div>`
+  ${interestClosing}
+  <div class="plain">${balanceSentence(accountName, closing + (standingInterestPaise ?? 0))}</div>`
   return shell(L('Ledger Statement', 'खाता विवरण'), esc(accountName), body)
+}
+
+// ---------------------------------------------------------------- Account overview
+
+/**
+ * The opened account's Overview tab on paper: the stock tiles over the money tiles, with the same
+ * rule the screen uses — a tile that is zero is not a fact worth printing, so it drops out. The
+ * balance always shows. The tab's drill-downs (lot-by-lot aamad, the gate-pass register, the loans)
+ * are their own documents — Aamad Receipt, Nikasi Register, Loan Register — so they aren't repeated
+ * here; this is the snapshot.
+ */
+export function overviewHtml(accountName: string, o: AccountOverview, acct?: AccountDetail | null): string {
+  const s = o.stock
+  const m = o.money
+
+  const stockCards: Card[] = [
+    ...(s.aamadPackets > 0
+      ? [
+          {
+            label: L('Aamad (in)', 'आमद (अंदर)'),
+            value: count(s.aamadPackets),
+            sub: `${s.aamadCount} ${L('aamad', 'आमद')}`,
+            tone: 'accent' as const
+          },
+          { label: L('Balance in store', 'स्टोर में शेष'), value: count(s.balancePackets) }
+        ]
+      : []),
+    ...(s.nikasiOutPackets > 0
+      ? [
+          {
+            label: L('Nikasi (out)', 'निकासी (बाहर)'),
+            value: count(s.nikasiOutPackets),
+            sub: s.nikasiOutWeightKg > 0 ? `${count(s.nikasiOutWeightKg)} ${L('kg', 'किग्रा')}` : undefined
+          }
+        ]
+      : []),
+    ...(s.purchasedPackets > 0
+      ? [
+          {
+            label: L('Purchased', 'खरीदी'),
+            value: count(s.purchasedPackets),
+            sub: s.purchasedWeightKg > 0 ? `${count(s.purchasedWeightKg)} ${L('kg', 'किग्रा')}` : undefined
+          }
+        ]
+      : [])
+  ]
+
+  const slices: Array<[string, number]> = [
+    [L('Opening', 'प्रारंभिक'), m.openingPaise],
+    [L('Rent', 'किराया'), m.rentPaise],
+    [L('Loan', 'ऋण'), m.loanPaise],
+    [L('Interest', 'ब्याज'), m.interestPaise],
+    [L('Trade', 'व्यापार'), m.tradePaise],
+    [L('Other', 'अन्य'), m.otherPaise]
+  ]
+  const moneyCards: Card[] = [
+    ...slices.filter(([, paise]) => paise !== 0).map(([label, paise]) => balanceCard(label, paise)),
+    balanceCard(L('Balance', 'शेष'), m.balancePaise),
+    ...(m.newBalancePaise !== m.balancePaise
+      ? [balanceCard(L('Balance + interest', 'शेष + ब्याज'), m.newBalancePaise)]
+      : [])
+  ]
+
+  const body = `<h2>${esc(accountName)}</h2>
+  ${metaGrid([metaRow(L('Account', 'खाता'), esc(accountName)), ...identityRows(acct)])}
+  ${stockCards.length ? `<h2>${L('Stock', 'स्टॉक')}</h2>${cards(stockCards)}` : ''}
+  <h2>${L('Money & Balances', 'पैसा और शेष')}</h2>
+  ${cards(moneyCards)}
+  <div class="closing">
+    <span class="lab">${L('Balance', 'शेष')}</span>
+    ${balancePill(m.balancePaise)}
+  </div>
+  <div class="plain">${balanceSentence(accountName, m.newBalancePaise)}</div>`
+  return shell(L('Account Overview', 'खाता अवलोकन'), esc(accountName), body)
+}
+
+/** A lot as the Overview's Aamad drill shows it: the list row plus where the packets actually sit. */
+export type OverviewAamadLot = AamadListRow & { locations: AamadDetail['locations'] }
+
+/**
+ * The Overview tab's Aamad drill — this kisan's stock lot by lot: what he brought, what has gone
+ * out, what is still in the store, the racks it sits on, and the rent it carries at the year's
+ * flat per-packet rate. One row per lot rather than the screen's cards, because that is what reads
+ * on paper; every figure the drill shows is here.
+ */
+export function overviewAamadHtml(
+  accountName: string,
+  lots: OverviewAamadLot[],
+  rentRatePaise: number
+): string {
+  const rent = (packets: number): number => packets * rentRatePaise
+  const totalPackets = lots.reduce((a, l) => a + l.totalPackets, 0)
+  const totalOut = lots.reduce((a, l) => a + l.outPackets, 0)
+  const racks = (l: OverviewAamadLot): string =>
+    l.locations.map((x) => `R${x.room}/F${x.floor}/${x.rack} <span class="muted">(${x.packets})</span>`).join(' + ')
+
+  const body = lots
+    .map(
+      (l) => `<tr>
+        <td>${esc(l.no)}</td>
+        <td>${esc(lotLabel(l.no, l.totalPackets))}</td>
+        <td class="num">${esc(fmtDate(l.date))}</td>
+        <td class="num">${count(l.totalPackets)}</td>
+        <td class="num">${l.outPackets ? count(l.outPackets) : ''}</td>
+        <td class="num"><strong>${count(l.totalPackets - l.outPackets)}</strong></td>
+        <td>${racks(l) || `<span class="muted">${L('Not placed', 'स्थान नहीं')}</span>`}</td>
+        <td class="num">${formatINR(rent(l.totalPackets))}</td>
+      </tr>`
+    )
+    .join('')
+
+  const html = `<h2>${esc(accountName)}</h2>
+  ${cards([
+    { label: L('Aamad (in)', 'आमद (अंदर)'), value: count(totalPackets), sub: `${lots.length} ${L('lots', 'लॉट')}`, tone: 'accent' },
+    { label: L('Nikasi (out)', 'निकासी (बाहर)'), value: count(totalOut) },
+    { label: L('Balance in store', 'स्टोर में शेष'), value: count(totalPackets - totalOut) },
+    { label: L('Rent', 'किराया'), value: formatINR(rent(totalPackets)), tone: 'amber' }
+  ])}
+  ${metaGrid([metaRow(L('Rent rate', 'किराया दर'), `${formatINR(rentRatePaise)} / ${L('packet', 'पैकेट')}`)])}
+  ${table(
+    thc(L('Aamad no.', 'आमद सं.')) +
+      thc(L('Lot', 'लॉट क्र.')) +
+      thc(L('Date', 'दिनांक'), true) +
+      thc(L('Packets', 'पैकेट'), true) +
+      thc(L('Nikasi (out)', 'निकासी (बाहर)'), true) +
+      thc(L('Balance in store', 'स्टोर में शेष'), true) +
+      thc(L('Racks', 'रैक')) +
+      thc(L('Rent', 'किराया'), true),
+    body || emptyRow(8),
+    `<td colspan="3">${L('Total', 'कुल')} (${lots.length} ${L('lots', 'लॉट')})</td><td class="num">${count(totalPackets)}</td><td class="num">${count(totalOut)}</td><td class="num">${count(totalPackets - totalOut)}</td><td></td><td class="num">${formatINR(rent(totalPackets))}</td>`
+  )}`
+  return shell(L('Aamad — packets brought in', 'आमद — लाए गए पैकेट'), esc(accountName), html)
+}
+
+/** A gate pass as the Overview's Nikasi/Purchased drill shows it: the list row plus its weighings. */
+export type OverviewGatePass = NikasiListRow & { weighments: NikasiWeighmentView[] }
+
+/**
+ * The Overview tab's Nikasi (out) / Purchased drill — a block per gate pass, each with the
+ * per-kisan weighing register underneath, then the totals the drill foots.
+ *
+ * For a kisan's own Nikasi drill the caller has already cut the weighings to his lots: a truck is
+ * filled off many kisans, and one kisan's Overview must never show another's packets or rate.
+ */
+export function overviewNikasiHtml(
+  docKind: string,
+  accountName: string,
+  passes: OverviewGatePass[],
+  rentRatePaise: number
+): string {
+  const totalPackets = passes.reduce((a, p) => a + p.totalPackets, 0)
+  const totalWeight = passes.reduce((a, p) => a + p.totalWeightKg, 0)
+  const totalAmount = passes.reduce((a, p) => a + p.totalAmountPaise, 0)
+  const totalRent = totalPackets * rentRatePaise
+
+  const blocks = passes
+    .map((p) => {
+      const rows = p.weighments
+        .map(
+          (w) => `<tr>
+        <td>${esc(w.fromKisanName)}</td>
+        <td>${w.lots.map((l) => `${esc(l.lotNo)} <span class="muted">(${l.packets})</span>`).join(' + ')}</td>
+        <td class="num">${count(w.packets)}</td>
+        <td class="num">${kg(w.weightKg)}</td>
+        <td class="num">${w.weightKg === 0 || w.packets === 0 ? '—' : (w.weightKg / w.packets).toFixed(2)}</td>
+        <td class="num">${formatINR(w.ratePaise)}</td>
+        <td class="num">${formatINR(w.amountPaise)}</td>
+      </tr>`
+        )
+        .join('')
+      return `<h2>${L('Gate pass', 'गेट पास')} #${p.billNo} <span class="muted">· ${esc(fmtDate(p.date))}</span></h2>
+  ${metaGrid([
+    metaRow(
+      L('Delivered to', 'प्राप्तकर्ता'),
+      `${nameWithSonOf(p.deliveredToName, p.deliveredToSonOf)} <span class="muted">(${p.deliveredToType === 'vyapari' ? L('Vyapari', 'व्यापारी') : L('Kisan', 'किसान')})</span>`
+    ),
+    metaRow(L('Vehicle no.', 'वाहन सं.'), esc(p.vehicleNo) || '—'),
+    metaRow(L('Packets', 'पैकेट'), count(p.totalPackets)),
+    metaRow(L('Weight (kg)', 'वज़न'), kg(p.totalWeightKg) || '—'),
+    metaRow(L('Rent', 'किराया'), formatINR(p.totalPackets * rentRatePaise)),
+    metaRow(L('Amount', 'राशि'), formatINR(p.totalAmountPaise))
+  ])}
+  ${table(
+    thc(L('From kisan', 'किसान')) +
+      thc(L('Lot no. (packets)', 'लॉट सं. (पैकेट)')) +
+      thc(L('Packets', 'पैकेट'), true) +
+      thc(L('Weight (kg)', 'वज़न'), true) +
+      thc(L('Avg/pkt', 'औसत/पैकेट'), true) +
+      thc(L('Rate /105kg', 'दर /105किग्रा'), true) +
+      thc(L('Amount', 'राशि'), true),
+    rows || emptyRow(7)
+  )}`
+    })
+    .join('')
+
+  const html = `<h2>${esc(accountName)}</h2>
+  ${cards([
+    { label: L('Gate passes', 'गेट पास'), value: String(passes.length), tone: 'accent' },
+    { label: L('Packets', 'पैकेट'), value: count(totalPackets) },
+    { label: L('Weight (kg)', 'वज़न'), value: kg(totalWeight) || '—' },
+    { label: L('Rent', 'किराया'), value: formatINR(totalRent), tone: 'amber' },
+    { label: L('Amount', 'राशि'), value: formatINR(totalAmount), tone: 'green' }
+  ])}
+  ${blocks || `<p class="empty">${L('No entries', 'कोई प्रविष्टि नहीं')}</p>`}`
+  return shell(docKind, esc(accountName), html)
 }
 
 // ---------------------------------------------------------------- Trial balance
@@ -852,6 +1212,31 @@ export function moneyBookSummaryHtml(accountName: string, year: number, s: Money
 
 // ---------------------------------------------------------------- Money Book (month detail)
 
+/** Header/row for a cash-or-bank transaction list — shared by the Money Book month and the Day Book. */
+function moneyRowHead(): string {
+  return (
+    thc(L('Date', 'दिनांक'), true) +
+    thc(L('Voucher', 'वाउचर')) +
+    thc(L('Counterparty', 'प्रतिपक्ष')) +
+    thc(L('Particulars', 'विवरण')) +
+    thc(L('Receipt', 'प्राप्ति'), true) +
+    thc(L('Payment', 'भुगतान'), true) +
+    thc(L('Balance', 'शेष'), true)
+  )
+}
+
+function moneyRow(r: MoneyBookDetailRow): string {
+  return `<tr>
+    <td class="num">${esc(fmtDate(r.date))}</td>
+    <td>${voucherTypeShort(r.type)} <span class="muted">#${r.voucherNo}</span></td>
+    <td>${esc(r.counterparties.map((c) => c.name).join(', '))}</td>
+    <td>${esc(r.narration) || ''}</td>
+    <td class="num">${money(r.receiptPaise)}</td>
+    <td class="num">${money(r.paymentPaise)}</td>
+    <td class="num">${formatINR(r.balancePaise)}</td>
+  </tr>`
+}
+
 export function moneyBookDetailHtml(
   accountName: string,
   year: number,
@@ -860,31 +1245,12 @@ export function moneyBookDetailHtml(
 ): string {
   const totalRcpt = rows.reduce((a, r) => a + r.receiptPaise, 0)
   const totalPay = rows.reduce((a, r) => a + r.paymentPaise, 0)
-  const body = rows
-    .map(
-      (r) => `<tr>
-        <td class="num">${esc(fmtDate(r.date))}</td>
-        <td>${voucherTypeShort(r.type)} <span class="muted">#${r.voucherNo}</span></td>
-        <td>${esc(r.counterparty)}</td>
-        <td>${esc(r.narration) || ''}</td>
-        <td class="num">${money(r.receiptPaise)}</td>
-        <td class="num">${money(r.paymentPaise)}</td>
-        <td class="num">${formatINR(r.balancePaise)}</td>
-      </tr>`
-    )
-    .join('')
   const title = `${MONTHS[month - 1] ?? month} ${year}`
   const html = `<h2>${esc(accountName)} — ${title}</h2>
   ${table(
-    thc(L('Date', 'दिनांक'), true) +
-      thc(L('Voucher', 'वाउचर')) +
-      thc(L('Counterparty', 'प्रतिपक्ष')) +
-      thc(L('Particulars', 'विवरण')) +
-      thc(L('Receipt', 'प्राप्ति'), true) +
-      thc(L('Payment', 'भुगतान'), true) +
-      thc(L('Balance', 'शेष'), true),
-    body || emptyRow(7),
-    `<td colspan="4">${L('Total', 'कुल')}</td><td class="num">${formatINR(totalRcpt)}</td><td class="num">${formatINR(totalPay)}</td><td class="num">${formatINR(rows.length ? rows[rows.length - 1].balancePaise : 0)}</td>`
+    moneyRowHead(),
+    rows.map(moneyRow).join('') || emptyRow(7),
+    `<td colspan="4">${L('Total', 'कुल')}</td><td class="num">${formatINR(totalRcpt)}</td><td class="num">${formatINR(totalPay)}</td><td class="num">${formatINR(rows.length ? rows[0].balancePaise : 0)}</td>`
   )}`
   return shell(L('Money Book — Month', 'रोकड़ बही — माह'), `${esc(accountName)} · ${title}`, html)
 }
@@ -892,38 +1258,41 @@ export function moneyBookDetailHtml(
 // ---------------------------------------------------------------- Day Book
 
 export function dayBookHtml(db: DayBook): string {
-  const blocks = db.vouchers
-    .map((v) => {
-      const rows = v.entries
-        .map(
-          (e, i) => `<tr>
-        <td>${i === 0 ? `${voucherTypeShort(v.type)} <span class="muted">#${v.voucherNo}</span>${v.narration ? `<span class="muted"> · ${esc(v.narration)}</span>` : ''}` : ''}</td>
-        <td>${esc(e.accountName)}${tagChip(e.tag)}</td>
-        <td class="num">${money(e.drPaise)}</td>
-        <td class="num">${money(e.crPaise)}</td>
-      </tr>`
-        )
-        .join('')
-      return rows
-    })
+  const sections = db.sections
+    .map(
+      (s) => `<h2>${esc(s.accountName)}</h2>
+  ${metaGrid([
+    metaRow(L('Opening', 'प्रारंभिक'), formatINR(s.openingPaise)),
+    metaRow(L('Closing', 'शेष'), formatINR(s.closingPaise))
+  ])}
+  ${table(
+    moneyRowHead(),
+    s.rows.map(moneyRow).join(''),
+    `<td colspan="4">${L('Total', 'कुल')}</td><td class="num">${formatINR(s.rows.reduce((a, r) => a + r.receiptPaise, 0))}</td><td class="num">${formatINR(s.rows.reduce((a, r) => a + r.paymentPaise, 0))}</td><td class="num">${formatINR(s.closingPaise)}</td>`
+  )}`
+    )
     .join('')
   const body = `
   ${metaGrid([
     metaRow(L('Date', 'दिनांक'), esc(fmtDate(db.date))),
-    metaRow(L('Vouchers', 'वाउचर'), String(db.vouchers.length))
+    metaRow(L('Receipts', 'प्राप्ति'), formatINR(db.totalReceiptPaise)),
+    metaRow(L('Payments', 'भुगतान'), formatINR(db.totalPaymentPaise))
   ])}
-  ${table(
-    thc(L('Voucher', 'वाउचर')) +
-      thc(L('Account', 'खाता')) +
-      thc(L('Dr', 'नामे'), true) +
-      thc(L('Cr', 'जमा'), true),
-    blocks || emptyRow(4),
-    `<td colspan="2">${L('Total', 'कुल')}</td><td class="num">${formatINR(db.totalDrPaise)}</td><td class="num">${formatINR(db.totalCrPaise)}</td>`
-  )}`
+  ${sections || `<p class="muted">${L('No money moved on this date.', 'इस दिनांक को कोई लेन-देन नहीं।')}</p>`}`
   return shell(L('Day Book', 'दैनिक बही'), esc(fmtDate(db.date)), body)
 }
 
 // ---------------------------------------------------------------- Aamad register
+
+/** The lot as the yard calls it — the aamad no.'s serial over its packet count ("18/215"). */
+function lotLabel(no: string, totalPackets: number): string {
+  return `${no.slice(no.indexOf('-') + 1)}/${totalPackets}`
+}
+
+/** A party's name with its s/o underneath, the way every list on screen tells two Rams apart. */
+function nameWithSonOf(name: string, sonOf: string | null | undefined): string {
+  return `${esc(name)}${sonOf ? ` <span class="muted">s/o ${esc(sonOf)}</span>` : ''}`
+}
 
 export function aamadRegisterHtml(subtitle: string, rows: AamadListRow[]): string {
   const totalPackets = rows.reduce((a, r) => a + r.totalPackets, 0)
@@ -933,8 +1302,9 @@ export function aamadRegisterHtml(subtitle: string, rows: AamadListRow[]): strin
       const unassigned = r.totalPackets - r.assignedPackets
       return `<tr>
         <td>${esc(r.no)}</td>
+        <td>${esc(lotLabel(r.no, r.totalPackets))}</td>
         <td class="num">${esc(fmtDate(r.date))}</td>
-        <td>${esc(r.kisanName)}</td>
+        <td>${nameWithSonOf(r.kisanName, r.kisanSonOf)}</td>
         <td class="num">${r.totalPackets}</td>
         <td class="num">${unassigned > 0 ? unassigned : ''}</td>
       </tr>`
@@ -942,12 +1312,13 @@ export function aamadRegisterHtml(subtitle: string, rows: AamadListRow[]): strin
     .join('')
   const html = table(
     thc(L('Aamad no.', 'आमद सं.')) +
+      thc(L('Lot', 'लॉट क्र.')) +
       thc(L('Date', 'दिनांक'), true) +
       thc(L('Kisan', 'किसान')) +
       thc(L('Total packets', 'कुल पैकेट'), true) +
       thc(L('Unassigned', 'शेष स्थान'), true),
-    body || emptyRow(5),
-    `<td colspan="3">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td class="num">${totalUnassigned || ''}</td>`
+    body || emptyRow(6),
+    `<td colspan="4">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td class="num">${totalUnassigned || ''}</td>`
   )
   return shell(L('Aamad Register', 'आमद रजिस्टर'), subtitle || '—', html)
 }
@@ -972,8 +1343,9 @@ export function aamadReceiptHtml(a: AamadDetail): string {
   ])}
   ${metaGrid([
     metaRow(L('Aamad no.', 'आमद सं.'), esc(a.no)),
+    metaRow(L('Lot', 'लॉट क्र.'), esc(lotLabel(a.no, a.totalPackets))),
     metaRow(L('Date', 'दिनांक'), esc(fmtDate(a.date))),
-    metaRow(L('Kisan', 'किसान'), esc(a.kisanName))
+    metaRow(L('Kisan', 'किसान'), nameWithSonOf(a.kisanName, a.kisanSonOf))
   ])}
   ${table(
     thc(L('Room', 'कमरा'), true) +
@@ -989,15 +1361,26 @@ export function aamadReceiptHtml(a: AamadDetail): string {
 
 export function saudaRegisterHtml(rows: SaudaListRow[]): string {
   const totalPackets = rows.reduce((a, r) => a + r.packets, 0)
+  const totalLifted = rows.reduce((a, r) => a + r.liftedPackets, 0)
+  // What he actually took against what he promised, and what was done about the gap — the deal is
+  // only half a fact without it (matches the screen's Lifted column).
+  const lifted = (r: SaudaListRow): string => {
+    if (r.shortfallPackets === 0) return `<span class="pill pill-zero">${L('Delivered', 'पूरा उठाया')}</span>`
+    const settled = r.settlementVoucherId
+      ? `<span class="nl muted">${L('Settled', 'चुकता')} ${formatINR(r.settlementPaise ?? 0)}</span>`
+      : ''
+    return `${r.liftedPackets} / ${r.packets}${settled}`
+  }
   const body = rows
     .map(
       (r) => `<tr>
         <td class="num">${esc(fmtDate(r.date))}</td>
-        <td>${esc(r.vyapariName)}</td>
-        <td>${esc(r.kisanName)}</td>
+        <td>${nameWithSonOf(r.vyapariName, r.vyapariSonOf)}</td>
+        <td>${nameWithSonOf(r.kisanName, r.kisanSonOf)}</td>
         <td>${esc(r.lotNo) || '—'}</td>
         <td class="num">${r.packets}</td>
         <td class="num">${formatINR(r.ratePaise)}</td>
+        <td class="num">${lifted(r)}</td>
       </tr>`
     )
     .join('')
@@ -1007,9 +1390,10 @@ export function saudaRegisterHtml(rows: SaudaListRow[]): string {
       thc(L('Kisan', 'किसान')) +
       thc(L('Lot no.', 'लॉट सं.')) +
       thc(L('Packets', 'पैकेट'), true) +
-      thc(L('Rate /105kg', 'दर /105किग्रा'), true),
-    body || emptyRow(6),
-    `<td colspan="4">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td></td>`
+      thc(L('Rate /105kg', 'दर /105किग्रा'), true) +
+      thc(L('Lifted', 'उठाए'), true),
+    body || emptyRow(7),
+    `<td colspan="4">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td></td><td class="num">${totalLifted} / ${totalPackets}</td>`
   )
   return shell(L('Sauda Register', 'सौदा रजिस्टर'), `${rows.length} ${L('deals', 'सौदे')}`, html)
 }
@@ -1018,14 +1402,17 @@ export function saudaRegisterHtml(rows: SaudaListRow[]): string {
 
 export function nikasiRegisterHtml(subtitle: string, rows: NikasiListRow[]): string {
   const totalPackets = rows.reduce((a, r) => a + r.totalPackets, 0)
+  const totalWeight = rows.reduce((a, r) => a + r.totalWeightKg, 0)
   const totalAmount = rows.reduce((a, r) => a + r.totalAmountPaise, 0)
   const body = rows
     .map(
       (r) => `<tr>
         <td>#${r.billNo}</td>
         <td class="num">${esc(fmtDate(r.date))}</td>
-        <td>${esc(r.deliveredToName)} <span class="muted">(${r.deliveredToType === 'vyapari' ? L('Vyapari', 'व्यापारी') : L('Kisan', 'किसान')})</span></td>
+        <td>${nameWithSonOf(r.deliveredToName, r.deliveredToSonOf)} <span class="muted">(${r.deliveredToType === 'vyapari' ? L('Vyapari', 'व्यापारी') : L('Kisan', 'किसान')})</span></td>
+        <td>${esc(r.vehicleNo) || '—'}</td>
         <td class="num">${r.totalPackets}</td>
+        <td class="num">${kg(r.totalWeightKg)}</td>
         <td class="num">${formatINR(r.totalAmountPaise)}${r.isPosted ? '' : ` <span class="muted">(${L('unposted', 'अनपोस्ट')})</span>`}</td>
       </tr>`
     )
@@ -1034,10 +1421,12 @@ export function nikasiRegisterHtml(subtitle: string, rows: NikasiListRow[]): str
     thc(L('Bill no.', 'बिल सं.')) +
       thc(L('Date', 'दिनांक'), true) +
       thc(L('Delivered to', 'प्राप्तकर्ता')) +
+      thc(L('Vehicle no.', 'वाहन सं.')) +
       thc(L('Packets', 'पैकेट'), true) +
+      thc(L('Weight (kg)', 'वज़न'), true) +
       thc(L('Amount', 'राशि'), true),
-    body || emptyRow(5),
-    `<td colspan="3">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td class="num">${formatINR(totalAmount)}</td>`
+    body || emptyRow(7),
+    `<td colspan="4">${L('Total', 'कुल')} (${rows.length})</td><td class="num">${totalPackets}</td><td class="num">${kg(totalWeight)}</td><td class="num">${formatINR(totalAmount)}</td>`
   )
   return shell(L('Nikasi Register', 'निकासी रजिस्टर'), subtitle || '—', html)
 }
@@ -1214,6 +1603,20 @@ function rateLabel(bps: number): string {
   return `${bps / 100}%/mo`
 }
 
+/** The loan's category and nature the way the screen names them, not the raw stored enum. */
+function loanKind(category: string, nature: string): string {
+  const cats: Record<string, string> = {
+    kisan: L('Kisan', 'किसान'),
+    vyapari: L('Vyapari', 'व्यापारी'),
+    other: L('Other', 'अन्य')
+  }
+  const natures: Record<string, string> = {
+    direct: L('Direct', 'प्रत्यक्ष'),
+    indirect: L('Indirect', 'अप्रत्यक्ष')
+  }
+  return `${cats[category] ?? esc(category)} <span class="muted">· ${natures[nature] ?? esc(nature)}</span>`
+}
+
 export function loanRegisterHtml(rows: LoanRow[]): string {
   const totalPrincipal = rows.reduce((a, r) => a + r.principalPaise, 0)
   const totalInterest = rows.reduce((a, r) => a + (r.outstandingPaise - r.principalPaise), 0)
@@ -1223,8 +1626,8 @@ export function loanRegisterHtml(rows: LoanRow[]): string {
       const interest = r.outstandingPaise - r.principalPaise
       return `<tr>
         <td class="num">${esc(fmtDate(r.date))}</td>
-        <td>${esc(r.accountName)}${r.sonOf ? ` <span class="muted">s/o ${esc(r.sonOf)}</span>` : ''}</td>
-        <td>${esc(r.category)} <span class="muted">· ${esc(r.nature)}</span></td>
+        <td>${nameWithSonOf(r.accountName, r.sonOf)}</td>
+        <td>${loanKind(r.category, r.nature)}</td>
         <td class="num">${formatINR(r.principalPaise)}</td>
         <td class="num">${interest > 0 ? '+' + formatINR(interest) : '—'}</td>
         <td class="num">${rateLabel(r.monthlyRateBps)}</td>
@@ -1273,8 +1676,7 @@ export function loanStatementHtml(d: LoanDetail, comp: LoanComposition | null): 
     { label: L('Outstanding', 'बकाया'), value: formatINR(d.breakdown.outstandingPaise), tone: 'accent' }
   ])}
   ${metaGrid([
-    metaRow(L('Category', 'श्रेणी'), esc(d.category)),
-    metaRow(L('Nature', 'प्रकृति'), esc(d.nature)),
+    metaRow(L('Type', 'प्रकार'), loanKind(d.category, d.nature)),
     metaRow(L('Date', 'दिनांक'), esc(fmtDate(d.date))),
     metaRow(L('Rate', 'दर'), rateLabel(d.monthlyRateBps)),
     metaRow(L('Interest from', 'ब्याज से'), esc(fmtDate(d.interestStartDate))),

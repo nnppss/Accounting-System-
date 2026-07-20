@@ -5,6 +5,7 @@ import type {
   ExpenseRow,
   LoanRow,
   NikasiListRow,
+  OverviewSection,
   PartyRow,
   SaudaListRow
 } from '../../shared/contracts'
@@ -23,6 +24,7 @@ import {
   printMoneyBookDetail,
   printMoneyBookSummary,
   printNikasiRegister,
+  printOverview,
   printParty,
   printSaudaRegister,
   printTrialBalance,
@@ -49,6 +51,9 @@ export function registerPrintIpc(): void {
   })
   ipcMain.handle('print:ledger', (_e, accountId: number) =>
     printLedger(accountId, requireSession().yearId)
+  )
+  ipcMain.handle('print:overview', (_e, accountId: number, section?: OverviewSection) =>
+    printOverview(accountId, requireSession().yearId, section)
   )
   ipcMain.handle('print:trialBalance', () => {
     const s = requireSession()

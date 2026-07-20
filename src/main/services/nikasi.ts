@@ -1,14 +1,17 @@
-import { aliasedTable, and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { aliasedTable, and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db, type Db } from '../data/db'
-import { aamad, aamadLocation, account, nikasi, nikasiLine, voucher } from '../data/schema'
+import { aamad, aamadLocation, account, nikasi, nikasiLine, person, voucher } from '../data/schema'
+import { accrueRent } from '../engines/bhada'
 import type {
   CreateNikasiResult,
   LotRemaining,
   NikasiDetail,
   NikasiInput,
   NikasiListFilter,
-  NikasiListRow
+  NikasiListRow,
+  NikasiWeighmentView
 } from '../../shared/contracts'
+import { formatINR } from '../../shared/money'
 import { writeAudit } from '../audit/audit'
 import { lotNoOf } from './aamad'
 import { currentStockAtRack } from './maps'
@@ -16,10 +19,16 @@ import { nextSeries, postCore } from './posting'
 
 /**
  * Nikasi (stock-out / gate pass) — software.md §Nikasi, posting map architecture.md §6.
- *   • delivered to a vyapari → a SALE: Dr Vyapari / Cr each Kisan (proceeds = packets × rate),
- *     posted atomically with the gate pass (tag 'trade'). A vyapari can buy from many kisans.
- *   • delivered to the kisan himself (self-withdrawal) → physical only, no posting.
- * Weight is recorded but never drives money; bhada recovered is informational (recovery nets
+ *   • delivered to a vyapari → a SALE: one voucher PER kisan, Dr Vyapari / Cr Kisan (proceeds =
+ *     weight ÷ 105 × rate), posted atomically with the gate pass (tag 'trade'). One truck is filled
+ *     off many kisans, several lots apiece, at a rate agreed lot by lot; a voucher each keeps every
+ *     party's ledger line to just their own deal (rate is private) and spells that deal out
+ *     ("Nikasi #12 · UP32 AB 1234 — Mohan. Lot 7/60: 30 pkt, 1500 kg @ ₹980.00 per 105kg; …").
+ *   • delivered to the kisan himself (self-withdrawal) → no SALE voucher.
+ * Either way the shipped packets accrue the kisan's storage rent (bhada re-prices to shipped ×
+ * rate — see engines/bhada.ts), so rent hits his ledger piecemeal as his stock leaves.
+ * Each kisan's weight is his own (it settles his money); the vehicle's load is their sum, and only
+ * ever a total (NikasiDetail.totalWeightKg). Bhada recovered is informational (recovery nets
  * through the kisan's running balance, per the posting map — not a separate entry).
  */
 export type {
@@ -34,9 +43,40 @@ export type {
  * e.g. ₹931 per 105 kg — so amount = (deliveredWeightKg / 105) × rate, driven by weight not packets.
  * Rounded to whole paise.
  */
-const NIKASI_RATE_UNIT_KG = 105
+export const NIKASI_RATE_UNIT_KG = 105
 const nikasiAmountPaise = (weightKg: number, ratePaise: number): number =>
   Math.round((weightKg / NIKASI_RATE_UNIT_KG) * ratePaise)
+
+/**
+ * A WEIGHMENT (तौल) is the real unit of a gate pass, not the lot. Lots of one kisan sold at one
+ * agreed rate go on the scale together and come off as a single reading — Ajay's 18/215 and 17/200
+ * weighed as one 21,040 kg at ₹900 — while a lot priced on its own (a different variety, say) is
+ * weighed on its own. So weight and rate belong to a GROUP of lots. Only the group's total weight
+ * is ever a real number; splitting it back over the lots would be invention.
+ *
+ * ponytail: the group key is (kisan, rate), which needs no column — the lots' own rows already
+ * carry both. The ceiling: two separate weighings of ONE kisan at an IDENTICAL rate read back
+ * merged into one (same packets, same weight, same money — only the fact that the scale ran twice
+ * is lost). Add a weighment_no column to nikasi_line if that ever has to survive.
+ */
+const weighmentKey = (kisanAccountId: number, ratePaise: number): string =>
+  `${kisanAccountId}:${ratePaise}`
+
+/**
+ * One weighment's slice of a kisan's ledger narration — "Lots 18/215 + 17/200: 414 pkt, 21040 kg
+ * @ ₹900.00 per 105kg". The kisan opens his ledger to check which deal earned which money, so each
+ * weighing is spelled out; a single summed line across his weighments would hide the rates apart.
+ */
+const weighmentNarration = (
+  lotNos: string[],
+  packets: number,
+  weightKg: number,
+  ratePaise: number
+): string => {
+  const label = lotNos.length > 1 ? `Lots ${lotNos.join(' + ')}` : `Lot ${lotNos[0]}`
+  const weight = weightKg ? `, ${weightKg} kg` : ''
+  return `${label}: ${packets} pkt${weight} @ ${formatINR(ratePaise)} per ${NIKASI_RATE_UNIT_KG}kg`
+}
 
 /**
  * Spread `packets` of one lot across the racks it occupies, in (room, floor, rack) order. Runs
@@ -105,13 +145,11 @@ export function createNikasi(
       throw new Error('Each line must have a positive whole number of packets')
     }
     if (l.ratePaise < 0) throw new Error('Rate cannot be negative')
-    // Weight drives the sale amount, so a vyapari sale can't post without it.
-    if (isSale && !(l.weightKg && l.weightKg > 0)) {
-      throw new Error('Each sale line needs a delivered weight (the rate is per 105 kg)')
-    }
+    // Weight is NOT checked per lot — it is weighed per weighment, so lots that shared a scale
+    // reading carry it on whichever of them the caller put it on. Checked per group inside the tx.
   }
 
-  return db().transaction((tx) => {
+  const result = db().transaction((tx) => {
     const billNo = nextSeries(tx, yearId, 'nikasi')
 
     const header = tx
@@ -125,29 +163,42 @@ export function createNikasi(
         deliveredToAccountId: input.deliveredToAccountId,
         receivedBy: input.receivedBy ?? null,
         bhadaRecoveredPaise: input.bhadaRecoveredPaise ?? 0,
+        remark: input.remark ?? null,
         voucherId: null
       })
       .returning({ id: nikasi.id })
       .get()
 
-    // Each input line = one lot + packets; explode it into rack-level lines. Proceeds are per
-    // kisan (the lot's owner), so a sale posts Dr Vyapari / Cr each Kisan on packets × rate.
-    const proceedsByKisan = new Map<number, number>()
+    // Each input line = one lot + packets; explode it into rack-level lines. The lots are then
+    // gathered into weighments (one kisan, one rate, one scale reading — see weighmentKey): that is
+    // what the money and the ledger are built from, because that is what actually happened at the
+    // gate. One truck carries several kisans' weighments; each kisan's stay his own.
+    const byWeighment = new Map<
+      string,
+      {
+        kisanAccountId: number
+        kisanName: string
+        ratePaise: number
+        packets: number
+        weightKg: number
+        lotNos: string[]
+      }
+    >()
     for (const l of input.lines) {
       const lot = tx
-        .select({ no: aamad.no, totalPackets: aamad.totalPackets, kisanAccountId: aamad.kisanAccountId })
+        .select({
+          no: aamad.no,
+          totalPackets: aamad.totalPackets,
+          kisanAccountId: aamad.kisanAccountId,
+          kisanName: account.name
+        })
         .from(aamad)
+        .innerJoin(account, eq(aamad.kisanAccountId, account.id))
         .where(and(eq(aamad.id, l.aamadId), eq(aamad.yearId, yearId)))
         .get()
       if (!lot) throw new Error(`Lot ${l.aamadId} not found`)
-      const allocations = allocateLot(
-        tx,
-        yearId,
-        lot.kisanAccountId,
-        l.aamadId,
-        lotNoOf(lot.no, lot.totalPackets),
-        l.packets
-      )
+      const lotNo = lotNoOf(lot.no, lot.totalPackets)
+      const allocations = allocateLot(tx, yearId, lot.kisanAccountId, l.aamadId, lotNo, l.packets)
       allocations.forEach((a, i) => {
         tx.insert(nikasiLine)
           .values({
@@ -164,57 +215,107 @@ export function createNikasi(
           })
           .run()
       })
-      proceedsByKisan.set(
-        lot.kisanAccountId,
-        (proceedsByKisan.get(lot.kisanAccountId) ?? 0) + nikasiAmountPaise(l.weightKg ?? 0, l.ratePaise)
-      )
+      const key = weighmentKey(lot.kisanAccountId, l.ratePaise)
+      const w = byWeighment.get(key) ?? {
+        kisanAccountId: lot.kisanAccountId,
+        kisanName: lot.kisanName,
+        ratePaise: l.ratePaise,
+        packets: 0,
+        weightKg: 0,
+        lotNos: []
+      }
+      w.packets += l.packets
+      // The scale ran once for the whole group, so the caller may hang its weight off any lot in
+      // the group (the form puts it on the first). Summing is what reassembles the reading.
+      w.weightKg += l.weightKg ?? 0
+      w.lotNos.push(lotNo)
+      byWeighment.set(key, w)
     }
 
+    // Weight is the sale's money, and it is agreed per weighing — so a weighing, not a lot, is what
+    // has to have one. Checked here (not up front) because the lots' kisan is only known now.
+    if (isSale) {
+      for (const w of byWeighment.values()) {
+        if (w.weightKg > 0) continue
+        throw new Error(
+          `${w.kisanName}'s lots at ${formatINR(w.ratePaise)} (${w.lotNos.join(', ')}) need a delivered weight — the rate is per ${NIKASI_RATE_UNIT_KG} kg`
+        )
+      }
+    }
+
+    // Proceeds roll weighments up per kisan: he sells at his own rates but is credited once, so his
+    // ledger carries one line for the whole truck. Rounded per weighing — one deal, one amount.
+    const byKisan = new Map<number, { packets: number; weightKg: number; amountPaise: number; parts: string[] }>()
+    for (const w of byWeighment.values()) {
+      const tally = byKisan.get(w.kisanAccountId) ?? { packets: 0, weightKg: 0, amountPaise: 0, parts: [] }
+      tally.packets += w.packets
+      tally.weightKg += w.weightKg
+      tally.amountPaise += nikasiAmountPaise(w.weightKg, w.ratePaise)
+      tally.parts.push(weighmentNarration(w.lotNos, w.packets, w.weightKg, w.ratePaise))
+      byKisan.set(w.kisanAccountId, tally)
+    }
+
+    // A sale posts one voucher per kisan so each party's ledger shows only their own deal, named
+    // and legible. nikasi.voucherId keeps the first (marks the gate pass posted); delete voids all.
     let voucherId: number | null = null
     if (isSale) {
-      const total = [...proceedsByKisan.values()].reduce((s, v) => s + v, 0)
-      if (total > 0) {
-        const entries = [
-          { accountId: input.deliveredToAccountId, drPaise: total, crPaise: 0, tag: 'trade' as const },
-          ...[...proceedsByKisan.entries()].map(([kisanId, amount]) => ({
-            accountId: kisanId,
-            drPaise: 0,
-            crPaise: amount,
-            tag: 'trade' as const
-          }))
-        ]
+      const vyapariName = deliveredTo.name
+      for (const [kisanId, tally] of byKisan) {
+        if (tally.amountPaise <= 0) continue
+        // The whole gate pass, readable off the one ledger row: which truck, whose deal, and each
+        // weighing he put on it with its lots, packets, weight and rate. The counterparty column
+        // names the other party and the Dr/Cr column the amount, so neither is repeated here.
+        const vehicle = input.vehicleNo ? ` · ${input.vehicleNo}` : ''
+        const total =
+          tally.parts.length > 1 ? ` · Total ${tally.packets} pkt, ${tally.weightKg} kg` : ''
         const res = postCore(tx, {
           yearId,
           type: 'journal',
           date: input.date,
-          narration: `Nikasi sale — gate pass #${billNo}`,
+          narration: `Nikasi #${billNo}${vehicle} — ${vyapariName}. ${tally.parts.join('; ')}${total}`,
           accountantUserId: userId,
           sourceModule: 'nikasi',
           sourceId: header.id,
           isAuto: true,
-          entries
+          entries: [
+            {
+              accountId: input.deliveredToAccountId,
+              drPaise: tally.amountPaise,
+              crPaise: 0,
+              tag: 'trade' as const
+            },
+            { accountId: kisanId, drPaise: 0, crPaise: tally.amountPaise, tag: 'trade' as const }
+          ]
         })
-        voucherId = res.voucherId
-        tx.update(nikasi).set({ voucherId }).where(eq(nikasi.id, header.id)).run()
+        if (voucherId === null) voucherId = res.voucherId
       }
+      if (voucherId !== null) tx.update(nikasi).set({ voucherId }).where(eq(nikasi.id, header.id)).run()
     }
 
     writeAudit(
       { userId, action: 'create', entity: 'nikasi', entityId: header.id, after: { billNo, ...input } },
       tx
     )
-    return { nikasiId: header.id, billNo, voucherId }
+    return { nikasiId: header.id, billNo, voucherId, shippingKisans: [...byKisan.keys()] }
   })
+
+  // Shipped packets changed → re-price each shipping kisan's rent to his shipped total. Runs
+  // outside the tx (accrueRent opens its own), mirroring how aamad used to accrue.
+  for (const kisanId of result.shippingKisans) {
+    accrueRent(kisanId, yearId, input.date, userId)
+  }
+  return { nikasiId: result.nikasiId, billNo: result.billNo, voucherId: result.voucherId }
 }
 
 /**
- * Delete a nikasi (gate pass) with its lines. If it was a vyapari sale, its auto-posted voucher is
- * voided first (no hard ledger deletes) so the sale reverses out of every balance; the voided
- * voucher stays for the audit trail. Self-withdrawals have no voucher. Scoped to the year, atomic,
- * and audited.
+ * Delete a nikasi (gate pass) with its lines. A vyapari sale posts one voucher per kisan; all of
+ * them are voided (no hard ledger deletes) so the sale reverses out of every balance, and the
+ * voided vouchers stay for the audit trail. Self-withdrawals have none. Every kisan that shipped on
+ * this gate pass then re-accrues his rent at the now-lower shipped total. Scoped to the year,
+ * atomic, and audited.
  */
 export function deleteNikasi(yearId: number, id: number, userId?: number): void {
-  db().transaction((tx) => {
+  const affected = db().transaction((tx) => {
     const header = tx
       .select()
       .from(nikasi)
@@ -222,21 +323,36 @@ export function deleteNikasi(yearId: number, id: number, userId?: number): void 
       .get()
     if (!header) throw new Error(`Nikasi ${id} not found`)
 
-    if (header.voucherId) {
-      const v = tx.select().from(voucher).where(eq(voucher.id, header.voucherId)).get()
-      if (v && !v.voidedAt) {
-        tx.update(voucher)
-          .set({ voidedAt: new Date(), voidedReason: `Nikasi gate pass #${header.billNo} deleted` })
-          .where(eq(voucher.id, header.voucherId))
-          .run()
-        writeAudit({ userId, action: 'void', entity: 'voucher', entityId: header.voucherId, before: v }, tx)
-      }
+    const shippingKisans = tx
+      .selectDistinct({ k: nikasiLine.fromKisanAccountId })
+      .from(nikasiLine)
+      .where(eq(nikasiLine.nikasiId, id))
+      .all()
+      .map((r) => r.k)
+
+    // Void every sale voucher this gate pass raised (one per kisan), not just header.voucherId.
+    const sales = tx
+      .select()
+      .from(voucher)
+      .where(and(eq(voucher.sourceModule, 'nikasi'), eq(voucher.sourceId, id), isNull(voucher.voidedAt)))
+      .all()
+    for (const v of sales) {
+      tx.update(voucher)
+        .set({ voidedAt: new Date(), voidedReason: `Nikasi gate pass #${header.billNo} deleted` })
+        .where(eq(voucher.id, v.id))
+        .run()
+      writeAudit({ userId, action: 'void', entity: 'voucher', entityId: v.id, before: v }, tx)
     }
 
     tx.delete(nikasiLine).where(eq(nikasiLine.nikasiId, id)).run()
     tx.delete(nikasi).where(eq(nikasi.id, id)).run()
     writeAudit({ userId, action: 'delete', entity: 'nikasi', entityId: id, before: header }, tx)
+    return { shippingKisans, date: header.date }
   })
+
+  for (const kisanId of affected.shippingKisans) {
+    accrueRent(kisanId, yearId, affected.date, userId)
+  }
 }
 
 export function listNikasi(yearId: number, filter: NikasiListFilter = {}): NikasiListRow[] {
@@ -267,11 +383,13 @@ export function listNikasi(yearId: number, filter: NikasiListFilter = {}): Nikas
       deliveredToType: nikasi.deliveredToType,
       deliveredToAccountId: nikasi.deliveredToAccountId,
       deliveredToName: account.name,
+      deliveredToSonOf: person.sonOf,
       vehicleNo: nikasi.vehicleNo,
       voucherId: nikasi.voucherId
     })
     .from(nikasi)
     .innerJoin(account, eq(nikasi.deliveredToAccountId, account.id))
+    .leftJoin(person, eq(account.personId, person.id))
     .where(and(...headerConds))
     .orderBy(desc(nikasi.date), desc(nikasi.billNo))
     .all()
@@ -284,6 +402,7 @@ export function listNikasi(yearId: number, filter: NikasiListFilter = {}): Nikas
     const agg = db()
       .select({
         packets: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)`,
+        weightKg: sql<number>`coalesce(sum(${nikasiLine.weightKg}), 0)`,
         amount: sql<number>`coalesce(round(sum(${nikasiLine.weightKg} * ${nikasiLine.ratePaise}) / 105.0), 0)`
       })
       .from(nikasiLine)
@@ -296,8 +415,10 @@ export function listNikasi(yearId: number, filter: NikasiListFilter = {}): Nikas
       deliveredToType: h.deliveredToType,
       deliveredToAccountId: h.deliveredToAccountId,
       deliveredToName: h.deliveredToName,
+      deliveredToSonOf: h.deliveredToSonOf,
       vehicleNo: h.vehicleNo,
       totalPackets: agg?.packets ?? 0,
+      totalWeightKg: agg?.weightKg ?? 0,
       totalAmountPaise: agg?.amount ?? 0,
       isPosted: h.voucherId !== null
     }
@@ -317,6 +438,7 @@ export function getNikasi(nikasiId: number): NikasiDetail | null {
       deliveredToName: deliveredTo.name,
       receivedBy: nikasi.receivedBy,
       bhadaRecoveredPaise: nikasi.bhadaRecoveredPaise,
+      remark: nikasi.remark,
       voucherNo: voucher.no
     })
     .from(nikasi)
@@ -331,7 +453,10 @@ export function getNikasi(nikasiId: number): NikasiDetail | null {
   const rows = db()
     .select({
       aamadId: nikasiLine.aamadId,
-      lotNo: sql<string | null>`${aamad.no} || '/' || ${aamad.totalPackets}`,
+      // Raw `no` is `YYYY-serial`; parties know the lot by lotNoOf's `serial/total` — same string
+      // the picker and the ledger narration use, so keep them saying the same thing.
+      aamadNo: aamad.no,
+      aamadTotalPackets: aamad.totalPackets,
       fromKisanAccountId: nikasiLine.fromKisanAccountId,
       fromKisanName: kisan.name,
       packets: sql<number>`sum(${nikasiLine.packets})`,
@@ -345,22 +470,52 @@ export function getNikasi(nikasiId: number): NikasiDetail | null {
     .groupBy(nikasiLine.aamadId, nikasiLine.ratePaise, nikasiLine.fromKisanAccountId)
     .all()
 
+  // Rebuild the weighments: lots of one kisan at one rate went over the scale together, so they are
+  // reported together. Their weights sum back to the reading; no lot claims a share of it, because
+  // at the gate no lot ever had one.
+  const weighments: NikasiWeighmentView[] = []
+  const byKey = new Map<string, NikasiWeighmentView>()
+  for (const r of rows) {
+    const key = weighmentKey(r.fromKisanAccountId, r.ratePaise)
+    let w = byKey.get(key)
+    if (!w) {
+      w = {
+        fromKisanAccountId: r.fromKisanAccountId,
+        fromKisanName: r.fromKisanName,
+        ratePaise: r.ratePaise,
+        packets: 0,
+        weightKg: 0,
+        amountPaise: 0,
+        lots: []
+      }
+      byKey.set(key, w)
+      weighments.push(w)
+    }
+    w.packets += r.packets
+    w.weightKg += r.weightKg ?? 0
+    w.lots.push({
+      aamadId: r.aamadId,
+      lotNo: r.aamadNo ? lotNoOf(r.aamadNo, r.aamadTotalPackets ?? 0) : '—',
+      packets: r.packets
+    })
+  }
+  for (const w of weighments) w.amountPaise = nikasiAmountPaise(w.weightKg, w.ratePaise)
+
+  // What actually went out on the truck: every kisan's weighings added up.
   return {
     ...header,
-    lines: rows.map((r) => ({
-      aamadId: r.aamadId,
-      lotNo: r.lotNo ?? '—',
-      fromKisanAccountId: r.fromKisanAccountId,
-      fromKisanName: r.fromKisanName,
-      packets: r.packets,
-      weightKg: r.weightKg ?? undefined,
-      ratePaise: r.ratePaise,
-      amountPaise: nikasiAmountPaise(r.weightKg ?? 0, r.ratePaise)
-    }))
+    weighments,
+    totalWeightKg: weighments.reduce((s, w) => s + w.weightKg, 0)
   }
 }
 
-/** A kisan's lots (or all lots, when no kisan given) with packets still on hand — for the picker. */
+/**
+ * A kisan's lots (or all lots, when no kisan given) with packets still on hand — for the picker.
+ * `remaining` is what the kisan is still owed on paper (total − shipped); `inRacks` is what nikasi
+ * can actually ship (placed − shipped). They differ when an aamad was booked by total only and its
+ * rack placement never followed (see createAamad — locations are optional at peak season), which is
+ * why the picker shows both: offering `remaining` alone promises stock allocateLot can't find.
+ */
 export function lotsWithRemaining(yearId: number, kisanAccountId?: number): LotRemaining[] {
   const conds = [eq(aamad.yearId, yearId)]
   if (kisanAccountId) conds.push(eq(aamad.kisanAccountId, kisanAccountId))
@@ -371,7 +526,11 @@ export function lotsWithRemaining(yearId: number, kisanAccountId?: number): LotR
       kisanAccountId: aamad.kisanAccountId,
       kisanName: account.name,
       totalPackets: aamad.totalPackets,
-      shipped: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)`
+      shipped: sql<number>`coalesce(sum(${nikasiLine.packets}), 0)`,
+      // Subquery, not a join: joining aamadLocation alongside nikasiLine would fan out and
+      // multiply both sums by the other's row count.
+      placed: sql<number>`(select coalesce(sum(${aamadLocation.packets}), 0)
+        from ${aamadLocation} where ${aamadLocation.aamadId} = ${aamad.id})`
     })
     .from(aamad)
     .innerJoin(account, eq(aamad.kisanAccountId, account.id))
@@ -388,7 +547,8 @@ export function lotsWithRemaining(yearId: number, kisanAccountId?: number): LotR
       kisanAccountId: r.kisanAccountId,
       kisanName: r.kisanName,
       totalPackets: r.totalPackets,
-      remaining: r.totalPackets - r.shipped
+      remaining: r.totalPackets - r.shipped,
+      inRacks: r.placed - r.shipped
     }))
     .filter((r) => r.remaining > 0)
 }

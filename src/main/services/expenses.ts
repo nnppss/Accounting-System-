@@ -1,6 +1,6 @@
 import { aliasedTable, and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../data/db'
-import { account, loadingContractorYear, voucher, voucherEntry } from '../data/schema'
+import { account, loadingContractorYear, person, voucher, voucherEntry } from '../data/schema'
 import { getSystemAccountId, SYSTEM_ACCOUNTS } from '../data/seed'
 import type {
   ExpensePaymentInput,
@@ -119,6 +119,7 @@ function listRegister(yearId: number, sourceModule: 'salary' | 'loading'): Expen
       narration: voucher.narration,
       partyAccountId: voucher.sourceId,
       partyName: party.name,
+      partySonOf: person.sonOf,
       amountPaise: sql<number>`coalesce(sum(${voucherEntry.drPaise}), 0)`
     })
     .from(voucher)
@@ -127,6 +128,7 @@ function listRegister(yearId: number, sourceModule: 'salary' | 'loading'): Expen
       and(eq(voucherEntry.voucherId, voucher.id), eq(voucherEntry.accountId, expenseHead))
     )
     .leftJoin(party, eq(voucher.sourceId, party.id))
+    .leftJoin(person, eq(party.personId, person.id))
     .where(
       and(eq(voucher.yearId, yearId), eq(voucher.sourceModule, sourceModule), isNull(voucher.voidedAt))
     )
@@ -139,6 +141,7 @@ function listRegister(yearId: number, sourceModule: 'salary' | 'loading'): Expen
     date: r.date,
     partyAccountId: r.partyAccountId,
     partyName: r.partyName,
+    partySonOf: r.partySonOf,
     amountPaise: r.amountPaise,
     narration: r.narration
   }))
